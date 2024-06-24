@@ -50,6 +50,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 #ifndef REAL
 #define REAL double
@@ -1715,11 +1716,11 @@ int FMesher::DoPeriodicBCTriangulation(string PathName)
 				}
 			}
 		}
-        agelst[n]->nodeNums.clear ();
+
+		agelst[n]->nodeNums.resize (myVector.size() + 1);
 		agelst[n]->nodeNums.shrink_to_fit ();
-		agelst[n]->nodeNums.reserve (myVector.size()+1);
-		agelst[n]->nodeNums[0]=(int) myVector.size();
-		for(k=0;k<(int)myVector.size();k++) agelst[n]->nodeNums[k+1]=myVector[k];
+		agelst[n]->nodeNums[0] = static_cast<int>(myVector.size());
+		std::copy(myVector.begin(), myVector.end(), agelst[n]->nodeNums.begin() + 1);
 	}
 
 
@@ -1852,27 +1853,19 @@ int FMesher::DoPeriodicBCTriangulation(string PathName)
 	fprintf(fp,"%i\n",(int) agelst.size());
 	for(k=0;k<(int)agelst.size();k++)
 	{
-		double dtta;
-		std::vector<CQuadPoint> InnerRing;
-		std::vector<CQuadPoint> OuterRing;
-		InnerRing.clear();
-		InnerRing.shrink_to_fit();
-		OuterRing.clear();
-		OuterRing.shrink_to_fit();
+		n = agelst[k]->nodeNums[0] / 2;
+		const double dtta = agelst[k]->totalArcLength / n;
+		n0 = static_cast<int>(round(360.0 / dtta)); // total elements in a 360deg annular ring;
+		n1 = static_cast<int>(round(360.0 / agelst[k]->totalArcLength)); // number of copied segments
 
-		n=agelst[k]->nodeNums[0]/2;
-		dtta = agelst[k]->totalArcLength/n;
-		n0=(int) round(360./dtta); // total elements in a 360deg annular ring;
-		n1=(int) round(360./agelst[k]->totalArcLength); // number of copied segments
+		std::vector<CQuadPoint> InnerRing(n0);
+		std::vector<CQuadPoint> OuterRing(n0);
 
 		// Should do some consistency checking here;
 		//   totalArcLength*n1 should equal 360
 		//   no*dtta should equal 360
 		//   if antiperiodic, n1 should be an even number
 		//   otherwise, throw error message, clean up, and return
-
-		InnerRing.reserve(n0);
-		OuterRing.reserve(n0);
 
 		// map each bdry point onto points on the ring;
 		int kk;
