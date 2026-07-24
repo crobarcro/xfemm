@@ -15,13 +15,6 @@
 - Lua scripting (embedded in C++ for automation)
 - CMake build system
 - Triangle mesh generator (embedded version 1.6)
-
-**Repository Statistics**:
-- Language composition: C++ (48.3%), Edge (18.6%), C (16.2%), MATLAB (14.7%), Lua (1.2%), CMake (0.5%)
-- Open issues: ~9
-- Created: September 2020
-- License: Aladdin Free Public License (original FEMM), Apache 2.0 (xfemm M-files)
-
 ---
 
 ## Directory Structure
@@ -200,14 +193,6 @@ PostProcessor (read solution)
 └── meshelems (vector<CElement>)
 ```
 
-### Solution Types
-
-- **Electromagnetics**: Magnetic field (A), permeability, force/torque
-- **Electrostatics**: Electric potential (V), permittivity, capacitance
-- **Current Flow**: Voltage potential, conductivity, current
-- **Heat Flow**: Temperature, conductivity, heat transfer
-
----
 
 ## Build System
 
@@ -377,15 +362,6 @@ mfemm_setup('ForceMexRecompile', true)  % Forces recompilation of MEX files
 
 ---
 
-## Quick Debugging Checklist
-
-When investigating issues:
-
-1. **Compilation fails**: Check C++ compiler version (C++14 required), CMake version (3.0+)
-2. **MEX compile fails**: Run `mex -setup C++`, verify compiler path, check `/mfemm/INSTALLATION.txt`
-3. **Solver crashes**: Enable debug flags in CMake, check `.fem` file consistency via `FemmProblem::consistencyCheckOK()`
-4. **Post-processor fails**: Verify `.ans` file format matches solver type (magnetics vs. electrostatics)
-5. **Lua errors**: Enable `DEBUG_FEMMLUA` in CMake, check Lua syntax in `.lua` scripts
 6. **Geometry issues**: Use `FemmProblem::enforcePSLG()` to detect and fix overlaps/intersections
 
 ---
