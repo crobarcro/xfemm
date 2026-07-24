@@ -1892,17 +1892,8 @@ void femm::FemmProblem::rotateCopy(CComplex c, double dt, int ncopies, femm::Edi
                     newlabel->y = x.im;
                     newlabel->IsSelected = false;
 
-                    for (const auto &bprop: blockproplist)
-                    {
-                        CMMaterialProp *prop = dynamic_cast<CMMaterialProp*>(bprop.get());
-                        if (prop
-                                && prop->BlockName == newlabel->BlockTypeName
-                                && prop->H_c != 0)
-                        {
-                            if (CMBlockLabel *ptr=dynamic_cast<CMBlockLabel*>(newlabel.get()))
-                                ptr->MagDir += t;
-                        }
-                    }
+                    if (CMBlockLabel *ptr=dynamic_cast<CMBlockLabel*>(newlabel.get()))
+                        ptr->MagDir += t;
 
                     labellist.push_back(std::move(newlabel));
                 }
@@ -1958,17 +1949,8 @@ void femm::FemmProblem::rotateMove(CComplex c, double t, femm::EditMode selector
                 label->y = x.im;
 
                 // only relevant to magnetics problems:
-                for (const auto &bprop : blockproplist)
-                {
-                    CMMaterialProp *prop = dynamic_cast<CMMaterialProp*>(bprop.get());
-                    if (prop
-                            && prop->BlockName == label->BlockTypeName
-                            && prop->H_c != 0)
-                    {
-                        if (CMBlockLabel *ptr=dynamic_cast<CMBlockLabel*>(label.get()))
-                            ptr->MagDir += t;
-                    }
-                }
+                if (CMBlockLabel *ptr=dynamic_cast<CMBlockLabel*>(label.get()))
+                    ptr->MagDir += t;
             }
         }
     }
