@@ -63,14 +63,11 @@ function [rules,vars] = MMakefile_fsolver (varargin)
         vars.MEXFLAGS = [vars.MEXFLAGS, ' -v '];
     end
 
-    vars.CXXFLAGS = '${CXXFLAGS} -std=c++11 ';
+    vars.CXXFLAGS = '${CXXFLAGS} -std=c++17 ';
 
     if mfemmdeps.isoctave
-        setenv('CFLAGS','-std=c++11'); %vars.CXXFLAGS = [vars.CXXFLAGS, ' -std=c++11'];
-        setenv('CXXFLAGS','-std=c++11');
-        vars.MEXFLAGS = [vars.MEXFLAGS, ' ''-Wl,--no-undefined'' -L', fullfile(matlabroot(), 'lib', 'octave', version()), ' -loctinterp -loctave -lstdc++'];
+        setenv('CXXFLAGS','-std=c++17');
     end
-%     vars.CXXFLAGS = [vars.CXXFLAGS, ' -std=c++14'];
 
     if ~ismscompiler
         vars.CXXFLAGS = [vars.CXXFLAGS, ' -fpermissive'];
