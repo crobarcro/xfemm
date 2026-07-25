@@ -62,23 +62,20 @@ function [rules,vars] = MMakefile_fmesher (varargin)
         end
     end
 
-    vars.CXXFLAGS = '${CXXFLAGS} -std=c++11 ';
+    vars.CXXFLAGS = '${CXXFLAGS} -std=c++17 ';
 
     if options.DebugSymbols
         vars.MEXFLAGS = [vars.MEXFLAGS, ' -g'];
     end
 
     if mfemmdeps.isoctave ()
-        setenv('CFLAGS','-std=c++11'); %vars.CXXFLAGS = [vars.CXXFLAGS, ' -std=c++11'];
-        setenv('CXXFLAGS','-std=c++11');
+        setenv('CXXFLAGS','-std=c++17');
     end
-%     vars.CXXFLAGS = [vars.CXXFLAGS, ' -std=c++14'];
 
     if ~ismscompiler
         vars.CXXFLAGS = [vars.CXXFLAGS, ' -fpermissive'];
         vars.CFLAGS = '${CFLAGS} -fpermissive';
     end
-%     vars.
 
     cfemmpath = fullfile (thisfilepath, '..', 'cfemm');
     fmesherpath = fullfile (cfemmpath, 'fmesher');

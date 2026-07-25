@@ -49,14 +49,12 @@ function [rules,vars] = MMakefile_fpproc (varargin)
         vars.MEXFLAGS = [vars.MEXFLAGS, ' -g'];
     end
 
-    vars.CXXFLAGS = '${CXXFLAGS} -std=c++11 ';
+    vars.CXXFLAGS = '${CXXFLAGS} -std=c++17 ';
 
     if mfemmdeps.isoctave
-        setenv('CFLAGS','-std=c++11'); %vars.CXXFLAGS = [vars.CXXFLAGS, ' -std=c++11'];
-        setenv('CXXFLAGS','-std=c++11');
+        setenv('CXXFLAGS','-std=c++17');
     end
 
-%     vars.CXXFLAGS = [vars.CXXFLAGS, ' -std=c++14'];
 
     %vars.LDFLAGS = '${LDFLAGS} -lstdc++ ''-Wl,--no-undefined''';
     vars.LDFLAGS = '${LDFLAGS} ''-Wl,--no-undefined''';

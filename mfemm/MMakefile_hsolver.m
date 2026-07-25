@@ -52,14 +52,12 @@ function [rules,vars] = MMakefile_hsolver (varargin)
     %vars.LDFLAGS = '${LDFLAGS} -lstdc++ ''-Wl,--no-undefined''';
     vars.LDFLAGS = '${LDFLAGS} ''-Wl,--no-undefined''';
     
-    vars.CXXFLAGS = '${CXXFLAGS} -std=c++11 ';
+    vars.CXXFLAGS = '${CXXFLAGS} -std=c++17 ';
 
     if mfemmdeps.isoctave ()
-        setenv('CFLAGS','-std=c++11'); %vars.CXXFLAGS = [vars.CXXFLAGS, ' -std=c++11'];
-        setenv('CXXFLAGS','-std=c++11');
+        setenv('CXXFLAGS','-std=c++17');
     end
 
-%     vars.CXXFLAGS = [vars.CXXFLAGS, ' -std=c++14'];
 
     vars.LDFLAGS = '${LDFLAGS} -lstdc++';
 
