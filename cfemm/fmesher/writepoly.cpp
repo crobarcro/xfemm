@@ -427,7 +427,7 @@ static bool writeTriangulationFiles(const femm::mesh::RawMesh &mesh, const strin
  *  * \femm42{femm/bd_writepoly.cpp,CbeladrawDoc::OnWritePoly()}
  *  * \femm42{femm/hd_writepoly.cpp,ChdrawDoc::OnWritePoly()}
  */
-int FMesher::DoNonPeriodicBCTriangulation(string PathName)
+int FMesher::doNonPeriodicTriangleWorkflow(string PathName)
 {
     // // if incremental permeability solution, we crib mesh from the previous problem.
     // // we can just bail out in that case.
@@ -539,7 +539,7 @@ int FMesher::DoNonPeriodicBCTriangulation(string PathName)
  *  * \femm42{femm/bd_writepoly.cpp,CbeladrawDoc::FunnyOnWritePoly()}
  *  * \femm42{femm/hd_writepoly.cpp,ChdrawDoc::FunnyOnWritePoly()}
  */
-int FMesher::DoPeriodicBCTriangulation(string PathName)
+int FMesher::doPeriodicTriangleWorkflow(string PathName)
 {
     // // if incremental permeability solution, we crib mesh from the previous problem.
     // // we can just bail out in that case.
