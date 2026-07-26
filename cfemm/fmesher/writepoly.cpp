@@ -386,7 +386,7 @@ bool FMesher::HasPeriodicBC()
 }
 
 
-static bool writeTriangulationFiles(const RawTriangulation &mesh, const string &path,
+static bool writeTriangulationFiles(const femm::mesh::RawMesh &mesh, const string &path,
                                     int (*warn)(const char *, ...))
 {
     const string root = path.substr(0, path.find_last_of('.'));
@@ -406,11 +406,11 @@ static bool writeTriangulationFiles(const RawTriangulation &mesh, const string &
 
     ofstream elements(root + ".ele");
     if (!elements) { warn("Couldn't write to specified .ele file"); return false; }
-    elements << mesh.triangles.size() << '\t' << mesh.cornersPerTriangle << '\t' << mesh.attributesPerTriangle << '\n' << setprecision(17);
+    elements << mesh.triangles.size() << "\t3\t1\n" << setprecision(17);
     for (size_t i=0; i<mesh.triangles.size(); ++i) {
         elements << i << '\t';
-        for (int corner : mesh.triangles[i].corners) elements << corner << '\t';
-        for (double attribute : mesh.triangles[i].attributes) elements << attribute << '\t';
+        for (femm::mesh::MeshIndex node : mesh.triangles[i].nodes) elements << node << '\t';
+        elements << mesh.triangles[i].regionAttribute << '\t';
         elements << '\n';
     }
     return true;
