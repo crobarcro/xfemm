@@ -28,16 +28,13 @@
 // implementation of various incarnations of calls
 // to triangle from the FMesher class
 #include "fmesher.h"
+#include "TriangleMesher.h"
 #include "fparse.h"
 #include "IntPoint.h"
 #include "femmconstants.h"
 #include "CCommonPoint.h"
 #include "CAirGapElement.h"
 //extern "C" {
-#include "triangle.h"
-#ifndef XFEMM_BUILTIN_TRIANGLE
-#include "triangle_api.h"
-#endif
 //}
 
 #include <iostream>
@@ -72,158 +69,6 @@ using namespace std;
 using namespace femm;
 using namespace fmesher;
 using namespace femmsolver;
-
-namespace {
-
-enum class PointMarkerInfo {
-    None ///< Use zero / Don't store information in marker list
-    , FromProblem ///< Generate marker info using the problem descripton
-};
-enum class SegmentMarkerInfo {
-    FromCnt ///< Generate marker infor from cnt field of segments.
-    , FromProblem ///< Generate marker info using the problem descripton
-};
-
-/**
- * @brief The TriangulateHelper class encapsulates the interface to triangle,
- * so that the rest of the code doesn't have to deal with changes in its api.
- *
- * All memory that is allocated by its member functions is freed in the destructor.
- * Don't call initialization functions more than once.
- */
-class TriangulateHelper {
-    using nodelist_t = std::vector<std::unique_ptr<CNode> >;
-    using linelist_t = std::vector<std::unique_ptr<CSegment> >;
-public:
-    TriangulateHelper();
-    ~TriangulateHelper();
-
-    /**
-     * @brief Build a point list and point marker list as input for triangle.
-     * The point marker list is later used to make the connection of meshed nodes back to original nodes.
-     * @param nodelst
-     * @param problem
-     * @return \c true on success, \c false on (allocation) error
-     */
-    bool initPointsWithMarkers(const nodelist_t &nodelst, const FemmProblem &problem, PointMarkerInfo info);
-    /**
-     * @brief Build a segment list and segment marker list as input for triangle.
-     * The segment marker list is later used to make the connection of meshed arcs/lines back to original arcs/lines.
-     * @param linelst
-     * @param problem
-     * @return \c true on success, \c false on (allocation) error
-     */
-    bool initSegmentsWithMarkers(const linelist_t &linelst, const FemmProblem &problem, SegmentMarkerInfo info);
-
-    /**
-     * @brief Build a list of holes and regions as input for triangle.
-     * This translates the CBlockLabel info for triangle.
-     * @param problem
-     * @param forceMaxMeshArea if \c true, this enforces an upper bound (defaultMeshSize) for the size of regional attributes
-     * @param defaultMeshSize size of regional attributes that are not valid (i.e. <=0 or over the upper bound (if enforced))
-     * @return \c true on success, \c false on (allocation) error
-     */
-    bool initHolesAndRegions(const FemmProblem &problem, bool forceMaxMeshArea, double defaultMeshSize);
-
-    /**
-     * @brief triangulate
-     * The values of minAngle and suppressExteriourSteinerPoints are applied.
-     * @param verbose Verbosity of triangle
-     * @return
-     */
-    int triangulate(bool verbose);
-
-    /**
-     * @brief Create a parameter list for consumption of triangle
-     * @param verbose Verbosity of triangle
-     * @return
-     */
-    std::string triangulateParams(bool verbose=false) const;
-
-    /**
-     * @brief Write an input file for triangle.
-     * Normally, the \c.poly file is not used because triangle is called directly as a library.
-     * This function is intended as a debugging aid.
-     * @param filename the complete file name ending in ".poly"
-     * @return \c true, if writing succeeded, \c false otherwise.
-     */
-    bool writePolyFile(std::string filename, std::string comment) const;
-    bool writeTriangulationFiles(std::string Pathname) const;
-
-    // pointer to function to call when issuing warning messages
-    int (*WarnMessage)(const char*, ...);
-
-    // pointer to function to use for triangle to issue warning messages
-    int (*TriMessage)(const char * format, ...);
-
-    void setMinAngle(double value);
-    /**
-     * @brief Suppress insertion of Steiner points on the mesh boundary.
-     */
-    void suppressExteriorSteinerPoints();
-    /**
-     * @brief Purge vertices that are not part of the final triangulation from the triangulation output.
-     * Should be safe to add all the time, but I didn't test with periodic bc triangulation.
-     * Therefore only used with nonperiodic triangulation.
-     */
-    void suppressUnusedVertices();
-
-private:
-#ifdef XFEMM_BUILTIN_TRIANGLE
-    struct triangulateio in;
-    struct triangulateio out;
-#else
-    triangleio in;
-    context *ctx;
-#endif
-    double m_minAngle = 0.;
-    bool m_suppressExteriorSteinerPoints = false;
-    bool m_suppressUnusedVertices = false;
-};
-
-/**
- * @brief Initialize a triangulateio to all zero.
- * @param io
- */
-#ifdef XFEMM_BUILTIN_TRIANGLE
-void initialize(struct triangulateio &io)
-#else
-void initialize(triangleio &io)
-#endif
-{
-    io.pointlist = nullptr;
-    io.pointattributelist = nullptr;
-    io.pointmarkerlist = nullptr;
-    io.numberofpoints = 0;
-    io.numberofpointattributes = 0;
-
-    io.trianglelist = nullptr;
-    io.triangleattributelist = nullptr;
-    io.trianglearealist = nullptr;
-    io.neighborlist = nullptr;
-    io.numberoftriangles = 0;
-    io.numberofcorners = 0;
-    io.numberoftriangleattributes = 0;
-
-    io.segmentlist = nullptr;
-    io.segmentmarkerlist = nullptr;
-    io.numberofsegments = 0;
-
-    io.holelist = nullptr;
-    io.numberofholes = 0;
-
-    io.regionlist = nullptr;
-    io.numberofregions = 0;
-
-    io.edgelist = nullptr;
-    io.edgemarkerlist = nullptr;
-#ifdef XFEMM_BUILTIN_TRIANGLE
-    io.normlist = nullptr; // only used by voronoi diagram
-#endif
-    io.numberofedges = 0;
-}
-
-}
 
 double FMesher::averageLineLength() const
 {
@@ -541,160 +386,33 @@ bool FMesher::HasPeriodicBC()
 }
 
 
-bool TriangulateHelper::writeTriangulationFiles(string PathName) const
+static bool writeTriangulationFiles(const RawTriangulation &mesh, const string &path,
+                                    int (*warn)(const char *, ...))
 {
-    FILE *fp;
-    std::string msg;
-    std::string plyname;
+    const string root = path.substr(0, path.find_last_of('.'));
+    ofstream nodes(root + ".node");
+    if (!nodes) { warn("Couldn't write to specified .node file"); return false; }
+    nodes << mesh.points.size() << "\t2\t0\t1\n" << setprecision(17);
+    for (size_t i=0; i<mesh.points.size(); ++i)
+        nodes << i << '\t' << mesh.points[i].x << '\t' << mesh.points[i].y << '\t' << mesh.points[i].marker << '\n';
+    nodes.close();
 
-#ifndef XFEMM_BUILTIN_TRIANGLE
-    if (triangle_check_mesh(ctx)!=0)
-    {
-        WarnMessage("Mesh has topological inconsistencies!\n");
-        return false;
+    ofstream edges(root + ".edge");
+    if (!edges) { warn("Couldn't write to specified .edge file\n"); return false; }
+    edges << mesh.edges.size() << "\t1\n";
+    for (size_t i=0; i<mesh.edges.size(); ++i)
+        edges << i << '\t' << mesh.edges[i].first << '\t' << mesh.edges[i].second << '\t' << mesh.edges[i].marker << '\n';
+    edges.close();
+
+    ofstream elements(root + ".ele");
+    if (!elements) { warn("Couldn't write to specified .ele file"); return false; }
+    elements << mesh.triangles.size() << '\t' << mesh.cornersPerTriangle << '\t' << mesh.attributesPerTriangle << '\n' << setprecision(17);
+    for (size_t i=0; i<mesh.triangles.size(); ++i) {
+        elements << i << '\t';
+        for (int corner : mesh.triangles[i].corners) elements << corner << '\t';
+        for (double attribute : mesh.triangles[i].attributes) elements << attribute << '\t';
+        elements << '\n';
     }
-#endif
-
-    // write the .node file
-    plyname = PathName.substr(0, PathName.find_last_of('.')) + ".node";
-
-    // check to see if we are ready to write a .node datafile containing
-    // the nodes
-
-    if ((fp = fopen(plyname.c_str(),"wt"))==NULL){
-        WarnMessage("Couldn't write to specified .node file");
-        return false;
-    }
-
-#ifdef XFEMM_BUILTIN_TRIANGLE
-    if (out.numberofpoints > 0)
-    {
-        // <# of vertices> <dimension (must be 2)> <# of attributes> <# of boundary markers (0 or 1)>
-        fprintf(fp, "%i\t%i\t%i\t%i\n", out.numberofpoints, 2, 0, 1);
-        //fprintf(fp, "%i\t%i\t%i\n", out.numberofpoints, 2, out.numberofpoints, 1);
-
-        // <vertex #> <x> <y> [attributes] [boundary marker]
-        for(int i = 0; i < (2 * out.numberofpoints) - 1; i = i + 2)
-        {
-            fprintf(fp, "%i\t%.17g\t%.17g\t%i\n", i/2, out.pointlist[i], out.pointlist[i+1], out.pointmarkerlist[i/2]);
-        }
-
-        fclose(fp);
-    }
-#else
-    int status = triangle_write_nodes(ctx, fp);
-    fclose(fp);
-    if (status != TRI_OK)
-    {
-        msg = "Failed to write to specified .node file\n";
-        WarnMessage(msg.c_str());
-        return false;
-    }
-#endif
-
-    // write the .edge file
-    plyname = PathName.substr(0, PathName.find_last_of('.')) + ".edge";
-
-    // check to see if we are ready to write an edge datafile;
-
-    if ((fp = fopen(plyname.c_str(),"wt"))==NULL){
-        msg = "Couldn't write to specified .edge file\n";
-        WarnMessage(msg.c_str());
-        return false;
-    }
-#ifdef XFEMM_BUILTIN_TRIANGLE
-
-    if (out.numberofedges > 0)
-    {
-        // write number of edges, number of boundary markers, 0 or 1
-        fprintf(fp, "%i\t%i\n", out.numberofedges, 1);
-
-        // write the edges in the format
-        // <edge #> <endpoint> <endpoint> [boundary marker]
-        // Endpoints are indices into the corresponding .edge file.
-        for(int i=0; i < 2 * (out.numberofedges) - 1; i = i + 2)
-        {
-            fprintf(fp, "%i\t%i\t%i\t%i\n", i/2, out.edgelist[i], out.edgelist[i+1], out.edgemarkerlist[i/2]);
-        }
-
-        fclose(fp);
-    } else {
-        WarnMessage("No edges to write!\n");
-    }
-#else
-    // Note: triangle_write_edges also numbers the edges, which is required for writing the .ele file
-    status = triangle_write_edges(ctx, fp);
-    fclose(fp);
-    if (status != TRI_OK)
-    {
-        msg = "Failed to write to specified .edge file\n";
-        WarnMessage(msg.c_str());
-        return false;
-    }
-#endif
-
-    // write the .ele file
-    plyname = PathName.substr(0, PathName.find_last_of('.')) + ".ele";
-
-
-    // check to see if we are ready to write a .ele datafile containing
-    // thr triangle elements
-
-    if ((fp = fopen(plyname.c_str(),"wt"))==NULL){
-        WarnMessage("Couldn't write to specified .ele file");
-        return false;
-    }
-
-#ifdef XFEMM_BUILTIN_TRIANGLE
-    if (out.numberoftriangles > 0)
-    {
-        // write number of triangle elements, number of corners per triangle and
-        // the number of attributes per triangle
-        fprintf(fp, "%i\t%i\t%i\n", out.numberoftriangles, out.numberofcorners, out.numberoftriangleattributes);
-
-        // write the triangle info to the file with the format
-        // <triangle #> <node> <node> <node> ... [attributes]
-        // Endpoints are indices into the corresponding .node file.
-        for(int i=0, nexttriattrib=0; i < (out.numberofcorners) * (out.numberoftriangles) - (out.numberofcorners - 1); i = i + (out.numberofcorners))
-        {
-            // print the triangle number
-            fprintf(fp, "%i\t", i / (out.numberofcorners));
-
-            // print the corner nodes
-            for (int j = 0; j < (out.numberofcorners); j++)
-            {
-                fprintf(fp, "%i\t", out.trianglelist[i+j]);
-            }
-
-            // print the triangle attributes, if there are any
-            if (out.numberoftriangleattributes > 0)
-            {
-                for(int j = 0; j < (out.numberoftriangleattributes); j++)
-                {
-                    fprintf(fp, "%.17g\t", out.triangleattributelist[nexttriattrib+j]);
-                }
-
-                // set the position of the next set of triangle attributes
-                nexttriattrib = nexttriattrib + (out.numberoftriangleattributes);
-            }
-
-            // go to the next line
-            fprintf(fp, "\n");
-        }
-
-        fclose(fp);
-
-    }
-#else
-    status = triangle_write_elements(ctx, fp);
-    fclose(fp);
-    if (status != TRI_OK)
-    {
-        msg = "Failed to write to specified .ele file\n";
-        WarnMessage(msg.c_str());
-        return false;
-    }
-#endif
     return true;
 }
 
@@ -784,7 +502,7 @@ int FMesher::DoNonPeriodicBCTriangulation(string PathName)
     // **********         call triangle       ***********
 
     {
-        TriangulateHelper triHelper;
+        TriangleMesher triHelper;
         triHelper.WarnMessage = WarnMessage;
         triHelper.TriMessage = this->TriMessage;
         if (!triHelper.initPointsWithMarkers(nodelst,*problem, PointMarkerInfo::FromProblem))
@@ -804,7 +522,7 @@ int FMesher::DoNonPeriodicBCTriangulation(string PathName)
         if (tristatus != 0)
             return tristatus;
 
-        triHelper.writeTriangulationFiles(PathName);
+        writeTriangulationFiles(triHelper.rawTriangulation(), PathName, WarnMessage);
     }
     problem->clearNotationTags();
 
@@ -883,7 +601,7 @@ int FMesher::DoPeriodicBCTriangulation(string PathName)
     // **********         call triangle       ***********
 
     {
-        TriangulateHelper triHelper;
+        TriangleMesher triHelper;
         triHelper.WarnMessage = WarnMessage;
         triHelper.TriMessage = this->TriMessage;
 
@@ -904,7 +622,7 @@ int FMesher::DoPeriodicBCTriangulation(string PathName)
         if (tristatus != 0)
             return tristatus;
 
-        triHelper.writeTriangulationFiles(PathName);
+        writeTriangulationFiles(triHelper.rawTriangulation(), PathName, WarnMessage);
     }
 
 #ifdef DEBUG
@@ -1976,7 +1694,7 @@ int FMesher::DoPeriodicBCTriangulation(string PathName)
 
     // call triangle with -Y flag.
     {
-        TriangulateHelper triHelper;
+        TriangleMesher triHelper;
         triHelper.WarnMessage = WarnMessage;
         triHelper.TriMessage = this->TriMessage;
 
@@ -1998,7 +1716,7 @@ int FMesher::DoPeriodicBCTriangulation(string PathName)
         if (tristatus != 0)
             return tristatus;
 
-        triHelper.writeTriangulationFiles(PathName);
+        writeTriangulationFiles(triHelper.rawTriangulation(), PathName, WarnMessage);
     }
 
     problem->unselectAll();
@@ -2016,385 +1734,4 @@ int FMesher::DoPeriodicBCTriangulation(string PathName)
 
     return 0;
 }
-
-TriangulateHelper::TriangulateHelper()
-    : WarnMessage(&PrintWarningMsg)
-    , TriMessage(nullptr)
-{
-    initialize(in);
-#ifdef XFEMM_BUILTIN_TRIANGLE
-    initialize(out); // triangle-api writes to input struct
-#else
-    ctx = triangle_context_create();
-#endif
-}
-
-TriangulateHelper::~TriangulateHelper()
-{
-    if (in.pointlist) { free(in.pointlist); }
-    if (in.pointattributelist) { free(in.pointattributelist); }
-    if (in.pointmarkerlist) { free(in.pointmarkerlist); }
-    if (in.regionlist) { free(in.regionlist); }
-    if (in.segmentlist) { free(in.segmentlist); }
-    if (in.segmentmarkerlist) { free(in.segmentmarkerlist); }
-    if (in.holelist) { free(in.holelist); }
-
-#ifdef XFEMM_BUILTIN_TRIANGLE
-    if (out.pointlist) { free(out.pointlist); }
-    if (out.pointattributelist) { free(out.pointattributelist); }
-    if (out.pointmarkerlist) { free(out.pointmarkerlist); }
-    if (out.trianglelist) { free(out.trianglelist); }
-    if (out.triangleattributelist) { free(out.triangleattributelist); }
-    if (out.trianglearealist) { free(out.trianglearealist); }
-    if (out.neighborlist) { free(out.neighborlist); }
-    if (out.segmentlist) { free(out.segmentlist); }
-    if (out.segmentmarkerlist) { free(out.segmentmarkerlist); }
-    if (out.edgelist) { free(out.edgelist); }
-    if (out.edgemarkerlist) { free(out.edgemarkerlist); }
-#else
-    triangle_context_destroy(ctx);
-#endif
-}
-
-bool TriangulateHelper::initPointsWithMarkers(const TriangulateHelper::nodelist_t &nodelst, const FemmProblem &problem, PointMarkerInfo info)
-{
-    // calling this method on an already initialized object would leak memory
-    if (in.numberofpoints!=0)
-    {
-        WarnMessage("initPointsWithMarkers called twice!\n");
-        return false;
-    }
-
-    in.numberofpoints = nodelst.size();
-
-    in.pointlist = (REAL *) malloc(in.numberofpoints * 2 * sizeof(REAL));
-    if (!in.pointlist) {
-        WarnMessage("Point list for triangulation is null!\n");
-        return false;
-    }
-
-    for(int i=0; i < in.numberofpoints; i++)
-    {
-        in.pointlist[2*i] = nodelst[i]->x;
-        in.pointlist[2*i+1] = nodelst[i]->y;
-    }
-
-    // Initialise the pointmarkerlist
-    in.pointmarkerlist = (int *) malloc(in.numberofpoints * sizeof(int));
-    if (!in.pointmarkerlist) {
-        WarnMessage("Point marker list for triangulation is null!\n");
-        return false;
-    }
-
-    // write out node marker list
-    for(int i=0; i<in.numberofpoints; i++)
-    {
-        int t=0;
-        if (info==PointMarkerInfo::FromProblem)
-        {
-            for(int j=0; j<(int)problem.nodeproplist.size(); j++)
-                if(problem.nodeproplist[j]->PointName==nodelst[i]->BoundaryMarkerName)
-                    t = j + 2;
-
-            if (problem.filetype != femm::FileType::MagneticsFile)
-            {
-                // include conductor number;
-                for(int j = 0; j < (int)problem.circproplist.size(); j++)
-                {
-                    // add the conductor number using a mask
-                    if(problem.circproplist[j]->CircName == nodelst[i]->InConductorName)
-                        t += ((j+1) * 0x10000);
-                }
-            }
-        }
-
-        in.pointmarkerlist[i] = t;
-    }
-    return true;
-}
-
-bool TriangulateHelper::initSegmentsWithMarkers(const TriangulateHelper::linelist_t &linelst, const FemmProblem &problem, SegmentMarkerInfo info)
-{
-    // calling this method on an already initialized object would leak memory
-    if (in.numberofsegments!=0)
-    {
-        WarnMessage("initSegmentsWithMarkers called twice!\n");
-        return false;
-    }
-
-    in.numberofsegments = linelst.size();
-
-    // Initialise the segmentlist
-    in.segmentlist = (int *) malloc(2 * in.numberofsegments * sizeof(int));
-    if (!in.segmentlist) {
-        WarnMessage("Segment list for triangulation is null!\n");
-        return false;
-    }
-    // Initialise the segmentmarkerlist
-    in.segmentmarkerlist = (int *) malloc(in.numberofsegments * sizeof(int));
-    if (!in.segmentmarkerlist) {
-        WarnMessage("Segment marker list for triangulation is null!\n");
-        return false;
-    }
-
-    // build the segmentlist
-    for(int i=0; i<in.numberofsegments; i++)
-    {
-        in.segmentlist[2*i] = linelst[i]->n0;
-        in.segmentlist[2*i+1] = linelst[i]->n1;
-    }
-
-    // now build the segment marker list
-    // construct the segment list
-    for(int i=0; i<in.numberofsegments; i++)
-    {
-        int t=0;
-        if (info==SegmentMarkerInfo::FromProblem)
-        {
-            for(int j=0; j <(int)problem.lineproplist.size(); j++)
-            {
-                if (problem.lineproplist[j]->BdryName == linelst[i]->BoundaryMarkerName)
-                {
-                    t = -(j+2);
-                }
-            }
-
-            if (problem.filetype != femm::FileType::MagneticsFile)
-            {
-                // include conductor number;
-                for (int j=0; j <(int)problem.circproplist.size(); j++)
-                {
-                    if (problem.circproplist[j]->CircName == linelst[i]->InConductorName)
-                    {
-                        t -= ((j+1) * 0x10000);
-                    }
-                }
-            }
-        } else {
-            t = -(linelst[i]->cnt+2);
-        }
-        in.segmentmarkerlist[i] = t;
-    }
-    return true;
-}
-
-bool TriangulateHelper::initHolesAndRegions(const FemmProblem &problem, bool forceMaxMeshArea, double defaultMeshSize)
-{
-    // calling this method on an already initialized object would leak memory
-    if (in.numberofholes!=0)
-    {
-        WarnMessage("initHolesAndRegions called twice!\n");
-        return false;
-    }
-
-    in.numberofholes = problem.countHoles();
-    if(in.numberofholes > 0)
-    {
-        in.holelist = (REAL *) malloc(in.numberofholes * 2 * sizeof(REAL));
-        if (!in.holelist) {
-            WarnMessage("Hole list for triangulation is null!\n");
-            return false;
-        }
-
-        // Construct the holes array
-        int k=0;
-        for(const auto &label: problem.labellist)
-        {
-            // we search through the block list looking for blocks that have
-            // the tag <No Mesh>
-            if(label->isHole())
-            {
-#ifdef DEBUG
-                {
-                    char buf[1028];
-                    SNPRINTF (buf, sizeof(buf), "Adding hole (at (%g,%g)) to triangle input hole list\n",
-                              label->x,label->y);
-                    WarnMessage(buf);
-                }
-#endif // DEBUG
-                in.holelist[k++] = label->x;
-                in.holelist[k++] = label->y;
-            }
-        }
-    }
-
-    in.numberofregions = problem.labellist.size() - in.numberofholes;
-    in.regionlist = (REAL *) malloc(in.numberofregions * 4 * sizeof(REAL));
-    if (!in.regionlist) {
-        WarnMessage("Region list for triangulation is null!\n");
-        return false;
-    }
-
-    int j=0;
-    int k=0;
-    for(const auto & label: problem.labellist)
-    {
-        if(!label->isHole())
-        {
-            in.regionlist[j] = label->x;
-            in.regionlist[j+1] = label->y;
-            in.regionlist[j+2] = k + 1; // Regional attribute (for whole mesh).
-#ifdef DEBUG
-            {
-                char buf[1028];
-                SNPRINTF (buf, sizeof(buf), "Adding region (at (%g,%g)) with attribute value %g to triangle input region list\n",
-                          label->x, label->y, in.regionlist[j+2]);
-                WarnMessage(buf);
-            }
-#endif // DEBUG
-            // Note(ZaJ): this is the code that was used in the periodic bc triangulation:
-            //  if (label->MaxArea>0 && (label->MaxArea<defaultMeshSize))
-            //      in.regionlist[j+3] = label->MaxArea;  // Area constraint
-            //  else
-            //      in.regionlist[j+3] = defaultMeshSize;
-            // ... which is equivalent to the code below (if forceMaxMeshArea is true).
-            // ... the code below is a copy of the nonperiodic case (if forceMaxMeshArea is set to problem->DoForceMaxMeshArea)
-
-            // Area constraint
-            if (label->MaxArea <= 0)
-            {
-                // if no mesh size has been specified use the default
-                in.regionlist[j+3] = defaultMeshSize;
-            }
-            else if ((label->MaxArea > defaultMeshSize) && (forceMaxMeshArea))
-            {
-                // if the user has specied that FEMM should choose an
-                // upper mesh size limit, regardles of their choice,
-                // and their choice is less than that limit, change it
-                // to that limit
-                in.regionlist[j+3] = defaultMeshSize;
-            }
-            else
-            {
-                // Use the user's choice of mesh size
-                in.regionlist[j+3] = label->MaxArea;
-            }
-
-            j += 4;
-            k++;
-        }
-    }
-    return true;
-}
-
-int TriangulateHelper::triangulate(bool verbose)
-{
-    std::string triArgs = triangulateParams(verbose);
-    // this is a mess, but building the string with std::string is more flexible than sprintf
-    // (and the triangulate api is ancient)
-    char cmdline[512];
-    sprintf(cmdline, "%s",triArgs.c_str());
-
-#ifdef XFEMM_BUILTIN_TRIANGLE
-    int tristatus = ::triangulate(cmdline, &in, &out, (struct triangulateio *) nullptr, this->TriMessage);
-    if (tristatus!=0)
-    {
-        std::string msg = "Call to triangulate failed with status code: " + to_string(tristatus) +"\n";
-        WarnMessage(msg.c_str());
-        return tristatus;
-    }
-#else
-    // parse options
-    int tristatus = triangle_context_options(ctx, cmdline);
-    if (tristatus != TRI_OK)
-    {
-        WarnMessage("Invalid option string for triangle!\n");
-        return tristatus;
-    }
-    // Triangulate the polygon.
-    tristatus = triangle_mesh_create(ctx, &in);
-    if (tristatus != TRI_OK)
-    {
-        std::string msg = "Call to triangulate failed with status code: " + to_string(tristatus) +"\n";
-        WarnMessage(msg.c_str());
-        return tristatus;
-    }
-#endif
-    return 0;
-}
-
-string TriangulateHelper::triangulateParams(bool verbose) const
-{
-    // An explaination of the input parameters used for Triangle
-    //
-    // -p Triangulates a Planar Straight Line Graph, i.e. list of segments.
-    // -P Suppresses the output .poly file.
-    // -q Quality mesh generation with no angles smaller than specified in the following number
-    // -e Outputs a list of edges of the triangulation.
-    // -A Assigns a regional attribute to each triangle that identifies what segment-bounded region it belongs to.
-    // -a Imposes a maximum triangle area constraint.
-    // -z Numbers all items starting from zero (rather than one)
-    // -I Suppresses mesh iteration numbers
-    // -j prevents duplicated input vertices, or vertices `eaten' by holes,
-    //    from appearing in the output .node file.  Thus, if two input vertices
-    //    have exactly the same coordinates, only the first appears in the
-    //    output.
-    // -Y Suppresses the creation of Steiner points on the exterior boundary.
-    //
-    // See http://www.cs.cmu.edu/~quake/triangle.switch.html for more info
-    std::string triArgs = "-pPq" + to_string(m_minAngle) + "eAaz" + (verbose?"":"Q") + "I";
-    if (m_suppressUnusedVertices)
-        triArgs += "j";
-    if (m_suppressExteriorSteinerPoints)
-        triArgs += "Y";
-
-    return triArgs;
-}
-
-bool TriangulateHelper::writePolyFile(string filename, std::string comment) const
-{
-    std::ofstream polyFile (filename);
-    // set floating point precision once for the whole stream
-    polyFile << std::setprecision(17);
-    // when filling to a width, adjust to the left
-    polyFile.setf(std::ios::left);
-
-    polyFile << in.numberofpoints << "\t2\t0\t1\n";
-    for (int i=0; i < in.numberofpoints; i++)
-    {
-        polyFile << i << "\t" << in.pointlist[2*i] << "\t" << in.pointlist[2*i+1] << "\t" << in.pointmarkerlist[i] << "\n";
-    }
-
-    polyFile << in.numberofsegments << "\t1\n";
-    for (int i=0; i < in.numberofsegments; i++)
-    {
-        polyFile << i << "\t" << in.segmentlist[2*i] << "\t" << in.segmentlist[2*i+1] << "\t" << in.segmentmarkerlist[i] <<"\n";
-    }
-
-    polyFile << in.numberofholes << "\n";
-    for (int i=0; i < in.numberofholes; i++)
-    {
-        polyFile << i << "\t" << in.holelist[2*i] << "\t" << in.holelist[2*i+1] << "\n";
-    }
-
-    polyFile << in.numberofregions << "\n";
-    for (int i=0; i < in.numberofregions; i++)
-    {
-        int j=4*i;
-        polyFile << i << "\t"
-                 << in.regionlist[j] << "\t"
-                 << in.regionlist[j+1] << "\t"
-                 << in.regionlist[j+2] << "\t"
-                 << in.regionlist[j+3] << "\n";
-    }
-
-    polyFile << "# " << comment << "\n";
-    return true;
-}
-
-void TriangulateHelper::setMinAngle(double value)
-{
-    m_minAngle = value;
-}
-
-void TriangulateHelper::suppressExteriorSteinerPoints()
-{
-    m_suppressExteriorSteinerPoints = true;
-}
-
-void TriangulateHelper::suppressUnusedVertices()
-{
-    m_suppressUnusedVertices = true;
-}
-
 

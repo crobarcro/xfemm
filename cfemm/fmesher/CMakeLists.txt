@@ -26,6 +26,7 @@ add_library(fmesher STATIC
     fmesher.cbp
     fmesher.cpp
     nosebl.cpp
+    TriangleMesher.cpp
     writepoly.cpp
     )
 target_link_libraries(fmesher PUBLIC femm PRIVATE Triangle::triangle-api)
