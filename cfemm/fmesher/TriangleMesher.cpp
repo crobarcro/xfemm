@@ -409,24 +409,26 @@ void TriangleMesher::suppressUnusedVertices()
 
 
 
-RawTriangulation TriangleMesher::rawTriangulation() const
+femm::mesh::RawMesh TriangleMesher::rawTriangulation() const
 {
-    RawTriangulation result;
+    femm::mesh::RawMesh result;
 #ifdef XFEMM_BUILTIN_TRIANGLE
-    result.cornersPerTriangle = impl->out.numberofcorners;
-    result.attributesPerTriangle = impl->out.numberoftriangleattributes;
+    if (impl->out.numberofcorners != 3)
+        throw runtime_error("Triangle produced non-linear elements");
     for (int i=0; i<impl->out.numberofpoints; ++i)
         result.points.push_back({impl->out.pointlist[2*i], impl->out.pointlist[2*i+1], impl->out.pointmarkerlist[i]});
     for (int i=0; i<impl->out.numberoftriangles; ++i) {
-        RawTriangulation::Triangle triangle;
-        for (int j=0; j<impl->out.numberofcorners; ++j)
-            triangle.corners.push_back(impl->out.trianglelist[i*impl->out.numberofcorners+j]);
-        for (int j=0; j<impl->out.numberoftriangleattributes; ++j)
-            triangle.attributes.push_back(impl->out.triangleattributelist[i*impl->out.numberoftriangleattributes+j]);
-        result.triangles.push_back(std::move(triangle));
+        femm::mesh::RawMesh::Triangle triangle;
+        for (int j=0; j<3; ++j)
+            triangle.nodes[j] = static_cast<femm::mesh::MeshIndex>(impl->out.trianglelist[i*3+j]);
+        if (impl->out.numberoftriangleattributes > 0)
+            triangle.regionAttribute = impl->out.triangleattributelist[i*impl->out.numberoftriangleattributes];
+        result.triangles.push_back(triangle);
     }
     for (int i=0; i<impl->out.numberofedges; ++i)
-        result.edges.push_back({impl->out.edgelist[2*i], impl->out.edgelist[2*i+1], impl->out.edgemarkerlist[i]});
+        result.edges.push_back({static_cast<femm::mesh::MeshIndex>(impl->out.edgelist[2*i]),
+                                static_cast<femm::mesh::MeshIndex>(impl->out.edgelist[2*i+1]),
+                                impl->out.edgemarkerlist[i]});
 #else
     // The external API deliberately keeps its mesh opaque.  Its stable writer
     // API is used as an interchange boundary, without exposing it publicly.
@@ -440,10 +442,10 @@ RawTriangulation TriangleMesher::rawTriangulation() const
     read(file, [&result](FILE *f) { int count, dim, attrs, markers; fscanf(f,"%d%d%d%d",&count,&dim,&attrs,&markers); for(int i=0;i<count;++i){ int id,marker=0; double x,y; fscanf(f,"%d%lf%lf",&id,&x,&y); for(int j=0;j<attrs;++j){double ignored;fscanf(f,"%lf",&ignored);} if(markers)fscanf(f,"%d",&marker); result.points.push_back({x,y,marker}); }});
     file = tmpfile();
     if (!file || triangle_write_edges(impl->ctx, file) != TRI_OK) throw runtime_error("Could not extract Triangle edges");
-    read(file, [&result](FILE *f) { int count,markers; fscanf(f,"%d%d",&count,&markers); for(int i=0;i<count;++i){int id,a,b,marker=0;fscanf(f,"%d%d%d",&id,&a,&b);if(markers)fscanf(f,"%d",&marker);result.edges.push_back({a,b,marker});}});
+    read(file, [&result](FILE *f) { int count,markers; fscanf(f,"%d%d",&count,&markers); for(int i=0;i<count;++i){int id,a,b,marker=0;fscanf(f,"%d%d%d",&id,&a,&b);if(markers)fscanf(f,"%d",&marker);result.edges.push_back({static_cast<femm::mesh::MeshIndex>(a),static_cast<femm::mesh::MeshIndex>(b),marker});}});
     file = tmpfile();
     if (!file || triangle_write_elements(impl->ctx, file) != TRI_OK) throw runtime_error("Could not extract Triangle elements");
-    read(file, [&result](FILE *f) { int count; fscanf(f,"%d%d%d",&count,&result.cornersPerTriangle,&result.attributesPerTriangle); for(int i=0;i<count;++i){int id;fscanf(f,"%d",&id);RawTriangulation::Triangle t;for(int j=0;j<result.cornersPerTriangle;++j){int n;fscanf(f,"%d",&n);t.corners.push_back(n);}for(int j=0;j<result.attributesPerTriangle;++j){double a;fscanf(f,"%lf",&a);t.attributes.push_back(a);}result.triangles.push_back(std::move(t));}});
+    read(file, [&result](FILE *f) { int count,corners,attributes; fscanf(f,"%d%d%d",&count,&corners,&attributes); if(corners!=3)throw runtime_error("Triangle produced non-linear elements"); for(int i=0;i<count;++i){int id;fscanf(f,"%d",&id);femm::mesh::RawMesh::Triangle t;for(int j=0;j<3;++j){int n;fscanf(f,"%d",&n);t.nodes[j]=static_cast<femm::mesh::MeshIndex>(n);}for(int j=0;j<attributes;++j){double a;fscanf(f,"%lf",&a);if(j==0)t.regionAttribute=a;}result.triangles.push_back(t);}});
 #endif
     return result;
 }

@@ -131,6 +131,11 @@ function varargout = mfemm_setup(varargin)
                   );
         end
 
+        % Unlike the CMake build, the MEX makefiles compile libfemm sources
+        % directly.  Create CMake's generated version header when building
+        % from a clean source checkout.
+        ensurefemmversionheader (fullfile (thisfilepath, '..', 'cfemm'));
+
         makefilenames = {'MMakefile_fmesher.m', ...
                          'MMakefile_fsolver.m', ...
                          'MMakefile_fpproc.m', ...
@@ -239,6 +244,42 @@ function varargout = mfemm_setup(varargin)
         help mfemm_setup>printxfemmusermessage
 
     end
+
+end
+
+function ensurefemmversionheader (cfemmdir)
+
+    headerfile = fullfile (cfemmdir, 'libfemm', 'femmversion.h');
+    if exist (headerfile, 'file')
+        return;
+    end
+
+    version = '0.0.0-dev';
+    versionfile = fullfile (cfemmdir, 'VERSION');
+    if exist (versionfile, 'file')
+        version = strtrim (fileread (versionfile));
+    end
+
+    parts = regexp (version, '^(\d+)\.(\d+)(?:\.(\d+))?', 'tokens', 'once');
+    if isempty (parts)
+        error ('MFEMM:Build', 'Invalid xfemm version string: %s', version);
+    end
+    if numel (parts) < 3 || isempty (parts{3})
+        parts{3} = '0';
+    end
+
+    template = fileread (fullfile (cfemmdir, 'libfemm', 'femmversion.h.in'));
+    contents = strrep (template, '@XFEMM_VERSION_MAJOR@', parts{1});
+    contents = strrep (contents, '@XFEMM_VERSION_MINOR@', parts{2});
+    contents = strrep (contents, '@XFEMM_VERSION_PATCH@', parts{3});
+    contents = strrep (contents, '@XFEMM_VERSION_STRING@', version);
+
+    fid = fopen (headerfile, 'w');
+    if fid < 0
+        error ('MFEMM:Build', 'Could not create %s', headerfile);
+    end
+    cleanup = onCleanup (@() fclose (fid));
+    fwrite (fid, contents);
 
 end
 

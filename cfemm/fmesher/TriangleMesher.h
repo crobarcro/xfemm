@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "mesh/RawMesh.h"
 
 namespace femm { class CNode; class CSegment; class FemmProblem; }
 
@@ -11,18 +12,6 @@ namespace fmesher {
 
 enum class PointMarkerInfo { None, FromProblem };
 enum class SegmentMarkerInfo { FromCnt, FromProblem };
-
-struct RawTriangulation {
-    struct Point { double x, y; int marker; };
-    struct Triangle { std::vector<int> corners; std::vector<double> attributes; };
-    struct Edge { int first, second, marker; };
-
-    std::vector<Point> points;
-    std::vector<Triangle> triangles;
-    std::vector<Edge> edges;
-    int cornersPerTriangle = 0;
-    int attributesPerTriangle = 0;
-};
 
 /** C++ boundary around Triangle. Triangle's C types are intentionally hidden. */
 class TriangleMesher {
@@ -40,7 +29,7 @@ public:
     int triangulate(bool verbose);
     std::string triangulateParams(bool verbose = false) const;
     bool writePolyFile(std::string filename, std::string comment) const;
-    RawTriangulation rawTriangulation() const;
+    femm::mesh::RawMesh rawTriangulation() const;
 
     int (*WarnMessage)(const char *, ...);
     int (*TriMessage)(const char *, ...);
