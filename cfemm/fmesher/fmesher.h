@@ -143,6 +143,9 @@ public:
     int (*TriMessage)(const char * format, ...);
 
 private:
+    friend class TriangleMesherBackend;
+    int doNonPeriodicTriangleWorkflow(std::string PathName);
+    int doPeriodicTriangleWorkflow(std::string PathName);
 
     virtual bool Initialize(femm::FileType t);
 	void addFileStr (char * q);
