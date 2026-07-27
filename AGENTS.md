@@ -250,6 +250,37 @@ mfemm_setup('ForceMexRecompile', true)  % Forces recompilation of MEX files
 - Read by post-processors (`fpproc`, `epproc`, `hpproc`)
 - Accessible via MATLAB via MEX interface
 
+### Periodic, Air-Gap, and Sliding-Mesh Workflows
+
+- `.pbc` means **periodic boundary conditions**; it is not an air-gap-only
+  format. The file's primary section contains pairs of mesh-node indices and a
+  periodic/antiperiodic flag. Solvers use these pairs to constrain equivalent
+  degrees of freedom. This applies to any periodic model, such as a sector of a
+  complete rotary electrical machine, even when the model has no air gap.
+- Ordinary periodic and antiperiodic boundaries pair corresponding nodes on two
+  boundary segments or arcs. In magnetic problem files these are boundary
+  formats 4 and 5. Electrostatic and heat-flow problems use their own numeric
+  boundary-format values, so code should prefer `CBoundaryProp::isPeriodic()`
+  over assuming the magnetic numbers are universal.
+- Magnetic **Air Gap Element (AGE)** boundaries are boundary formats 6
+  (periodic AGE) and 7 (antiperiodic AGE). They describe the annular interface
+  between independently positioned inner and outer meshes. AGE data includes
+  the two angular positions, radii, centre, discretization, node references,
+  and interpolation weights needed to couple the rings.
+- The magnetic mesher writes AGE records as an optional extension after the
+  periodic-node-pair section of `.pbc`. Consequently, a valid periodic `.pbc`
+  can contain node pairs and zero AGE records. Do not treat the presence of a
+  `.pbc` file as proof that a sliding air-gap interface exists.
+- In the sliding-mesh workflow, changing the AGE inner/outer angular position
+  represents rotor/stator relative motion while the interpolation data couples
+  the meshes across the annulus. Keep this mesh coupling data separate from
+  solved quantities such as magnetic vector potential or air-gap flux-density
+  harmonics.
+- At mesh-transfer boundaries, preserve zero-based node references and the
+  periodic/antiperiodic type for both ordinary constraints and AGE data. When
+  reading or writing `.pbc`, process the ordinary constraint count and records
+  first, followed by the AGE count and optional AGE records.
+
 ### Lua Scripts
 
 - User-definable FEMM commands via Lua syntax

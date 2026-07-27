@@ -4,50 +4,60 @@
 #include "RawMesh.h"
 
 #include <array>
+#include <cstdint>
 #include <string>
 #include <vector>
 
 namespace femm {
 namespace mesh {
 
-/** Marker/property index after decoding. Property indices are zero-based. */
-using PropertyIndex = std::size_t;
-
-/** Invalid value for every PropertyIndex field. It denotes "no property". */
-constexpr PropertyIndex InvalidPropertyIndex = std::numeric_limits<PropertyIndex>::max();
-
 /**
- * Mesh ready to be consumed by a FEMM solver.
+ * Value-based mesh transferred from a mesher to a FEMM solver.
  *
  * Coordinates, radii, and centres are expressed in metres, regardless of the
- * length unit used in the source problem. Angles are expressed in degrees.
+ * length unit used in the source problem. Angles are expressed in degrees. The
+ * collections own all of their data and contain no solver solution state.
+ *
+ * Invariants:
+ * - MeshIndex values are zero-based indices into `nodes`.
+ * - Every Element has exactly three nodes and all node references are valid.
+ * - Element region attributes are the raw Triangle attributes corresponding to
+ *   solver block labels (Triangle writes block-label index + 1).
+ * - Node and edge boundary markers retain Triangle's raw signed values. Marker
+ *   decoding therefore remains an explicit operation at the consumer, e.g.
+ *   `marker > 1 ? marker - 2 : -1` for a node point-property marker.
  */
 struct SolverMesh {
     struct Node {
         double x = 0.0; ///< x coordinate in metres.
         double y = 0.0; ///< y coordinate in metres.
-        /** Zero-based point-property index, or InvalidPropertyIndex. */
-        PropertyIndex pointProperty = InvalidPropertyIndex;
+        /** Raw Triangle boundary marker; deliberately not a property index. */
+        std::int32_t boundaryMarker = 0;
     };
 
     struct Element {
         /** Zero-based indices into SolverMesh::nodes; InvalidMeshIndex means unset. */
         std::array<MeshIndex, 3> nodes{{InvalidMeshIndex, InvalidMeshIndex, InvalidMeshIndex}};
-        /** Validated zero-based index into the problem's block-label list. */
-        PropertyIndex blockLabel = InvalidPropertyIndex;
+        /** Raw Triangle region attribute (normally one-based block-label id). */
+        std::int32_t regionAttribute = 0;
     };
 
-    struct BoundaryEdge {
+    struct Edge {
         /** Zero-based indices into SolverMesh::nodes; InvalidMeshIndex means unset. */
         MeshIndex first = InvalidMeshIndex;
         MeshIndex second = InvalidMeshIndex;
-        /** Zero-based boundary-property index, or InvalidPropertyIndex. */
-        PropertyIndex boundaryProperty = InvalidPropertyIndex;
+        /** Raw Triangle boundary marker; deliberately not a property index. */
+        std::int32_t boundaryMarker = 0;
     };
 
     enum class Periodicity { Periodic, Antiperiodic };
 
-    struct PeriodicNodePair {
+    /**
+     * One node equivalence written in the primary section of a `.pbc` file.
+     * These constraints are used by every periodic or antiperiodic model; they
+     * are not specific to air-gap elements.
+     */
+    struct PeriodicConstraint {
         /** Zero-based indices into SolverMesh::nodes; InvalidMeshIndex means unset. */
         MeshIndex first = InvalidMeshIndex;
         MeshIndex second = InvalidMeshIndex;
@@ -62,7 +72,14 @@ struct SolverMesh {
         std::array<double, 4> weights{{0.0, 0.0, 0.0, 0.0}};
     };
 
-    /** Value-only data sufficient to construct and populate CAirGapElement. */
+    /**
+     * Optional value-only air-gap data represented by the magnetic air-gap
+     * extension following the periodic constraints in a `.pbc` file. A `.pbc`
+     * file is not, in general, an air-gap file: periodic models without an air
+     * gap have periodicConstraints and an empty airGaps collection.
+     *
+     * This is mesh topology/interpolation data, not a solver field quantity.
+     */
     struct AirGap {
         std::string boundaryName;
         Periodicity periodicity = Periodicity::Periodic;
@@ -83,8 +100,10 @@ struct SolverMesh {
 
     std::vector<Node> nodes;
     std::vector<Element> elements;
-    std::vector<BoundaryEdge> boundaryEdges;
-    std::vector<PeriodicNodePair> periodicNodePairs;
+    std::vector<Edge> edges;
+    /** Primary `.pbc` node-pair section, applicable to all periodic models. */
+    std::vector<PeriodicConstraint> periodicConstraints;
+    /** Optional magnetic air-gap extension of `.pbc`. */
     std::vector<AirGap> airGaps;
 };
 
