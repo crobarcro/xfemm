@@ -4,6 +4,7 @@
 #include "FemmReader.h"
 #include <iostream>
 #include <cstdio>
+#include <cstdint>
 #include <memory>
 
 int main(int argc, char **argv)
@@ -16,7 +17,19 @@ int main(int argc, char **argv)
     std::unique_ptr<fmesher::MesherBackend> backend(new fmesher::TriangleMesherBackend);
     femm::mesh::MeshingOptions options;
     const auto result = backend->mesh(*facade.problem, false, options);
+    const auto periodicResult = backend->mesh(*facade.problem, true, options);
+    femm::mesh::SolverMesh::Node markerProbe;
+    markerProbe.boundaryMarker = 7;
+    // Marker decoding belongs to the solver consumer, not SolverMesh.
+    const std::int32_t pointProperty = markerProbe.boundaryMarker > 1
+            ? markerProbe.boundaryMarker - 2 : -1;
     std::remove("xfemm-backend.node"); std::remove("xfemm-backend.edge");
     std::remove("xfemm-backend.ele"); std::remove("xfemm-backend.pbc");
-    return result.succeeded() && !result.mesh.nodes.empty() && !result.mesh.elements.empty() ? 0 : 1;
+    return result.succeeded() && !result.mesh.nodes.empty()
+            && !result.mesh.elements.empty()
+            && result.mesh.elements.front().regionAttribute > 0
+            && periodicResult.succeeded()
+            && !periodicResult.mesh.periodicConstraints.empty()
+            && periodicResult.mesh.airGaps.empty()
+            && pointProperty == 5 ? 0 : 1;
 }
