@@ -63,4 +63,9 @@ endfunction()
 
 test_fsolver(Temp TRUE)
 test_fsolver(Temp1 FALSE)
+
+add_executable(analysis_session_test analysis_session_test.cpp)
+target_link_libraries(analysis_session_test PRIVATE fsolver)
+add_test(NAME analysis_session COMMAND analysis_session_test)
+set_tests_properties(analysis_session PROPERTIES LABELS "magnetics;solver;unit")
 # vi:expandtab:tabstop=4 shiftwidth=4:
