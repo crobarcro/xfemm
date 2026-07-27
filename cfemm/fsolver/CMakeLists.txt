@@ -1,4 +1,5 @@
 add_library(fsolver STATIC 
+    AnalysisSession.cpp
     fsolver.cpp
     harmonic2d.cpp
     harmonicaxi.cpp
