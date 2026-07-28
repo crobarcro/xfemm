@@ -42,6 +42,7 @@
 #include <cstring>
 #include <ctype.h>
 #include <fstream>
+#include <iomanip>
 #include <ios>
 #include <iostream>
 #include <malloc.h>
@@ -347,374 +348,181 @@ bool FSolver::LoadProblemFile ()
     return true;
 }
 
+namespace {
+
+bool validIndex(femm::mesh::MeshIndex index, std::size_t size)
+{
+    return index != femm::mesh::InvalidMeshIndex && index < size;
+}
+
+LoadMeshErr readLegacyMesh(const std::string &path, femm::LengthUnit units,
+                           femm::mesh::SolverMesh &mesh)
+{
+    const double scale = femm::LengthConvMeters[units];
+    std::ifstream input(path + ".node");
+    std::size_t count = 0;
+    int dimensions = 0, attributes = 0, markers = 0;
+    if (!(input >> count >> dimensions >> attributes >> markers)) return BADNODEFILE;
+    mesh.nodes.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        std::size_t id; femm::mesh::SolverMesh::Node node;
+        if (!(input >> id >> node.x >> node.y >> node.boundaryMarker) || id != i)
+            return BADNODEFILE;
+        node.x *= scale; node.y *= scale;
+        mesh.nodes.push_back(node);
+    }
+
+    input.close(); input.open(path + ".pbc");
+    if (!(input >> count)) return BADPBCFILE;
+    mesh.periodicConstraints.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        std::size_t id; int type; femm::mesh::SolverMesh::PeriodicConstraint p;
+        if (!(input >> id >> p.first >> p.second >> type) || id != i || (type != 0 && type != 1))
+            return BADPBCFILE;
+        p.periodicity = type ? femm::mesh::SolverMesh::Periodicity::Antiperiodic
+                             : femm::mesh::SolverMesh::Periodicity::Periodic;
+        mesh.periodicConstraints.push_back(p);
+    }
+    if (!(input >> count)) return BADPBCFILE;
+    std::string line; std::getline(input, line);
+    mesh.airGaps.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        femm::mesh::SolverMesh::AirGap gap; int type;
+        if (!std::getline(input, gap.boundaryName)) return BADPBCFILE;
+        if (!gap.boundaryName.empty() && gap.boundaryName.front() == '"') {
+            std::istringstream name(gap.boundaryName); name >> std::quoted(gap.boundaryName);
+        }
+        if (!(input >> type >> gap.innerAngleDegrees >> gap.outerAngleDegrees
+                  >> gap.innerRadius >> gap.outerRadius >> gap.totalArcLengthDegrees
+                  >> gap.centerX >> gap.centerY >> gap.totalArcElements
+                  >> gap.innerShift >> gap.outerShift) || (type != 0 && type != 1))
+            return BADPBCFILE;
+        gap.periodicity = type ? femm::mesh::SolverMesh::Periodicity::Antiperiodic
+                               : femm::mesh::SolverMesh::Periodicity::Periodic;
+        gap.innerRadius *= scale; gap.outerRadius *= scale;
+        gap.centerX *= scale; gap.centerY *= scale;
+        gap.quadraturePoints.reserve(gap.totalArcElements + 1);
+        for (std::size_t q = 0; q <= gap.totalArcElements; ++q) {
+            femm::mesh::SolverMesh::AirGapQuadraturePoint point;
+            for (int n = 0; n < 4; ++n)
+                if (!(input >> point.nodes[n] >> point.weights[n])) return BADPBCFILE;
+            gap.quadraturePoints.push_back(point);
+        }
+        std::getline(input, line);
+        mesh.airGaps.push_back(std::move(gap));
+    }
+
+    input.close(); input.open(path + ".ele");
+    int nodesPerElement = 0, elementAttributes = 0;
+    if (!(input >> count >> nodesPerElement >> elementAttributes) || nodesPerElement != 3)
+        return BADELEMENTFILE;
+    mesh.elements.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        std::size_t id; femm::mesh::SolverMesh::Element element;
+        if (!(input >> id >> element.nodes[0] >> element.nodes[1] >> element.nodes[2]
+                    >> element.regionAttribute) || id != i) return BADELEMENTFILE;
+        mesh.elements.push_back(element);
+    }
+
+    input.close(); input.open(path + ".edge");
+    if (!(input >> count >> markers)) return BADEDGEFILE;
+    mesh.edges.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        std::size_t id; femm::mesh::SolverMesh::Edge edge;
+        if (!(input >> id >> edge.first >> edge.second >> edge.boundaryMarker) || id != i)
+            return BADEDGEFILE;
+        mesh.edges.push_back(edge);
+    }
+    return NOERROR;
+}
+
+} // namespace
+
+LoadMeshErr FSolver::LoadMesh(const femm::mesh::SolverMesh &mesh)
+{
+    const std::size_t nodeCount = mesh.nodes.size();
+    meshnode.clear(); meshnode.reserve(nodeCount);
+    for (const auto &source : mesh.nodes) {
+        CNode node; node.x = source.x * 100.0; node.y = source.y * 100.0;
+        node.BoundaryMarker = source.boundaryMarker > 1 ? source.boundaryMarker - 2 : -1;
+        meshnode.push_back(node);
+    }
+    NumNodes = static_cast<int>(meshnode.size());
+
+    pbclist.clear(); pbclist.reserve(mesh.periodicConstraints.size());
+    for (const auto &source : mesh.periodicConstraints) {
+        if (!validIndex(source.first, nodeCount) || !validIndex(source.second, nodeCount)) return BADPBCFILE;
+        femm::CCommonPoint p; p.x = static_cast<int>(source.first); p.y = static_cast<int>(source.second);
+        p.t = source.periodicity == femm::mesh::SolverMesh::Periodicity::Antiperiodic;
+        pbclist.push_back(p);
+    }
+    NumPBCs = static_cast<int>(pbclist.size());
+
+    agelist.clear(); agelist.reserve(mesh.airGaps.size());
+    for (const auto &source : mesh.airGaps) {
+        if (source.quadraturePoints.size() != source.totalArcElements + 1) return BADPBCFILE;
+        femmsolver::CAirGapElement age;
+        age.BdryName = source.boundaryName; age.BdryFormat = source.periodicity == femm::mesh::SolverMesh::Periodicity::Antiperiodic;
+        age.InnerAngle = source.innerAngleDegrees; age.OuterAngle = source.outerAngleDegrees;
+        age.ri = source.innerRadius * 100.0; age.ro = source.outerRadius * 100.0;
+        age.totalArcLength = source.totalArcLengthDegrees; age.agc = CComplex(source.centerX * 100.0, source.centerY * 100.0);
+        age.totalArcElements = static_cast<int>(source.totalArcElements); age.InnerShift = source.innerShift; age.OuterShift = source.outerShift;
+        for (const auto &sourcePoint : source.quadraturePoints) {
+            for (auto index : sourcePoint.nodes) if (!validIndex(index, nodeCount)) return BADPBCFILE;
+            femm::CQuadPoint point;
+            point.n0=static_cast<int>(sourcePoint.nodes[0]); point.n1=static_cast<int>(sourcePoint.nodes[1]);
+            point.n2=static_cast<int>(sourcePoint.nodes[2]); point.n3=static_cast<int>(sourcePoint.nodes[3]);
+            point.w0=sourcePoint.weights[0]; point.w1=sourcePoint.weights[1]; point.w2=sourcePoint.weights[2]; point.w3=sourcePoint.weights[3];
+            age.quadNode.push_back(point);
+        }
+        for (auto index : source.nodeIndices) {
+            if (!validIndex(index, nodeCount)) return BADPBCFILE;
+            age.nodeNums.push_back(static_cast<int>(index));
+        }
+        agelist.push_back(std::move(age));
+    }
+    NumAirGapElems = static_cast<int>(agelist.size());
+
+    int defaultLabel = -1;
+    for (int i=0; i<NumBlockLabels; ++i) if (labellist[i].IsDefault) defaultLabel=i;
+    meshele.clear(); meshele.reserve(mesh.elements.size());
+    std::vector<std::vector<std::size_t>> adjacent(nodeCount);
+    for (std::size_t i=0; i<mesh.elements.size(); ++i) {
+        const auto &source=mesh.elements[i];
+        for (auto index : source.nodes) if (!validIndex(index,nodeCount)) return BADELEMENTFILE;
+        femmsolver::CMElement element;
+        for(int n=0;n<3;++n) element.p[n]=static_cast<int>(source.nodes[n]);
+        element.lbl=source.regionAttribute-1; if(element.lbl<0) element.lbl=defaultLabel;
+        if(element.lbl<0) return MISSINGMATPROPS;
+        if(element.lbl>=static_cast<int>(labellist.size())) return ELMLABELTOOBIG;
+        element.blk=labellist[element.lbl].BlockType;
+        for(int n=0;n<3;++n) { element.e[n]=-1; element.mu1=-1.; element.mu2=-1.; adjacent[source.nodes[n]].push_back(i); }
+        meshele.push_back(element);
+    }
+    NumEls=static_cast<int>(meshele.size());
+    for(const auto &edge:mesh.edges) {
+        if(!validIndex(edge.first,nodeCount)||!validIndex(edge.second,nodeCount)) return BADEDGEFILE;
+        if(edge.boundaryMarker>=0) continue;
+        const int marker=-(edge.boundaryMarker+2);
+        for(auto elementIndex:adjacent[edge.first]) for(int side=0;side<3;++side) {
+            const int a=meshele[elementIndex].p[side], b=meshele[elementIndex].p[(side+1)%3];
+            if((a==static_cast<int>(edge.first)&&b==static_cast<int>(edge.second)) ||
+               (b==static_cast<int>(edge.first)&&a==static_cast<int>(edge.second))) meshele[elementIndex].e[side]=marker;
+        }
+    }
+    return NOERROR;
+}
+
 LoadMeshErr FSolver::LoadMesh(bool deleteFiles)
 {
-    int i,j,k,q,n0,n1;
-    char infile[256];
-    FILE *fp;
-    char s[1024];
-
-    if (meshLoadedFromPrevSolution)
-    {
-        return NOERROR;
-    }
-
-    //read meshnodes;
-    sprintf(infile,"%s.node",PathName.c_str());
-    if((fp=fopen(infile,"rt"))==NULL)
-    {
-        return BADNODEFILE;
-    }
-    fgets(s,1024,fp);
-    sscanf(s,"%i",&k);
-    NumNodes = k;
-
-    meshnode.clear();
-    meshnode.shrink_to_fit();
-    meshnode.reserve(k);
-    CNode node;
-    for(i=0; i<k; i++)
-    {
-        fscanf(fp,"%i",&j);
-        fscanf(fp,"%lf",&node.x);
-        fscanf(fp,"%lf",&node.y);
-        fscanf(fp,"%i",&j);
-        if(j>1) j=j-2;
-        else j=-1;
-        node.BoundaryMarker=j;
-
-        // convert all lengths to centimeters (better conditioning this way...)
-        node.x *= 100 * LengthConvMeters[LengthUnits];
-        node.y *= 100 * LengthConvMeters[LengthUnits];
-
-        meshnode.push_back (node);
-    }
-    fclose(fp);
-
-    //read in periodic boundary conditions;
-    sprintf(infile,"%s.pbc",PathName.c_str());
-    if((fp=fopen(infile,"rt"))==NULL)
-    {
-        return BADPBCFILE;
-    }
-    fgets(s,1024,fp);
-    sscanf(s,"%i",&NumPBCs);
-
-    if (NumPBCs!=0)
-    {
-        pbclist.clear();
-        pbclist.shrink_to_fit();
-        pbclist.reserve(NumPBCs);
-    }
-    CCommonPoint pbc;
-    for(i=0; i<NumPBCs; i++)
-    {
-        fgets(s,1024,fp);
-        sscanf(s,"%i %i %i %i",&j,&pbc.x,&pbc.y,&pbc.t);
-        pbclist.push_back(pbc);
-    }
-
-#ifdef DEBUG
-    {
-        char buf[1048]; SNPRINTF(buf, sizeof(buf), "Read in %i pbcs\n", pbclist.size ());
-        WarnMessage(buf);
-    }
-#endif // DEBUG
-
-    // read in air gap element info
-    fgets(s,1024,fp);
-    sscanf(s,"%i", &NumAirGapElems);
-
-#ifdef DEBUG
-    {
-        char buf[1048]; SNPRINTF(buf, sizeof(buf), "Found %i ages, line was: \"%s\"\n", NumAirGapElems, s);
-        WarnMessage(buf);
-    }
-#endif // DEBUG
-
-    CAirGapElement age;
-
-    agelist.clear();
-    agelist.shrink_to_fit();
-    agelist.reserve(NumAirGapElems);
-
-    for(i=0;i<NumAirGapElems;i++)
-    {
-        fgets(s,80,fp);
-#ifdef DEBUG
-        {
-            char buf[1048]; SNPRINTF( buf, sizeof(buf), "Read line:\n%s\n", s);
-            WarnMessage(buf);
-        }
-#endif // DEBUG
-        age.BdryName = std::string (s);
-
-        fgets(s,1024,fp);
-
-        sscanf(s,"%i %lf %lf %lf %lf %lf %lf %lf %i %lf %lf",
-                &age.BdryFormat,
-                &age.InnerAngle,
-                &age.OuterAngle,
-                &age.ri,
-                &age.ro,
-                &age.totalArcLength,
-                &age.agc.re,
-                &age.agc.im,
-                &age.totalArcElements,
-                &age.InnerShift,
-                &age.OuterShift );
-
-#ifdef DEBUG
-        {
-            char buf[1048]; SNPRINTF( buf, sizeof(buf), "Read age:\n\tBdryFormat: %i \n\tInnerAngle: %lf \n\tOuterAngle %lf \n\ttotalArcElements: %i \n",
-                                      age.BdryFormat,
-                                      age.InnerAngle,
-                                      age.OuterAngle,
-                                      age.totalArcElements );
-            WarnMessage(buf);
-        }
-#endif // DEBUG
-        age.quadNode.clear();
-        age.quadNode.shrink_to_fit();
-        age.quadNode.reserve(age.totalArcElements+1);
-
-        for(k=0;k<=age.totalArcElements;k++)
-        {
-            fgets(s,1024,fp);
-
-            CQuadPoint qp;
-
-            sscanf(s,"%i %lf %i %lf %i %lf %i %lf",
-                &qp.n0, &qp.w0,
-                &qp.n1, &qp.w1,
-                &qp.n2, &qp.w2,
-                &qp.n3, &qp.w3);
-
-            if ( (qp.n0 < 0)
-                  || (qp.n1 < 0)
-                  || (qp.n2 < 0)
-                  || (qp.n3 < 0) )
-            {
-                std::string msg = std::string("An error occured while reading file, quadNode has negative node number. ")
-                            + std::string("\nFile: ") + std::string(infile)
-                            + std::string("\nq number: ") + std::to_string(k)
-                            + std::string(" n0: ") + std::to_string(qp.n0)
-                            + std::string(" n1: ") + std::to_string(qp.n1)
-                            + std::string(" n2: ") + std::to_string(qp.n2)
-                            + std::string(" n3: ") + std::to_string(qp.n3)
-                            + std::string("\n");
-                WarnMessage(msg.c_str()); /* Error */
-                //WarnMessage("quadNode has negative node number k: %i, n0: %i, n1: %i, n2: %i,n3: %i.\n", k, qp.n0, qp.n1, qp.n2, qp.n3); /* Error */
-                fclose(fp);
-                return BADPBCFILE;
-            }
-
-            age.quadNode.push_back(qp);
-        }
-        agelist.push_back (age);
-    }
-
-    fclose(fp);
-
-    // read in elements;
-    sprintf(infile,"%s.ele",PathName.c_str());
-#ifdef DEBUG
-    {
-        char buf[1028]; SNPRINTF(buf, sizeof(buf), "Reading in elements from %s\n", infile);
-        WarnMessage(buf);
-    }
-#endif // DEBUG
-    if((fp=fopen(infile,"rt"))==NULL)
-    {
-        return BADELEMENTFILE;
-    }
-    fgets(s,1024,fp);
-    sscanf(s,"%i",&k);
-    NumEls = k;
-
-    meshele.clear();
-    meshele.shrink_to_fit();
-    meshele.reserve(k);
-    femmsolver::CMElement elm;
-
-    // get the default label for unlabelled blocks
-    int defaultLabel;
-    for(i=0,defaultLabel=-1; i<NumBlockLabels; i++)
-    {
-        if (labellist[i].IsDefault)
-        {
-            defaultLabel = i;
-        }
-    }
-
-    for(i=0; i<k; i++)
-    {
-        fscanf(fp,"%i",&j);
-        fscanf(fp,"%i",&elm.p[0]);
-        fscanf(fp,"%i",&elm.p[1]);
-        fscanf(fp,"%i",&elm.p[2]);
-        fscanf(fp,"%i",&elm.lbl);
-        elm.lbl--;
-
-        if(elm.lbl<0)
-        {
-            elm.lbl = defaultLabel;
-        }
-
-        if(elm.lbl<0)
-        {
-
-            string msg = "Material properties have not been defined for all regions.\n";
-            char buf[1028]; SNPRINTF(buf, sizeof(buf), "The element number %i had label %i\n", i, elm.lbl);
-            msg += std::string (buf);
-            WarnMessage(msg.c_str());
-            fclose(fp);
-            if (deleteFiles)
-            {
-                sprintf(infile,"%s.ele",PathName.c_str());
-                remove(infile);
-                sprintf(infile,"%s.node",PathName.c_str());
-                remove(infile);
-                sprintf(infile,"%s.pbc",PathName.c_str());
-                remove(infile);
-                sprintf(infile,"%s.poly",PathName.c_str());
-                remove(infile);
-                sprintf(infile,"%s.edge",PathName.c_str());
-                remove(infile);
-            }
-            return MISSINGMATPROPS;
-        }
-
-        if (!(elm.lbl < (int)labellist.size()))
-        {
-            char buf[1028];
-            SNPRINTF(buf, sizeof(buf), "The element number %i had label %i which is greater than the number of available labels (%i)\n", i+1, elm.lbl+1, (int)labellist.size());
-            WarnMessage(buf);
-            fclose(fp);
-            if (deleteFiles)
-            {
-                sprintf(infile,"%s.ele",PathName.c_str());
-                remove(infile);
-                sprintf(infile,"%s.node",PathName.c_str());
-                remove(infile);
-                sprintf(infile,"%s.pbc",PathName.c_str());
-                remove(infile);
-                sprintf(infile,"%s.poly",PathName.c_str());
-                remove(infile);
-                sprintf(infile,"%s.edge",PathName.c_str());
-                remove(infile);
-            }
-            return ELMLABELTOOBIG;
-        }
-
-        // look up block type out of the list of block labels
-        elm.blk = labellist[elm.lbl].BlockType;
-
-        meshele.push_back(elm);
-    }
-    fclose(fp);
-
-    // initialize edge bc's and element permeabilities;
-    for(i=0; i<NumEls; i++)
-        for(j=0; j<3; j++)
-        {
-            meshele[i].e[j] = -1;
-            meshele[i].mu1  = -1.;
-            meshele[i].mu2  = -1.;
-        }
-
-    // read in edges to which boundary conditions are applied;
-
-    // first, do a little bookkeeping so that element
-    // associated with a given edge can be identified fast
-    int *nmbr;
-    int **mbr;
-
-    nmbr = (int *)calloc(NumNodes,sizeof(int));
-
-    // Make a list of how many elements that tells how
-    // many elements to which each node belongs.
-    for(i=0; i<NumEls; i++)
-        for(j=0; j<3; j++)
-            nmbr[meshele[i].p[j]]++;
-
-    // mete out some memory to build a list of the
-    // connectivity...
-    mbr = (int **)calloc(NumNodes,sizeof(int *));
-    for(i=0; i<NumNodes; i++)
-    {
-        mbr[i] = (int *)calloc(nmbr[i],sizeof(int));
-        nmbr[i] = 0;
-    }
-
-    // fill up the connectivity information;
-    for(i=0; i<NumEls; i++)
-        for(j=0; j<3; j++)
-        {
-            k = meshele[i].p[j];
-            mbr[k][nmbr[k]] = i;
-            nmbr[k]++;
-        }
-
-    sprintf(infile,"%s.edge",PathName.c_str());
-    if((fp=fopen(infile,"rt"))==NULL)
-    {
-        return BADEDGEFILE;
-    }
-    fscanf(fp,"%i",&k);// read in number of lines
-
-    fscanf(fp,"%i",&j);// read in boundarymarker flag;
-    for(i=0; i<k; i++)
-    {
-        fscanf(fp,"%i",&j);
-        fscanf(fp,"%i",&n0);
-        fscanf(fp,"%i",&n1);
-        fscanf(fp,"%i",&j);
-
-        if(j<0)
-        {
-            j = -(j+2);
-            // search through elements to find one containing the line;
-            // set corresponding edge equal to the bc number.
-            for(q=0; q<nmbr[n0]; q++)
-            {
-                elm=meshele[mbr[n0][q]];
-
-                if ((elm.p[0] == n0) && (elm.p[1] == n1)) elm.e[0]=j;
-                if ((elm.p[0] == n1) && (elm.p[1] == n0)) elm.e[0]=j;
-
-                if ((elm.p[1] == n0) && (elm.p[2] == n1)) elm.e[1]=j;
-                if ((elm.p[1] == n1) && (elm.p[2] == n0)) elm.e[1]=j;
-
-                if ((elm.p[2] == n0) && (elm.p[0] == n1)) elm.e[2]=j;
-                if ((elm.p[2] == n1) && (elm.p[0] == n0)) elm.e[2]=j;
-
-                meshele[mbr[n0][q]]=elm;
-            }
-        }
-
-    }
-    fclose(fp);
-
-    // free up the connectivity information
-    free(nmbr);
-    for(i=0; i<NumNodes; i++) free(mbr[i]);
-    free(mbr);
-
-    if (deleteFiles)
-    {
-        // clear out temporary files
-        sprintf(infile,"%s.ele",PathName.c_str());
-        remove(infile);
-        sprintf(infile,"%s.node",PathName.c_str());
-        remove(infile);
-        sprintf(infile,"%s.pbc",PathName.c_str());
-        remove(infile);
-        sprintf(infile,"%s.poly",PathName.c_str());
-        remove(infile);
-    }
-
-    return NOERROR;
+    if (meshLoadedFromPrevSolution) return NOERROR;
+    femm::mesh::SolverMesh mesh;
+    LoadMeshErr result = readLegacyMesh(PathName, LengthUnits, mesh);
+    if (result == NOERROR) result = LoadMesh(mesh);
+    // SortNodes still rewrites the edge file after import, matching the legacy workflow.
+    if (deleteFiles) for (const char *suffix : {".ele", ".node", ".pbc", ".poly"})
+        std::remove((PathName + suffix).c_str());
+    return result;
 }
 
 
