@@ -7,7 +7,7 @@ add_library(fsolver STATIC
     staticaxi.cpp
     )
 target_include_directories(fsolver PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}> $<INSTALL_INTERFACE:include>)
-target_link_libraries(fsolver PUBLIC femm)
+target_link_libraries(fsolver PUBLIC femm fmesher)
 
 add_executable(fsolver-bin
     main.cpp

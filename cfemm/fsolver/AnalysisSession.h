@@ -2,6 +2,7 @@
 #define XFEMM_ANALYSISSESSION_H
 
 #include "FemmProblem.h"
+#include "mesh/Meshing.h"
 
 #include <cstdint>
 #include <functional>
@@ -153,20 +154,41 @@ public:
     virtual void synchronize(const ModelDefinition &model,
                              const SolveParameters &parameters,
                              const PreparedAnalysis &prepared,
+                             std::shared_ptr<const mesh::SolverMesh> mesh,
+                             std::uint64_t meshTopologyIdentity,
                              Dirty rebuilt) = 0;
     virtual TrialSolution solve(const ModelDefinition &model,
                                 const SolveParameters &parameters,
                                 const PreparedAnalysis &prepared) = 0;
 };
 
+} // namespace femm
+
+namespace fmesher { class MesherBackend; }
+
+namespace femm {
+
 class AnalysisSession {
 public:
     AnalysisSession(ModelDefinition model, std::shared_ptr<AnalysisSolverBackend> backend);
+    AnalysisSession(ModelDefinition model, std::shared_ptr<fmesher::MesherBackend> mesher,
+                    std::shared_ptr<AnalysisSolverBackend> backend);
 
     const ModelDefinition &model() const { return m_model; }
     const SolveParameters &solveParameters() const { return m_parameters; }
     const PreparedAnalysis &prepared() const { return m_prepared; }
     Dirty dirty() const { return m_dirty; }
+    const mesh::MeshingOptions &meshingOptions() const { return m_meshingOptions; }
+    const std::vector<mesh::MeshDiagnostic> &meshDiagnostics() const { return m_meshDiagnostics; }
+    std::shared_ptr<const mesh::SolverMesh> mesh() const { return m_mesh; }
+    std::uint64_t meshTopologyIdentity() const { return m_meshTopologyIdentity; }
+
+    /** Select a mesher. The currently owned mesh is discarded. */
+    void setMesher(std::shared_ptr<fmesher::MesherBackend> mesher);
+    /** Change controls used for the next mesh. */
+    void setMeshingOptions(const mesh::MeshingOptions &options);
+    /** Return the current immutable mesh, creating it when necessary. */
+    std::shared_ptr<const mesh::SolverMesh> ensureMesh();
 
     void setCircuitCurrent(CircuitId id, CComplex current);
     void setCircuitVoltage(CircuitId id, CComplex voltage);
@@ -197,6 +219,11 @@ private:
     SolveParameters m_parameters;
     PreparedAnalysis m_prepared;
     std::shared_ptr<AnalysisSolverBackend> m_backend;
+    std::shared_ptr<fmesher::MesherBackend> m_mesher;
+    mesh::MeshingOptions m_meshingOptions;
+    std::shared_ptr<const mesh::SolverMesh> m_mesh;
+    std::vector<mesh::MeshDiagnostic> m_meshDiagnostics;
+    std::uint64_t m_meshTopologyIdentity = 0;
     Dirty m_dirty = Dirty::All;
     std::uint64_t m_modelRevision = 1;
     std::uint64_t m_parameterRevision = 1;
