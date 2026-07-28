@@ -42,6 +42,7 @@
 #include "CMaterialProp.h"
 #include "CNode.h"
 #include "CPointProp.h"
+#include "mesh/SolverMesh.h"
 
 namespace femm {
 class LuaInstance;
@@ -76,6 +77,8 @@ public:
 public:
 
     LoadMeshErr LoadMesh(bool deleteFiles=true) override;
+    /** Import a session-owned, value-based mesh without serializing it to disk. */
+    LoadMeshErr LoadMesh(const femm::mesh::SolverMesh &mesh);
     /**
      * @brief loadPreviousSolution
      * @return \c true on success, \c false otherwise.

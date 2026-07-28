@@ -1161,7 +1161,7 @@ int FSolver::WriteStatic2D(CBigLinProb &L)
 	fprintf(fp,"%i\n",NumAirGapElems);
 	for(i=0;i<NumAirGapElems;i++)
     {
-		fprintf(fp,"%s",agelist[i].BdryName.c_str ());
+		fprintf(fp,"%s\n",agelist[i].BdryName.c_str ());
 
 		fprintf( fp,"%i %.17g %.17g %.17g %.17g %.17g %.17g %.17g %i %.17g %.17g\n",
                  agelist[i].BdryFormat,
