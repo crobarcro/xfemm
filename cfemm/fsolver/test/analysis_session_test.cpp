@@ -4,6 +4,7 @@
 #include "CBlockLabel.h"
 #include "CCircuit.h"
 #include "CMaterialProp.h"
+#include "MesherBackend.h"
 
 #include <cassert>
 #include <memory>
@@ -14,8 +15,12 @@ namespace {
 class RecordingBackend final : public femm::AnalysisSolverBackend {
 public:
     void synchronize(const femm::ModelDefinition &, const femm::SolveParameters &,
-                     const femm::PreparedAnalysis &, femm::Dirty rebuilt) override
+                     const femm::PreparedAnalysis &,
+                     std::shared_ptr<const femm::mesh::SolverMesh> mesh,
+                     std::uint64_t topology, femm::Dirty rebuilt) override
     {
+        lastMesh = std::move(mesh);
+        lastTopology = topology;
         lastRebuilt = rebuilt;
         ++synchronizations;
     }
@@ -38,6 +43,24 @@ public:
     femm::Dirty lastRebuilt = femm::Dirty::None;
     int synchronizations = 0;
     int solves = 0;
+    std::shared_ptr<const femm::mesh::SolverMesh> lastMesh;
+    std::uint64_t lastTopology = 0;
+};
+
+class RecordingMesher final : public fmesher::MesherBackend {
+public:
+    femm::mesh::MeshResult mesh(femm::FemmProblem &, bool periodic,
+                                const femm::mesh::MeshingOptions &) override
+    {
+        ++calls;
+        lastPeriodic = periodic;
+        femm::mesh::MeshResult result;
+        result.status = femm::mesh::MeshStatus::Success;
+        result.mesh.nodes.push_back({0, 0, 0});
+        return result;
+    }
+    int calls = 0;
+    bool lastPeriodic = false;
 };
 
 std::unique_ptr<femm::FemmProblem> makeProblem()
@@ -79,7 +102,8 @@ std::unique_ptr<femm::FemmProblem> makeProblem()
 int main()
 {
     auto backend = std::make_shared<RecordingBackend>();
-    femm::AnalysisSession session(femm::ModelDefinition(makeProblem()), backend);
+    auto mesher = std::make_shared<RecordingMesher>();
+    femm::AnalysisSession session(femm::ModelDefinition(makeProblem()), mesher, backend);
 
     const auto circuit = session.model().circuit("phase-a");
     const auto material = session.model().material("steel");
@@ -87,6 +111,9 @@ int main()
 
     session.synchronize();
     assert(backend->synchronizations == 1);
+    assert(mesher->calls == 1);
+    assert(backend->lastMesh == session.mesh());
+    assert(backend->lastTopology == session.meshTopologyIdentity());
     assert(session.prepared().circuits.size() == 2);
     assert(session.prepared().circuits[0].signedTurns == 10);
     assert(session.prepared().circuits[1].signedTurns == -5);
@@ -98,6 +125,7 @@ int main()
     session.setCircuitCurrent(circuit, CComplex(7, 0));
     session.synchronize();
     assert(backend->synchronizations == 2);
+    assert(mesher->calls == 1); // circuit changes do not affect topology.
     assert((session.dirty() & femm::Dirty::SolveState) != femm::Dirty::None);
     assert(session.prepared().circuits[0].constraint.value == CComplex(7, 0));
 

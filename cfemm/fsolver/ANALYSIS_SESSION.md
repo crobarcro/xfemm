@@ -10,6 +10,14 @@ separates three kinds of data which legacy solver structures combine:
   state.
 * `PreparedAnalysis` is disposable solver input derived from the other two.
 
+The session also owns the solver mesh. A Triangle backend is selected by
+default, and applications can inject another `MesherBackend` with `setMesher()`.
+Backend-neutral `MeshingOptions`, the diagnostics from the most recent attempt,
+and an immutable `shared_ptr<const SolverMesh>` remain available on the
+session. `ensureMesh()` creates that mesh on demand. Each successful replacement
+gets a new topology identity so solver backends can distinguish topology from
+the changing operator and right-hand side.
+
 The session exposes the model as const data. Callers change it through named
 operations such as `setMaterialProperty`; circuit inputs, frequency, and AGE
 positions likewise have named operations. Each operation invalidates the
@@ -45,6 +53,10 @@ same way: they are recreated from authoritative inputs and are never copied
 back into `FemmProblem`.
 
 Concrete solvers implement `AnalysisSolverBackend`. The boundary deliberately
-uses const model, parameter, and prepared views; a backend can retain private
-mesh, matrix, and nonlinear work state, but cannot turn those objects into
+uses const model, parameter, and prepared views and receives the session's
+immutable mesh plus its topology identity during synchronization. Circuit,
+frequency, time, material, initial-state, and sliding-position updates preserve
+the mesh; only mesher selection, meshing-option changes, and future geometry or
+other mesh-affecting model operations invalidate it. A backend can retain
+private matrix and nonlinear work state, but cannot turn those objects into
 user-visible authority.

@@ -4,6 +4,8 @@
 #include "CBlockLabel.h"
 #include "CCircuit.h"
 #include "CMaterialProp.h"
+#include "MesherBackend.h"
+#include "TriangleMesherBackend.h"
 
 #include <cmath>
 #include <atomic>
@@ -114,6 +116,7 @@ AirGapId ModelDefinition::airGap(const std::string &name) const
 
 AnalysisSession::AnalysisSession(ModelDefinition model, std::shared_ptr<AnalysisSolverBackend> backend)
     : m_model(std::move(model)), m_backend(std::move(backend)),
+      m_mesher(std::make_shared<fmesher::TriangleMesherBackend>()),
       m_sessionId(nextSessionId.fetch_add(1))
 {
     if (!m_backend)
@@ -132,6 +135,62 @@ AnalysisSession::AnalysisSession(ModelDefinition model, std::shared_ptr<Analysis
         if (boundary && (boundary->BdryFormat == 6 || boundary->BdryFormat == 7))
             m_parameters.airGapPositions[{i}] = {boundary->InnerAngle, boundary->OuterAngle};
     }
+}
+
+AnalysisSession::AnalysisSession(ModelDefinition model,
+                                 std::shared_ptr<fmesher::MesherBackend> mesher,
+                                 std::shared_ptr<AnalysisSolverBackend> backend)
+    : AnalysisSession(std::move(model), std::move(backend))
+{
+    setMesher(std::move(mesher));
+}
+
+void AnalysisSession::setMesher(std::shared_ptr<fmesher::MesherBackend> mesher)
+{
+    if (!mesher)
+        throw std::invalid_argument("AnalysisSession requires a mesher backend");
+    if (m_mesher == mesher)
+        return;
+    m_mesher = std::move(mesher);
+    m_mesh.reset();
+    m_meshDiagnostics.clear();
+    invalidate(Dirty::Mesh | Dirty::Operator | Dirty::RightHandSide);
+}
+
+void AnalysisSession::setMeshingOptions(const mesh::MeshingOptions &options)
+{
+    if (!std::isfinite(options.minimumAngleDegrees) || options.minimumAngleDegrees < 0 ||
+        !std::isfinite(options.defaultElementSize) || options.defaultElementSize < 0)
+        throw std::invalid_argument("meshing sizes and angles must be finite and nonnegative");
+    m_meshingOptions = options;
+    m_mesh.reset();
+    m_meshDiagnostics.clear();
+    invalidate(Dirty::Mesh | Dirty::Operator | Dirty::RightHandSide);
+}
+
+std::shared_ptr<const mesh::SolverMesh> AnalysisSession::ensureMesh()
+{
+    if (m_mesh && !has(m_dirty, Dirty::Mesh))
+        return m_mesh;
+    if (!m_mesher)
+        throw std::logic_error("no mesher backend selected");
+
+    bool periodic = false;
+    for (const auto &property : m_model.problem().lineproplist) {
+        if (property && property->isPeriodic()) {
+            periodic = true;
+            break;
+        }
+    }
+    auto result = m_mesher->mesh(*m_model.m_problem, periodic, m_meshingOptions);
+    m_meshDiagnostics = std::move(result.diagnostics);
+    if (!result.succeeded())
+        throw std::runtime_error("meshing failed");
+
+    m_mesh = std::make_shared<const mesh::SolverMesh>(std::move(result.mesh));
+    ++m_meshTopologyIdentity;
+    m_dirty = static_cast<Dirty>(bits(m_dirty) & ~bits(Dirty::Mesh));
+    return m_mesh;
 }
 
 void AnalysisSession::requireCircuit(CircuitId id) const
@@ -323,6 +382,8 @@ void AnalysisSession::synchronize()
     if (m_dirty == Dirty::None || m_dirty == Dirty::SolveState)
         return;
 
+    const Dirty requested = m_dirty;
+    const auto immutableMesh = ensureMesh();
     PreparedAnalysis candidate = m_prepared;
     if (has(m_dirty, Dirty::PreparedMaterials))
         rebuildMaterials(candidate);
@@ -331,8 +392,9 @@ void AnalysisSession::synchronize()
     if (has(m_dirty, Dirty::AirGapCoupling))
         candidate.airGapPositions = m_parameters.airGapPositions;
 
-    const Dirty rebuilt = static_cast<Dirty>(bits(m_dirty) & ~bits(Dirty::SolveState));
-    m_backend->synchronize(m_model, m_parameters, candidate, rebuilt);
+    const Dirty rebuilt = static_cast<Dirty>(bits(requested) & ~bits(Dirty::SolveState));
+    m_backend->synchronize(m_model, m_parameters, candidate, immutableMesh,
+                           m_meshTopologyIdentity, rebuilt);
     m_prepared = std::move(candidate);
     m_dirty = Dirty::SolveState;
 }
