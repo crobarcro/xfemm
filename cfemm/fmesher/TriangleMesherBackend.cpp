@@ -2,10 +2,8 @@
 #include "SolverMeshFileWriter.h"
 #include "fmesher.h"
 #include "femmconstants.h"
-#include <cstdio>
 #include <fstream>
 #include <iomanip>
-#include <sstream>
 
 namespace fmesher {
 namespace {
@@ -13,25 +11,10 @@ std::string root(const std::string &p) { auto n=p.find_last_of('.'); return n==s
 void diagnostic(femm::mesh::MeshResult &r, const std::string &s, int code) {
  r.status=femm::mesh::MeshStatus::BackendFailure; r.diagnostics.push_back({femm::mesh::MeshDiagnosticSeverity::Error,s,"Triangle",code});
 }
-bool readLegacy(const std::string &path, const femm::FemmProblem &problem, femm::mesh::SolverMesh &out) {
- const auto base=root(path); std::ifstream f(base+".node"); size_t count; int dim,attrs,markers;
- if(!(f>>count>>dim>>attrs>>markers)) return false;
- const double scale=femm::LengthConvMeters[problem.LengthUnits];
- out.nodes.resize(count); for(size_t q=0;q<count;q++){size_t id;int marker; f>>id>>out.nodes[id].x>>out.nodes[id].y>>marker; out.nodes[id].x*=scale;out.nodes[id].y*=scale;out.nodes[id].boundaryMarker=marker;}
- f.close(); f.open(base+".ele"); int corners; if(!(f>>count>>corners>>attrs))return false; out.elements.resize(count);
- for(size_t q=0;q<count;q++){size_t id;int region;f>>id>>out.elements[id].nodes[0]>>out.elements[id].nodes[1]>>out.elements[id].nodes[2]>>region;out.elements[id].regionAttribute=region;}
- f.close();f.open(base+".edge");if(!(f>>count>>markers))return false;out.edges.resize(count);
- for(size_t q=0;q<count;q++){size_t id;int marker;f>>id>>out.edges[id].first>>out.edges[id].second>>marker;out.edges[id].boundaryMarker=marker;}
- f.close();f.open(base+".pbc");if(!(f>>count))return false;out.periodicConstraints.resize(count);
- for(size_t q=0;q<count;q++){size_t id;int anti;f>>id>>out.periodicConstraints[id].first>>out.periodicConstraints[id].second>>anti;out.periodicConstraints[id].periodicity=anti?femm::mesh::SolverMesh::Periodicity::Antiperiodic:femm::mesh::SolverMesh::Periodicity::Periodic;}
- size_t gaps=0;if(!(f>>gaps))return false;out.airGaps.reserve(gaps);
- for(size_t g=0;g<gaps;g++){femm::mesh::SolverMesh::AirGap a; f>>std::quoted(a.boundaryName);int anti;size_t n;f>>anti>>a.innerAngleDegrees>>a.outerAngleDegrees>>a.innerRadius>>a.outerRadius>>a.totalArcLengthDegrees>>a.centerX>>a.centerY>>n>>a.innerShift>>a.outerShift;a.periodicity=anti?femm::mesh::SolverMesh::Periodicity::Antiperiodic:femm::mesh::SolverMesh::Periodicity::Periodic;a.totalArcElements=n;a.innerRadius*=scale;a.outerRadius*=scale;a.centerX*=scale;a.centerY*=scale;a.quadraturePoints.resize(n+1);for(auto &qp:a.quadraturePoints)for(int k=0;k<4;k++)f>>qp.nodes[k]>>qp.weights[k];out.airGaps.push_back(std::move(a));}
- return bool(f);
-}
 }
 femm::mesh::MeshResult TriangleMesherBackend::mesh(femm::FemmProblem &problem,bool periodic,const femm::mesh::MeshingOptions &options){
  femm::mesh::MeshResult result; FMesher legacy(std::shared_ptr<femm::FemmProblem>(&problem,[](femm::FemmProblem*){}));legacy.Verbose=options.verbose;legacy.writePolyFiles=writePolyFiles;if(WarnMessage)legacy.WarnMessage=WarnMessage;if(TriMessage)legacy.TriMessage=TriMessage;
- std::string path=compatibilityPath.empty()?"xfemm-backend.fem":compatibilityPath;int status=periodic?legacy.doPeriodicTriangleWorkflow(path):legacy.doNonPeriodicTriangleWorkflow(path);if(status){diagnostic(result,"Triangle meshing workflow failed",status);return result;}if(!readLegacy(path,problem,result.mesh)){diagnostic(result,"Could not convert Triangle output to SolverMesh",-1);return result;}result.status=femm::mesh::MeshStatus::Success;return result;
+ std::string path=compatibilityPath.empty()?"xfemm-backend.fem":compatibilityPath;int status=periodic?legacy.doPeriodicTriangleWorkflow(path,result.mesh):legacy.doNonPeriodicTriangleWorkflow(path,result.mesh);if(status){diagnostic(result,"Triangle meshing workflow failed",status);return result;}result.status=femm::mesh::MeshStatus::Success;return result;
 }
 
 bool SolverMeshFileWriter::write(const femm::mesh::SolverMesh &m,const femm::FemmProblem &p,const std::string &path,int(*warn)(const char*,...)){

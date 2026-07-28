@@ -40,6 +40,7 @@
 #include "CSegment.h"
 #include "femmenums.h"
 #include "FemmProblem.h"
+#include "mesh/SolverMesh.h"
 
 #include <memory>
 #include <vector>
@@ -144,8 +145,8 @@ public:
 
 private:
     friend class TriangleMesherBackend;
-    int doNonPeriodicTriangleWorkflow(std::string PathName);
-    int doPeriodicTriangleWorkflow(std::string PathName);
+    int doNonPeriodicTriangleWorkflow(std::string PathName, femm::mesh::SolverMesh &mesh);
+    int doPeriodicTriangleWorkflow(std::string PathName, femm::mesh::SolverMesh &mesh);
 
     virtual bool Initialize(femm::FileType t);
 	void addFileStr (char * q);

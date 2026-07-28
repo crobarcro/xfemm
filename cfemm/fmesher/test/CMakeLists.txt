@@ -1,14 +1,12 @@
-# only a function test, not correctness :-|
 function(test_fmesher file)
-    add_test(NAME fmesher_${file}.setup
-        COMMAND "${CMAKE_COMMAND}"
-        -E copy "${CMAKE_CURRENT_LIST_DIR}/${file}" .
-        )
+    set(test_dir "${CMAKE_CURRENT_BINARY_DIR}/${file}.work")
+    file(MAKE_DIRECTORY "${test_dir}")
+    configure_file("${CMAKE_CURRENT_LIST_DIR}/${file}" "${test_dir}/${file}" COPYONLY)
     add_test(NAME fmesher_${file}
-        COMMAND fmesher-bin "${file}"
+        COMMAND fmesher-bin "${test_dir}/${file}"
         )
     set_tests_properties(fmesher_${file} PROPERTIES
-        DEPENDS fmesher_${file}.setup
+        WORKING_DIRECTORY "${test_dir}"
         LABELS "magnetics;mesher"
         )
 endfunction()
@@ -20,5 +18,6 @@ test_fmesher(split_seg_err_test.fem)
 add_executable(fmesher_backend_test backend_test.cpp)
 target_link_libraries(fmesher_backend_test PRIVATE fmesher)
 add_test(NAME fmesher_backend_solver_mesh
-    COMMAND fmesher_backend_test "${CMAKE_CURRENT_LIST_DIR}/Temp.fem")
+    COMMAND fmesher_backend_test "${CMAKE_CURRENT_LIST_DIR}/Temp.fem"
+        "${CMAKE_CURRENT_LIST_DIR}/../../femmcli/test/femmcli_antiperiodicBC_AGE_TorqueBenchmark.fem")
 set_tests_properties(fmesher_backend_solver_mesh PROPERTIES LABELS "magnetics;mesher")

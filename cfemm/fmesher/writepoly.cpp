@@ -386,34 +386,23 @@ bool FMesher::HasPeriodicBC()
 }
 
 
-static bool writeTriangulationFiles(const femm::mesh::RawMesh &mesh, const string &path,
-                                    int (*warn)(const char *, ...))
+static void assignTriangulation(const femm::mesh::RawMesh &raw,
+                                const femm::FemmProblem &problem,
+                                femm::mesh::SolverMesh &mesh)
 {
-    const string root = path.substr(0, path.find_last_of('.'));
-    ofstream nodes(root + ".node");
-    if (!nodes) { warn("Couldn't write to specified .node file"); return false; }
-    nodes << mesh.points.size() << "\t2\t0\t1\n" << setprecision(17);
-    for (size_t i=0; i<mesh.points.size(); ++i)
-        nodes << i << '\t' << mesh.points[i].x << '\t' << mesh.points[i].y << '\t' << mesh.points[i].marker << '\n';
-    nodes.close();
-
-    ofstream edges(root + ".edge");
-    if (!edges) { warn("Couldn't write to specified .edge file\n"); return false; }
-    edges << mesh.edges.size() << "\t1\n";
-    for (size_t i=0; i<mesh.edges.size(); ++i)
-        edges << i << '\t' << mesh.edges[i].first << '\t' << mesh.edges[i].second << '\t' << mesh.edges[i].marker << '\n';
-    edges.close();
-
-    ofstream elements(root + ".ele");
-    if (!elements) { warn("Couldn't write to specified .ele file"); return false; }
-    elements << mesh.triangles.size() << "\t3\t1\n" << setprecision(17);
-    for (size_t i=0; i<mesh.triangles.size(); ++i) {
-        elements << i << '\t';
-        for (femm::mesh::MeshIndex node : mesh.triangles[i].nodes) elements << node << '\t';
-        elements << mesh.triangles[i].regionAttribute << '\t';
-        elements << '\n';
-    }
-    return true;
+    const double scale = femm::LengthConvMeters[problem.LengthUnits];
+    mesh.nodes.clear();
+    mesh.elements.clear();
+    mesh.edges.clear();
+    mesh.nodes.reserve(raw.points.size());
+    for (const auto &point : raw.points)
+        mesh.nodes.push_back({point.x * scale, point.y * scale, point.marker});
+    mesh.elements.reserve(raw.triangles.size());
+    for (const auto &triangle : raw.triangles)
+        mesh.elements.push_back({triangle.nodes, static_cast<std::int32_t>(triangle.regionAttribute)});
+    mesh.edges.reserve(raw.edges.size());
+    for (const auto &edge : raw.edges)
+        mesh.edges.push_back({edge.first, edge.second, edge.marker});
 }
 
 /**
@@ -427,17 +416,15 @@ static bool writeTriangulationFiles(const femm::mesh::RawMesh &mesh, const strin
  *  * \femm42{femm/bd_writepoly.cpp,CbeladrawDoc::OnWritePoly()}
  *  * \femm42{femm/hd_writepoly.cpp,ChdrawDoc::OnWritePoly()}
  */
-int FMesher::doNonPeriodicTriangleWorkflow(string PathName)
+int FMesher::doNonPeriodicTriangleWorkflow(string PathName, femm::mesh::SolverMesh &mesh)
 {
     // // if incremental permeability solution, we crib mesh from the previous problem.
     // // we can just bail out in that case.
     // if (!problem->previousSolutionFile.empty() && problem->Frequency>0)
     //     return true;
 
-    FILE *fp;
     double dL;
     //CStdString s;
-    string plyname;
     std::vector < std::unique_ptr<CNode> >       nodelst;
     std::vector < std::unique_ptr<CSegment> >    linelst;
 
@@ -460,9 +447,6 @@ int FMesher::doNonPeriodicTriangleWorkflow(string PathName)
 
     // discretize input arc segments
     discretizeInputArcSegments(*problem, nodelst, linelst);
-
-    // create correct output filename;
-    string pn = PathName;
 
     // figure out a good default mesh size for block labels where
     // mesh size isn't explicitly specified
@@ -490,15 +474,6 @@ int FMesher::doNonPeriodicTriangleWorkflow(string PathName)
 //        }
 //    fclose(fp);
 
-    // write out a trivial pbc file
-    plyname = pn.substr(0,pn.find_last_of('.')) + ".pbc";
-    if ((fp=fopen(plyname.c_str(),"wt"))==NULL){
-        WarnMessage("Couldn't write to specified .pbc file");
-        return -1;
-    }
-    fprintf(fp,"0\n0\n");
-    fclose(fp);
-
     // **********         call triangle       ***********
 
     {
@@ -522,7 +497,7 @@ int FMesher::doNonPeriodicTriangleWorkflow(string PathName)
         if (tristatus != 0)
             return tristatus;
 
-        writeTriangulationFiles(triHelper.rawTriangulation(), PathName, WarnMessage);
+        assignTriangulation(triHelper.rawTriangulation(), *problem, mesh);
     }
     problem->clearNotationTags();
 
@@ -539,21 +514,17 @@ int FMesher::doNonPeriodicTriangleWorkflow(string PathName)
  *  * \femm42{femm/bd_writepoly.cpp,CbeladrawDoc::FunnyOnWritePoly()}
  *  * \femm42{femm/hd_writepoly.cpp,ChdrawDoc::FunnyOnWritePoly()}
  */
-int FMesher::doPeriodicTriangleWorkflow(string PathName)
+int FMesher::doPeriodicTriangleWorkflow(string PathName, femm::mesh::SolverMesh &mesh)
 {
     // // if incremental permeability solution, we crib mesh from the previous problem.
     // // we can just bail out in that case.
     // if (!problem->previousSolutionFile.empty() && problem->Frequency>0)
     //     return true;
-    FILE *fp;
     int i, j, k, n;
     int l,n0,n1,n2;
     double z,R,dL;
     CComplex a0,a1,a2,c;
     CComplex b0,b1,b2;
-    char instring[1024];
-    //string s;
-    string plyname;
     std::vector < std::unique_ptr<CNode> >              nodelst;
     std::vector < std::unique_ptr<CSegment> >           linelst;
     //std::vector < std::unique_ptr<CCBlockLabel> >       blocklst;
@@ -565,6 +536,7 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
     CCommonPoint pt;
     CPeriodicBoundary pbc;
     CAirGapElement age;
+    femm::mesh::RawMesh trialMesh;
 
 #ifdef DEBUG
     WarnMessage("writepoly: beginning periodic boundary triangulation\n");
@@ -586,9 +558,6 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
     // discretize input arc segments
     discretizeInputArcSegments(*problem, nodelst, linelst);
 
-
-    // create correct output filename;
-    string pn = PathName;
 
     // figure out a good default mesh size for block labels where
     // mesh size isn't explicitly specified
@@ -622,15 +591,14 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
         if (tristatus != 0)
             return tristatus;
 
-        writeTriangulationFiles(triHelper.rawTriangulation(), PathName, WarnMessage);
+        trialMesh = triHelper.rawTriangulation();
     }
 
 #ifdef DEBUG
     WarnMessage("writepoly: finished calling triangle\n");
 #endif // DEBUG
 
-    // So far, so good.  Now, read back in the .edge file
-    // to make sure the points in the segments and arc
+    // Use Triangle's returned edges to make sure the points in the segments and arc
     // segments are ordered in a consistent way so that
     // the (anti)periodic boundary conditions can be applied.
 
@@ -638,15 +606,6 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
     WarnMessage("writepoly: 876\n");
 #endif // DEBUG
 
-    // read meshlines;
-    plyname = pn.substr(0,pn.find_last_of('.')) + ".edge";
-    if((fp=fopen(plyname.c_str(),"rt"))==NULL){
-        WarnMessage("Call to triangle was unsuccessful\n");
-        problem->undo();  problem->unselectAll();
-        return -1;
-    }
-    fgets(instring,1024,fp);
-    sscanf(instring,"%i",&k);
     problem->clearNotationTags();
     // use cnt again to keep a
     // tally of how many subsegments each
@@ -669,13 +628,11 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
     WarnMessage("writepoly: 910\n");
 #endif // DEBUG
 
-    for(i=0;i<k;i++)
+    for(const auto &edge : trialMesh.edges)
     {
-        // get the next edge from the file
-        fgets(instring,1024,fp);
-        // get the edge number, start and end points (n0 and n1) and the
-        // segment/arc marker j
-        sscanf(instring,"%i    %i    %i    %i",&l,&n0,&n1,&j);
+        n0 = static_cast<int>(edge.first);
+        n1 = static_cast<int>(edge.second);
+        j = edge.marker;
         // if j != 0, this edge is part of a segment/arc
         if(j!=0)
         {
@@ -727,7 +684,6 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
             }
         }
     }
-    fclose(fp);
 
 #ifdef DEBUG
     WarnMessage("writepoly: 974\n");
@@ -742,23 +698,15 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
     // elements each reference segment appears in.  If a
     // segment is on the boundary, it ought to appear in just
     // one element.  Otherwise, it appears in two.
-    plyname = pn.substr(0,pn.find_last_of('.')) + ".ele";
-    if((fp=fopen(plyname.c_str(),"rt"))==NULL){
-        WarnMessage("Call to triangle was unsuccessful");
-        problem->undo();  problem->unselectAll();
-        return -1;
-    }
-    fgets(instring,1024,fp);
-    sscanf(instring,"%i",&k);
-
 #ifdef DEBUG
     WarnMessage("writepoly: 996\n");
 #endif // DEBUG
 
-    for(i=0;i<k;i++)
+    for(const auto &triangle : trialMesh.triangles)
     {
-        fgets(instring,1024,fp);
-        sscanf(instring,"%i    %i    %i    %i",&j,&n0,&n1,&n2);
+        n0 = static_cast<int>(triangle.nodes[0]);
+        n1 = static_cast<int>(triangle.nodes[1]);
+        n2 = static_cast<int>(triangle.nodes[2]);
 
         // Sort out the three nodes...
         if (n0>n1) { n=n0; n0=n1; n1=n; }
@@ -774,7 +722,6 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
             if ((n1==ptlst[j]->x) && (n2==ptlst[j]->y)) ptlst[j]->t--;
         }
     }
-    fclose(fp);
 
 #ifdef DEBUG
     WarnMessage("writepoly: 1021\n");
@@ -1451,8 +1398,6 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
     discretizeInputArcSegments(*problem, nodelst, linelst, SegmentFilter::OnlyUnselected);
 
     // create correct output filename;
-    pn = PathName;
-
 //    plyname=pn.Left(pn.ReverseFind('.')) + ".poly";
 //
 //    // check to see if we are ready to write a datafile;
@@ -1546,18 +1491,17 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
         return false;
     }
 */
-    // write out a pbc file containing a list of linked nodes
-    plyname = pn.substr(0,pn.find_last_of('.')) + ".pbc";
-    if ((fp=fopen(plyname.c_str(),"wt"))==NULL){
-        WarnMessage("Couldn't write to specified .pbc file");
-        problem->undo();  problem->unselectAll();
-        return -1;
-    }
-    fprintf(fp,"%i\n", (int) ptlst.size());
-
-    for(k=0;k<(int)ptlst.size();k++)
-    {
-        fprintf(fp,"%i    %i    %i    %i\n",k,ptlst[k]->x,ptlst[k]->y,ptlst[k]->t);
+    mesh.periodicConstraints.clear();
+    mesh.airGaps.clear();
+    mesh.periodicConstraints.reserve(ptlst.size());
+    for (const auto &point : ptlst) {
+        femm::mesh::SolverMesh::PeriodicConstraint constraint;
+        constraint.first = static_cast<femm::mesh::MeshIndex>(point->x);
+        constraint.second = static_cast<femm::mesh::MeshIndex>(point->y);
+        constraint.periodicity = point->t
+                ? femm::mesh::SolverMesh::Periodicity::Antiperiodic
+                : femm::mesh::SolverMesh::Periodicity::Periodic;
+        mesh.periodicConstraints.push_back(constraint);
     }
 
 #ifdef DEBUG
@@ -1567,7 +1511,7 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
         WarnMessage(buf);
     }
 #endif // DEBUG
-	fprintf(fp,"%i\n",(int) agelst.size());
+	mesh.airGaps.reserve(agelst.size());
 	for(k=0;k<(int)agelst.size();k++)
 	{
 		n = agelst[k]->nodeNums[0] / 2;
@@ -1651,13 +1595,28 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
 			if (bDone) break;
 		}
 
-		// print out AGE definition
-		fprintf(fp,"\"%s\"\n",agelst[k]->BdryName.c_str ());
-		fprintf(fp,"%i %.17g %.17g %.17g %.17g %.17g %.17g %.17g %i %.17g %.17g\n",
-			agelst[k]->BdryFormat,agelst[k]->InnerAngle,agelst[k]->OuterAngle,
-			agelst[k]->ri,agelst[k]->ro,agelst[k]->totalArcLength,
-			Re(agelst[k]->agc),Im(agelst[k]->agc),n,
-			InnerRing[0].w0,OuterRing[0].w0);
+		femm::mesh::SolverMesh::AirGap airGap;
+		airGap.boundaryName = agelst[k]->BdryName;
+		airGap.periodicity = agelst[k]->BdryFormat
+				? femm::mesh::SolverMesh::Periodicity::Antiperiodic
+				: femm::mesh::SolverMesh::Periodicity::Periodic;
+		airGap.innerAngleDegrees = agelst[k]->InnerAngle;
+		airGap.outerAngleDegrees = agelst[k]->OuterAngle;
+		const double scale = femm::LengthConvMeters[problem->LengthUnits];
+		airGap.innerRadius = agelst[k]->ri * scale;
+		airGap.outerRadius = agelst[k]->ro * scale;
+		airGap.totalArcLengthDegrees = agelst[k]->totalArcLength;
+		airGap.centerX = Re(agelst[k]->agc) * scale;
+		airGap.centerY = Im(agelst[k]->agc) * scale;
+		airGap.totalArcElements = static_cast<size_t>(n);
+		airGap.innerShift = InnerRing[0].w0;
+		airGap.outerShift = OuterRing[0].w0;
+		airGap.quadraturePoints.reserve(static_cast<size_t>(n + 1));
+		airGap.nodeIndices.reserve(InnerRing.size() + OuterRing.size());
+		for (const auto &point : InnerRing)
+			airGap.nodeIndices.push_back(static_cast<femm::mesh::MeshIndex>(point.n0));
+		for (const auto &point : OuterRing)
+			airGap.nodeIndices.push_back(static_cast<femm::mesh::MeshIndex>(point.n0));
 
 		for(i=0;i<=n;i++)
 		{
@@ -1668,11 +1627,14 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
 
 			// ring points that bracket points in the annulus mesh
 			// and their sign, for the purposes of periodicity/antiperiodicity
-			fprintf(fp,"%i %g %i %g %i %g %i %g\n",
-				InnerRing[p0].n0, InnerRing[p0].w1,
-				InnerRing[p1].n0, InnerRing[p1].w1,
-				OuterRing[p0].n0, OuterRing[p0].w1,
-				OuterRing[p1].n0, OuterRing[p1].w1);
+			femm::mesh::SolverMesh::AirGapQuadraturePoint point;
+			point.nodes = {{static_cast<femm::mesh::MeshIndex>(InnerRing[p0].n0),
+			                static_cast<femm::mesh::MeshIndex>(InnerRing[p1].n0),
+			                static_cast<femm::mesh::MeshIndex>(OuterRing[p0].n0),
+			                static_cast<femm::mesh::MeshIndex>(OuterRing[p1].n0)}};
+			point.weights = {{InnerRing[p0].w1, InnerRing[p1].w1,
+			                  OuterRing[p0].w1, OuterRing[p1].w1}};
+			airGap.quadraturePoints.push_back(point);
 		}
 
 /*
@@ -1687,10 +1649,8 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
 
 
 
+		mesh.airGaps.push_back(std::move(airGap));
 	}
-
-
-    fclose(fp);
 
     // call triangle with -Y flag.
     {
@@ -1716,7 +1676,7 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
         if (tristatus != 0)
             return tristatus;
 
-        writeTriangulationFiles(triHelper.rawTriangulation(), PathName, WarnMessage);
+        assignTriangulation(triHelper.rawTriangulation(), *problem, mesh);
     }
 
     problem->unselectAll();
@@ -1730,8 +1690,6 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName)
     // any changes to arc discretization get propagated into
     // the solution description....
     //SaveFEMFile(pn);
-    problem->saveFEMFile(pn);
-
     return 0;
 }
 
