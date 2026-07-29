@@ -76,6 +76,9 @@ public:
     CComplex agc; ///< centre of the air gap element
     std::vector <femm::CQuadPoint> quadNode; ///< quad nodes that are part of the air gap element (was called 'qp' in FEMM)
     std::vector <int> nodeNums; ///< node numbers that are part of the air gap element (was called 'node' in FEMM)
+    /// Full, position-independent virtual rings (node, element position, periodic sign).
+    std::vector <femm::CQuadPoint> innerRingTopology;
+    std::vector <femm::CQuadPoint> outerRingTopology;
 
     int nn; ///< number of harmonics in harmonic problem
     CComplex aco;

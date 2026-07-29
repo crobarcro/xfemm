@@ -6,6 +6,8 @@
 #include "CMaterialProp.h"
 #include "CPointProp.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <stdexcept>
@@ -81,13 +83,53 @@ void FSolverAnalysisBackend::configure(const ModelDefinition &model,
     m_solver->NumBlockProps = static_cast<int>(m_solver->blockproplist.size());
     m_solver->NumBlockLabels = static_cast<int>(m_solver->labellist.size());
     m_solver->NumCircProps = m_solver->NumCircPropsOrig = static_cast<int>(m_solver->circproplist.size());
+}
 
+void FSolverAnalysisBackend::positionAirGaps(const PreparedAnalysis &prepared)
+{
     for (const auto &entry : prepared.airGapPositions)
-        for (auto &gap : m_solver->agelist)
-            if (gap.BdryName == m_solver->lineproplist[entry.first.value].BdryName) {
+        for (auto &gap : m_solver->agelist) {
+            if (gap.BdryName != m_solver->lineproplist[entry.first.value].BdryName) continue;
+            if (gap.innerRingTopology.empty() || gap.outerRingTopology.empty()) {
                 gap.InnerAngle = entry.second.innerAngle;
                 gap.OuterAngle = entry.second.outerAngle;
+                continue;
             }
+            const double step = gap.totalArcLength / gap.totalArcElements;
+            auto positioned = [step](const std::vector<CQuadPoint> &topology, double angle) {
+                auto ring = topology;
+                for (auto &point : ring) {
+                    point.w0 = std::fmod(point.w0 * step + angle, 360.0);
+                    if (point.w0 < 0) point.w0 += 360.0;
+                    point.w0 /= step;
+                }
+                std::stable_sort(ring.begin(), ring.end(), [](const CQuadPoint &a,
+                                                              const CQuadPoint &b) {
+                    return a.w0 < b.w0;
+                });
+                return ring;
+            };
+            const auto inner = positioned(gap.innerRingTopology, entry.second.innerAngle);
+            const auto outer = positioned(gap.outerRingTopology, entry.second.outerAngle);
+            const int fullCount = static_cast<int>(inner.size());
+            gap.InnerShift = inner.front().w0;
+            gap.OuterShift = outer.front().w0;
+            gap.quadNode.clear();
+            gap.quadNode.reserve(gap.totalArcElements + 1);
+            for (int i = 0; i <= gap.totalArcElements; ++i) {
+                const int p1 = i == fullCount ? 0 : i;
+                const int p0 = p1 == 0 ? fullCount - 1 : p1 - 1;
+                CQuadPoint q;
+                q.n0=inner[p0].n0; q.n1=inner[p1].n0;
+                q.n2=outer[p0].n0; q.n3=outer[p1].n0;
+                q.w0=inner[p0].w1; q.w1=inner[p1].w1;
+                q.w2=outer[p0].w1; q.w3=outer[p1].w1;
+                gap.quadNode.push_back(q);
+            }
+            gap.InnerAngle = entry.second.innerAngle;
+            gap.OuterAngle = entry.second.outerAngle;
+            ++m_couplingRegenerations;
+        }
 }
 
 void FSolverAnalysisBackend::synchronize(const ModelDefinition &model,
@@ -117,6 +159,7 @@ void FSolverAnalysisBackend::synchronize(const ModelDefinition &model,
         ++m_topologyImports;
         ++m_orderings;
     }
+    positionAirGaps(prepared);
 }
 
 TrialSolution FSolverAnalysisBackend::solve(const ModelDefinition &model,
