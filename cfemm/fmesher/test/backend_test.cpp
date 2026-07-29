@@ -1,9 +1,11 @@
 #include "MesherBackend.h"
+#include "TangleMesherBackend.h"
 #include "TriangleMesherBackend.h"
 #include "fmesher.h"
 #include "FemmReader.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
@@ -27,6 +29,8 @@ bool validNodeIndex(femm::mesh::MeshIndex index, const femm::mesh::SolverMesh &m
 bool validGeometry(const femm::mesh::SolverMesh &mesh)
 {
     if (mesh.nodes.empty() || mesh.elements.empty() || mesh.edges.empty()) return false;
+    for (const auto &node : mesh.nodes)
+        if (!std::isfinite(node.x) || !std::isfinite(node.y)) return false;
     for (const auto &element : mesh.elements)
         for (const auto node : element.nodes)
             if (!validNodeIndex(node, mesh)) return false;
@@ -68,12 +72,21 @@ int fail(const std::string &message)
 
 int main(int argc, char **argv)
 {
-    if (argc != 3) return fail("Expected ordinary-periodic and AGE problem paths");
+    if (argc != 4) return fail("Expected backend, ordinary-periodic, and AGE problem paths");
+
+    const std::string backendName = argv[1];
+    std::unique_ptr<fmesher::MesherBackend> backend;
+    if (backendName == "Triangle")
+        backend.reset(new fmesher::TriangleMesherBackend);
+    else if (backendName == "Tangle")
+        backend.reset(new fmesher::TangleMesherBackend);
+    else
+        return fail("Unknown mesher backend: " + backendName);
 
     fmesher::FMesher facade;
-    if (!parseProblem(argv[1], facade)) return fail("Could not parse periodic test problem");
+    if (!parseProblem(argv[2], facade)) return fail("Could not parse periodic test problem");
     fmesher::FMesher ageFacade;
-    if (!parseProblem(argv[2], ageFacade)) return fail("Could not parse AGE test problem");
+    if (!parseProblem(argv[3], ageFacade)) return fail("Could not parse AGE test problem");
 
     const auto originalDirectory = std::filesystem::current_path();
     const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -82,7 +95,6 @@ int main(int argc, char **argv)
     std::filesystem::create_directory(scratchDirectory);
     std::filesystem::current_path(scratchDirectory);
 
-    std::unique_ptr<fmesher::MesherBackend> backend(new fmesher::TriangleMesherBackend);
     femm::mesh::MeshingOptions options;
     const auto result = backend->mesh(*facade.problem, false, options);
     const auto periodicResult = backend->mesh(*facade.problem, true, options);
@@ -105,7 +117,7 @@ int main(int argc, char **argv)
     if (!ageResult.succeeded() || !validGeometry(ageResult.mesh)
             || ageResult.mesh.airGaps.empty() || !validPeriodicTopology(ageResult.mesh))
         return fail("AGE backend result was incomplete");
-    if (createdFile) return fail("TriangleMesherBackend created a file");
+    if (createdFile) return fail(backendName + "MesherBackend created a file");
 
     femm::mesh::SolverMesh::Node markerProbe;
     markerProbe.boundaryMarker = 7;

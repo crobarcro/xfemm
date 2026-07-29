@@ -26,6 +26,7 @@ add_library(fmesher STATIC
     fmesher.cbp
     fmesher.cpp
     nosebl.cpp
+    TangleMesherBackend.cpp
     TriangleMesher.cpp
     TriangleMesherBackend.cpp
     writepoly.cpp
