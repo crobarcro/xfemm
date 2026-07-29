@@ -1,4 +1,5 @@
 #include "AnalysisSession.h"
+#include "FSolverAnalysisBackend.h"
 
 #include "CBoundaryProp.h"
 #include "CBlockLabel.h"
@@ -56,7 +57,9 @@ public:
         lastPeriodic = periodic;
         femm::mesh::MeshResult result;
         result.status = femm::mesh::MeshStatus::Success;
-        result.mesh.nodes.push_back({0, 0, 0});
+        result.mesh.nodes = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}};
+        result.mesh.elements.push_back({{{0, 1, 2}}, 1});
+        result.mesh.edges = {{0, 1, 0}, {1, 2, 0}, {2, 0, 0}};
         return result;
     }
     int calls = 0;
@@ -165,4 +168,19 @@ int main()
     }
     assert(invalidBatchRejected);
     assert(session.solveParameters().frequency == before.frequency);
+
+    auto concrete = std::make_shared<femm::FSolverAnalysisBackend>();
+    auto concreteMesher = std::make_shared<RecordingMesher>();
+    femm::AnalysisSession concreteSession(femm::ModelDefinition(makeProblem()),
+                                          concreteMesher, concrete);
+    concreteSession.synchronize();
+    assert(concrete->topologyImportCount() == 1);
+    assert(concrete->orderingCount() == 1);
+    concreteSession.setCircuitCurrent(concreteSession.model().circuit("phase-a"), CComplex(9, 0));
+    concreteSession.synchronize();
+    concreteSession.setAirGapAngle(concreteSession.model().airGap("rotor-gap"), 4, 5);
+    concreteSession.synchronize();
+    assert(concreteMesher->calls == 1);
+    assert(concrete->topologyImportCount() == 1);
+    assert(concrete->orderingCount() == 1);
 }

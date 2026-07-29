@@ -137,6 +137,24 @@ struct CircuitPortResult {
     std::optional<CComplex> terminalVoltage;
 };
 
+/** Real-valued magnetic vector potential in solver node order. */
+struct RealNodalSolution {
+    std::vector<double> magneticVectorPotential;
+};
+
+struct RealCircuitPortResult {
+    CircuitId id;
+    double current = 0;
+    double fluxLinkage = 0;
+    std::optional<double> terminalVoltage;
+};
+
+/** Strongly typed result payload for magnetostatic analyses. */
+struct RealTrialSolution {
+    RealNodalSolution nodal;
+    std::vector<RealCircuitPortResult> circuits;
+};
+
 struct TrialSolution {
     std::uint64_t id = 0;
     std::uint64_t sessionId = 0;
@@ -144,6 +162,7 @@ struct TrialSolution {
     std::uint64_t parameterRevision = 0;
     double time = 0;
     std::vector<CircuitPortResult> circuits;
+    std::optional<RealTrialSolution> real;
     std::string backendState;
 };
 
