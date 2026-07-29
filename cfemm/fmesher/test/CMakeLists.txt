@@ -17,7 +17,11 @@ test_fmesher(split_seg_err_test.fem)
 
 add_executable(fmesher_backend_test backend_test.cpp)
 target_link_libraries(fmesher_backend_test PRIVATE fmesher)
-add_test(NAME fmesher_backend_solver_mesh
-    COMMAND fmesher_backend_test "${CMAKE_CURRENT_LIST_DIR}/Temp.fem"
-        "${CMAKE_CURRENT_LIST_DIR}/../../femmcli/test/femmcli_antiperiodicBC_AGE_TorqueBenchmark.fem")
-set_tests_properties(fmesher_backend_solver_mesh PROPERTIES LABELS "magnetics;mesher")
+foreach(backend Triangle Tangle)
+    add_test(NAME fmesher_${backend}_backend_solver_mesh
+        COMMAND fmesher_backend_test "${backend}"
+            "${CMAKE_CURRENT_LIST_DIR}/Temp.fem"
+            "${CMAKE_CURRENT_LIST_DIR}/../../femmcli/test/femmcli_antiperiodicBC_AGE_TorqueBenchmark.fem")
+    set_tests_properties(fmesher_${backend}_backend_solver_mesh PROPERTIES
+        LABELS "magnetics;mesher;${backend}")
+endforeach()
