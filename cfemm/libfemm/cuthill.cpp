@@ -94,126 +94,66 @@ template< class PointPropT
 int FEASolver<PointPropT,BoundaryPropT,BlockPropT,CircuitPropT,BlockLabelT,MeshElementT>
 ::Cuthill(bool deletefiles)
 {
-
-    FILE *fp;
-    int i, n0, n1, n, newwide;
-    long int j, n_lines;
-    std::vector<std::vector<int>> ocon;
-    std::vector<int> newnum, numcon, nxtnum;
     char infile[256];
-
-    // read in connectivity from nodefile
-    sprintf(infile,"%s.edge",PathName.c_str());
-    if((fp=fopen(infile,"rt"))==NULL)
-    {
-        //MsgBox("Couldn't open %s",infile);
-        printf("Couldn't open %s",infile);
+    sprintf(infile, "%s.edge", PathName.c_str());
+    FILE *fp = fopen(infile, "rt");
+    if (fp == nullptr) {
+        printf("Couldn't open %s", infile);
         return false;
     }
-    // read in number of lines
-    if (fscanf(fp,"%li",&n_lines) != 1)
-    {
-        printf("Couldn't read the number of lines");
+    long int nLines, marker;
+    if (fscanf(fp, "%li%li", &nLines, &marker) != 2) {
+        fclose(fp);
         return false;
     }
-    // read in boundarymarker flag;
-    if (fscanf(fp,"%li",&j) != 1)
-    {
-        printf("Couldn't read in the boundarymarker flag");
-        return false;
-    }
-
-    // allocate storage for numbering
-    nxtnum.resize(NumNodes);
-    newnum.resize(NumNodes);
-    numcon.resize(NumNodes);
-    ocon.resize(NumNodes);
-
-    // initialize node array;
-    for(i=0; i<NumNodes; i++)
-    {
-        newnum[i] = -1;
-    }
-
-    // allocate space for connections;
-    //ocon[0].resize(2*n_lines);
-
-    // with first pass, figure out how many connections
-    // there are for each node;
-    for(i=0; i<n_lines; i++)
-    {
-        if (fscanf(fp,"%li",&j) != 1)
-        {
+    std::vector<std::pair<std::size_t, std::size_t>> edges;
+    edges.reserve(static_cast<std::size_t>(nLines));
+    for (long int i = 0; i < nLines; ++i) {
+        long int id, boundary;
+        int first, second;
+        if (fscanf(fp, "%li%i%i%li", &id, &first, &second, &boundary) != 4 ||
+            first < 0 || second < 0) {
+            fclose(fp);
             return false;
         }
-        if (fscanf(fp,"%i",&n0) != 1)
-        {
-            return false;
-        }
-        if (fscanf(fp,"%i",&n1) != 1)
-        {
-            return false;
-        }
-        if (fscanf(fp,"%li",&j) != 1)
-        {
-            return false;
-        }
-
-        numcon[n0]++;
-        numcon[n1]++;
-    }
-
-    // mete out connection storage space;
-    for(i=0, n=0; i<NumNodes; i++)
-    {
-        //n += numcon[i-1];
-        //ocon[i] = ocon[0] + n;
-        ocon[i].resize(numcon[i]);
-    }
-
-    // on second pass through file, store connections;
-    rewind(fp);
-    // read in number of lines
-    if (fscanf(fp,"%li",&n_lines) != 1)
-    {
-        return false;
-    }
-    // read in boundarymarker flag;
-    if (fscanf(fp,"%li",&j) != 1)
-    {
-        return false;
-    }
-
-    for(i=0; i<n_lines; i++)
-    {
-        if (fscanf(fp,"%li",&j) != 1) 
-        { 
-            return false; 
-        }
-        if (fscanf(fp,"%i",&n0) != 1) 
-        { 
-            return false; 
-        }
-        if (fscanf(fp,"%i",&n1) != 1) 
-        { 
-            return false; 
-        }
-        if (fscanf(fp,"%li",&j) != 1) 
-        { 
-            return false; 
-        }
-
-        ocon[n0][nxtnum[n0]]=n1;
-        nxtnum[n0]++;
-        ocon[n1][nxtnum[n1]]=n0;
-        nxtnum[n1]++;
+        edges.emplace_back(static_cast<std::size_t>(first),
+                           static_cast<std::size_t>(second));
     }
     fclose(fp);
     if (deletefiles)
-    {
         remove(infile);
-    }
+    return Cuthill(edges);
+}
 
+template< class PointPropT
+          , class BoundaryPropT
+          , class BlockPropT
+          , class CircuitPropT
+          , class BlockLabelT
+          , class MeshElementT
+          >
+int FEASolver<PointPropT,BoundaryPropT,BlockPropT,CircuitPropT,BlockLabelT,MeshElementT>
+::Cuthill(const std::vector<std::pair<std::size_t, std::size_t>> &edges)
+{
+    int i, n0, n1, n, newwide;
+    long int j;
+    const long int n_lines = static_cast<long int>(edges.size());
+    std::vector<std::vector<int>> ocon(NumNodes);
+    std::vector<int> newnum(NumNodes, -1), numcon(NumNodes, 0), nxtnum(NumNodes, 0);
+
+    for (const auto &edge : edges) {
+        if (edge.first >= static_cast<std::size_t>(NumNodes) ||
+            edge.second >= static_cast<std::size_t>(NumNodes))
+            return false;
+        ++numcon[edge.first];
+        ++numcon[edge.second];
+    }
+    for (i = 0; i < NumNodes; ++i)
+        ocon[i].reserve(numcon[i]);
+    for (const auto &edge : edges) {
+        ocon[edge.first].push_back(static_cast<int>(edge.second));
+        ocon[edge.second].push_back(static_cast<int>(edge.first));
+    }
 
     // sort connections in order of increasing connectivity;
     // I'm lazy, so I'm doing a bubble sort;

@@ -160,6 +160,8 @@ public:
     static std::string getErrorString(LoadMeshErr err);
 
     int Cuthill(bool deleteFiles=true);
+    /** Apply Cuthill--McKee ordering from connectivity already held in memory. */
+    int Cuthill(const std::vector<std::pair<std::size_t, std::size_t>> &edges);
     int SortElements();
 
     // pointer to function to call when issuing warning messages

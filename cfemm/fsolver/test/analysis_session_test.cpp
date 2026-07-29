@@ -174,13 +174,28 @@ int main()
     femm::AnalysisSession concreteSession(femm::ModelDefinition(makeProblem()),
                                           concreteMesher, concrete);
     concreteSession.synchronize();
+    assert(concreteSession.meshGenerationCount() == 1);
     assert(concrete->topologyImportCount() == 1);
     assert(concrete->orderingCount() == 1);
-    concreteSession.setCircuitCurrent(concreteSession.model().circuit("phase-a"), CComplex(9, 0));
-    concreteSession.synchronize();
-    concreteSession.setAirGapAngle(concreteSession.model().airGap("rotor-gap"), 4, 5);
-    concreteSession.synchronize();
+    constexpr int evaluations = 3;
+    for (int step = 0; step < evaluations; ++step) {
+        concreteSession.setCircuitCurrent(concreteSession.model().circuit("phase-a"),
+                                          CComplex(9 + step, 0));
+        concreteSession.setAirGapAngle(concreteSession.model().airGap("rotor-gap"),
+                                       4 + step, 5);
+        concreteSession.setTime(0.01 * step);
+        concreteSession.solve();
+    }
     assert(concreteMesher->calls == 1);
+    assert(concreteSession.meshGenerationCount() == 1);
     assert(concrete->topologyImportCount() == 1);
     assert(concrete->orderingCount() == 1);
+    assert(concrete->solveCount() == evaluations);
+    // Assembly reuse is intentionally not part of this contract yet.
+    assert(concrete->operatorAssemblyCount() >= 1);
+    assert(concrete->operatorAssemblyCount() <= evaluations);
+    assert(concrete->rightHandSideAssemblyCount() >= 1);
+    assert(concrete->rightHandSideAssemblyCount() <= evaluations);
+    assert(concrete->meshFileWriteCount() == 0);
+    assert(concrete->meshFileReadCount() == 0);
 }
