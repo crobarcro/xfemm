@@ -183,6 +183,7 @@ std::shared_ptr<const mesh::SolverMesh> AnalysisSession::ensureMesh()
         }
     }
     auto result = m_mesher->mesh(*m_model.m_problem, periodic, m_meshingOptions);
+    ++m_meshGenerations;
     m_meshDiagnostics = std::move(result.diagnostics);
     if (!result.succeeded())
         throw std::runtime_error("meshing failed");

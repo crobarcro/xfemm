@@ -201,6 +201,7 @@ public:
     const std::vector<mesh::MeshDiagnostic> &meshDiagnostics() const { return m_meshDiagnostics; }
     std::shared_ptr<const mesh::SolverMesh> mesh() const { return m_mesh; }
     std::uint64_t meshTopologyIdentity() const { return m_meshTopologyIdentity; }
+    std::size_t meshGenerationCount() const { return m_meshGenerations; }
 
     /** Select a mesher. The currently owned mesh is discarded. */
     void setMesher(std::shared_ptr<fmesher::MesherBackend> mesher);
@@ -243,6 +244,7 @@ private:
     std::shared_ptr<const mesh::SolverMesh> m_mesh;
     std::vector<mesh::MeshDiagnostic> m_meshDiagnostics;
     std::uint64_t m_meshTopologyIdentity = 0;
+    std::size_t m_meshGenerations = 0;
     Dirty m_dirty = Dirty::All;
     std::uint64_t m_modelRevision = 1;
     std::uint64_t m_parameterRevision = 1;

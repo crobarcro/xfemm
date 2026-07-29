@@ -29,6 +29,11 @@ public:
     std::size_t topologyImportCount() const { return m_topologyImports; }
     std::size_t orderingCount() const { return m_orderings; }
     std::size_t couplingRegenerationCount() const { return m_couplingRegenerations; }
+    std::size_t operatorAssemblyCount() const { return m_operatorAssemblies; }
+    std::size_t rightHandSideAssemblyCount() const { return m_rightHandSideAssemblies; }
+    std::size_t solveCount() const { return m_solves; }
+    std::size_t meshFileReadCount() const { return m_meshFileReads; }
+    std::size_t meshFileWriteCount() const { return m_meshFileWrites; }
 
 private:
     void configure(const ModelDefinition &, const SolveParameters &,
@@ -40,6 +45,13 @@ private:
     std::size_t m_topologyImports = 0;
     std::size_t m_orderings = 0;
     std::size_t m_couplingRegenerations = 0;
+    std::size_t m_operatorAssemblies = 0;
+    std::size_t m_rightHandSideAssemblies = 0;
+    std::size_t m_solves = 0;
+    // The session path is in-memory. These counters make accidental legacy
+    // mesh-file I/O observable to callers and regression tests.
+    std::size_t m_meshFileReads = 0;
+    std::size_t m_meshFileWrites = 0;
 };
 
 } // namespace femm

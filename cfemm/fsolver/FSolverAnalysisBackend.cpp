@@ -8,17 +8,10 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
-#include <fstream>
 #include <stdexcept>
 
 namespace femm {
 namespace {
-
-std::string edgeFileName(const void *owner)
-{
-    return "/tmp/xfemm-analysis-" + std::to_string(reinterpret_cast<std::uintptr_t>(owner));
-}
 
 template<class Target, class Source>
 Target magneticCopy(const std::unique_ptr<Source> &source, const char *description)
@@ -144,15 +137,11 @@ void FSolverAnalysisBackend::synchronize(const ModelDefinition &model,
     if (topologyIdentity != m_topologyIdentity) {
         if (m_solver->LoadMesh(*mesh) != NOERROR)
             throw std::runtime_error("FSolver could not import the session mesh");
-        const std::string base = edgeFileName(this);
-        m_solver->PathName = base;
-        std::ofstream edge(base + ".edge");
-        edge << mesh->edges.size() << " 1\n";
-        for (std::size_t i = 0; i < mesh->edges.size(); ++i)
-            edge << i << ' ' << mesh->edges[i].first << ' ' << mesh->edges[i].second
-                 << ' ' << mesh->edges[i].boundaryMarker << '\n';
-        edge.close();
-        if (!m_solver->Cuthill(true))
+        std::vector<std::pair<std::size_t, std::size_t>> connectivity;
+        connectivity.reserve(mesh->edges.size());
+        for (const auto &edge : mesh->edges)
+            connectivity.emplace_back(edge.first, edge.second);
+        if (!m_solver->Cuthill(connectivity))
             throw std::runtime_error("FSolver Cuthill-McKee ordering failed");
         m_topologyIdentity = topologyIdentity;
         m_mesh = std::move(mesh);
@@ -166,6 +155,11 @@ TrialSolution FSolverAnalysisBackend::solve(const ModelDefinition &model,
                                             const SolveParameters &parameters,
                                             const PreparedAnalysis &prepared)
 {
+    // Static2D/StaticAxisymmetric currently assemble both parts of a fresh
+    // linear system on every evaluation.  Keep the two counters separate so
+    // future dirty-flag based reuse can be introduced without changing the API.
+    ++m_operatorAssemblies;
+    ++m_rightHandSideAssemblies;
     configure(model, parameters, prepared);
     if (parameters.frequency != 0)
         throw std::invalid_argument("FSolverAnalysisBackend currently returns real (zero-frequency) solutions only");
@@ -177,6 +171,7 @@ TrialSolution FSolverAnalysisBackend::solve(const ModelDefinition &model,
                       ? m_solver->Static2D(system) : m_solver->StaticAxisymmetric(system);
     if (!solved)
         throw std::runtime_error("FSolver failed to solve the analysis");
+    ++m_solves;
 
     TrialSolution result;
     result.real.emplace();
