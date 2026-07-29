@@ -320,6 +320,9 @@ int FEASolver<PointPropT,BoundaryPropT,BlockPropT,CircuitPropT,BlockLabelT,MeshE
 	// remap air gap element information
 	for(i=0; i<NumAirGapElems; i++)
 	{
+		for(auto &point : agelist[i].innerRingTopology) point.n0=newnum[point.n0];
+		for(auto &point : agelist[i].outerRingTopology) point.n0=newnum[point.n0];
+		for(auto &node : agelist[i].nodeNums) node=newnum[node];
 		for(int k=0; k<=agelist[i].totalArcElements; k++)
 		{
 			agelist[i].quadNode[k].n0=newnum[agelist[i].quadNode[k].n0];

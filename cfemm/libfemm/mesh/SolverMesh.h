@@ -72,6 +72,15 @@ struct SolverMesh {
         std::array<double, 4> weights{{0.0, 0.0, 0.0, 0.0}};
     };
 
+    /** One virtual node in a reusable, full 360-degree AGE ring. */
+    struct AirGapRingPoint {
+        MeshIndex node = InvalidMeshIndex;
+        /** Angular position in units of one annular element, before positioning. */
+        double elementPosition = 0.0;
+        /** Periodic sign (+1, or alternating +/-1 for an antiperiodic sector). */
+        double weight = 1.0;
+    };
+
     /**
      * Optional value-only air-gap data represented by the magnetic air-gap
      * extension following the periodic constraints in a `.pbc` file. A `.pbc`
@@ -94,6 +103,9 @@ struct SolverMesh {
         double centerX = 0.0; ///< Metres.
         double centerY = 0.0; ///< Metres.
         std::vector<AirGapQuadraturePoint> quadraturePoints;
+        /** Position-independent ring topology used to regenerate quadraturePoints. */
+        std::vector<AirGapRingPoint> innerRing;
+        std::vector<AirGapRingPoint> outerRing;
         /** Zero-based indices into SolverMesh::nodes; InvalidMeshIndex means unset. */
         std::vector<MeshIndex> nodeIndices;
     };

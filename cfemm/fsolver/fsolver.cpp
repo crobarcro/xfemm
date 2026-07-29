@@ -475,6 +475,18 @@ LoadMeshErr FSolver::LoadMesh(const femm::mesh::SolverMesh &mesh)
             point.w0=sourcePoint.weights[0]; point.w1=sourcePoint.weights[1]; point.w2=sourcePoint.weights[2]; point.w3=sourcePoint.weights[3];
             age.quadNode.push_back(point);
         }
+        for (const auto &ringPoint : source.innerRing) {
+            if (!validIndex(ringPoint.node, nodeCount)) return BADPBCFILE;
+            femm::CQuadPoint point; point.n0 = static_cast<int>(ringPoint.node);
+            point.w0 = ringPoint.elementPosition; point.w1 = ringPoint.weight;
+            age.innerRingTopology.push_back(point);
+        }
+        for (const auto &ringPoint : source.outerRing) {
+            if (!validIndex(ringPoint.node, nodeCount)) return BADPBCFILE;
+            femm::CQuadPoint point; point.n0 = static_cast<int>(ringPoint.node);
+            point.w0 = ringPoint.elementPosition; point.w1 = ringPoint.weight;
+            age.outerRingTopology.push_back(point);
+        }
         for (auto index : source.nodeIndices) {
             if (!validIndex(index, nodeCount)) return BADPBCFILE;
             age.nodeNums.push_back(static_cast<int>(index));

@@ -42,12 +42,18 @@ bool validPeriodicTopology(const femm::mesh::SolverMesh &mesh)
             return false;
     for (const auto &airGap : mesh.airGaps) {
         if (airGap.totalArcElements == 0 || airGap.quadraturePoints.empty()
-                || airGap.nodeIndices.empty()) return false;
+                || airGap.nodeIndices.empty() || airGap.innerRing.empty()
+                || airGap.outerRing.empty()
+                || airGap.innerRing.size() != airGap.outerRing.size()) return false;
         for (const auto node : airGap.nodeIndices)
             if (!validNodeIndex(node, mesh)) return false;
         for (const auto &point : airGap.quadraturePoints)
             for (const auto node : point.nodes)
                 if (!validNodeIndex(node, mesh)) return false;
+        for (const auto &point : airGap.innerRing)
+            if (!validNodeIndex(point.node, mesh)) return false;
+        for (const auto &point : airGap.outerRing)
+            if (!validNodeIndex(point.node, mesh)) return false;
     }
     return true;
 }

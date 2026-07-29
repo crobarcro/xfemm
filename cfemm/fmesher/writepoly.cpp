@@ -1612,11 +1612,19 @@ int FMesher::doPeriodicTriangleWorkflow(string PathName, femm::mesh::SolverMesh 
 		airGap.innerShift = InnerRing[0].w0;
 		airGap.outerShift = OuterRing[0].w0;
 		airGap.quadraturePoints.reserve(static_cast<size_t>(n + 1));
+		airGap.innerRing.reserve(InnerRing.size());
+		airGap.outerRing.reserve(OuterRing.size());
 		airGap.nodeIndices.reserve(InnerRing.size() + OuterRing.size());
-		for (const auto &point : InnerRing)
+		for (const auto &point : InnerRing) {
 			airGap.nodeIndices.push_back(static_cast<femm::mesh::MeshIndex>(point.n0));
-		for (const auto &point : OuterRing)
+			airGap.innerRing.push_back({static_cast<femm::mesh::MeshIndex>(point.n0),
+				point.w0 - agelst[k]->InnerAngle / dtta, point.w1});
+		}
+		for (const auto &point : OuterRing) {
 			airGap.nodeIndices.push_back(static_cast<femm::mesh::MeshIndex>(point.n0));
+			airGap.outerRing.push_back({static_cast<femm::mesh::MeshIndex>(point.n0),
+				point.w0 - agelst[k]->OuterAngle / dtta, point.w1});
+		}
 
 		for(i=0;i<=n;i++)
 		{
