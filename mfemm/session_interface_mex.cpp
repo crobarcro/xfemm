@@ -97,8 +97,9 @@ private:
 
 mxArray *trialStruct(const femm::TrialSolution &trial)
 {
-    const char *fields[] = {"id", "time", "current", "fluxLinkage", "terminalVoltage", "A"};
-    mxArray *out = mxCreateStructMatrix(1, 1, 6, fields);
+    const char *fields[] = {"id", "time", "current", "fluxLinkage",
+                            "terminalVoltage", "A", "x", "y"};
+    mxArray *out = mxCreateStructMatrix(1, 1, 8, fields);
     mxSetField(out, 0, "id", mxCreateDoubleScalar(static_cast<double>(trial.id)));
     mxSetField(out, 0, "time", mxCreateDoubleScalar(trial.time));
     const mwSize count = trial.circuits.size();
@@ -120,6 +121,15 @@ mxArray *trialStruct(const femm::TrialSolution &trial)
     mxArray *nodes = mxCreateDoubleMatrix(a.size(), 1, mxREAL);
     for (mwSize i = 0; i < a.size(); ++i) mxGetPr(nodes)[i] = a[i];
     mxSetField(out, 0, "A", nodes);
+    const auto &xValues = trial.real ? trial.real->nodal.x : empty;
+    const auto &yValues = trial.real ? trial.real->nodal.y : empty;
+    mxArray *x = mxCreateDoubleMatrix(xValues.size(), 1, mxREAL);
+    mxArray *y = mxCreateDoubleMatrix(yValues.size(), 1, mxREAL);
+    for (mwSize i = 0; i < xValues.size(); ++i) {
+        mxGetPr(x)[i] = xValues[i];
+        mxGetPr(y)[i] = yValues[i];
+    }
+    mxSetField(out, 0, "x", x); mxSetField(out, 0, "y", y);
     return out;
 }
 

@@ -87,7 +87,8 @@ classdef mfemmsession < handle
         function out = solve(this)
             %SOLVE Synchronize, solve, and return a trial result struct.
             %   Fields include circuit current, flux linkage, optional
-            %   terminal voltage, and nodal magnetic vector potential A.
+            %   terminal voltage, nodal magnetic vector potential A, and
+            %   corresponding mesh-node coordinates x and y.
             out = session_interface_mex('solve', this.objectHandle);
         end
 

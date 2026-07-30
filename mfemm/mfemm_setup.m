@@ -79,6 +79,7 @@ function varargout = mfemm_setup(varargin)
     addpath (fullfile (thisfilepath, 'preproc'));
     addpath (fullfile (thisfilepath, 'postproc'));
     addpath (fullfile (thisfilepath, 'examples'));
+    addpath (fullfile (thisfilepath, 'testing'));
     addpath (fullfile (thisfilepath, 'visualisation'));
 
     % parse inputs
