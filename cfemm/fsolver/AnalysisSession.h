@@ -140,6 +140,9 @@ struct CircuitPortResult {
 /** Real-valued magnetic vector potential in solver node order. */
 struct RealNodalSolution {
     std::vector<double> magneticVectorPotential;
+    /** Mesh coordinates in the same (possibly reordered) solver-node order. */
+    std::vector<double> x;
+    std::vector<double> y;
 };
 
 struct RealCircuitPortResult {

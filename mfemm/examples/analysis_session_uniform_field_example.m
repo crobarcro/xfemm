@@ -1,0 +1,70 @@
+function result = analysis_session_uniform_field_example(varargin)
+%ANALYSIS_SESSION_UNIFORM_FIELD_EXAMPLE Verify MFEMMSESSION analytically.
+%   RESULT = ANALYSIS_SESSION_UNIFORM_FIELD_EXAMPLE creates a one metre
+%   square of air with vector potential A = B0*x prescribed along its
+%   boundary. Because that potential is linear, the finite-element solution
+%   is exactly A = B0*x on any conforming first-order mesh and the magnetic flux
+%   density is the uniform field B = [0,-B0]. The function solves through
+%   MFEMMSESSION and asserts that the native nodal result agrees with the
+%   analytical vector potential.
+%
+%   ...('Backend', NAME) selects 'triangle' (default) or 'tangle'.
+%   ...('KeepProblem', true) retains the generated .fem file and returns its
+%   path in RESULT.problemFile. This is useful for inspecting the example.
+%
+%   This example is also the MATLAB and GNU Octave MEX integration test.
+
+    options.Backend = 'triangle';
+    options.KeepProblem = false;
+    options = mfemmdeps.parseoptions(options, varargin);
+
+    B0 = 0.25; % tesla
+    problem = newproblem_mfemm('planar', 'Frequency', 0, ...
+                               'LengthUnits', 'meters');
+    [problem, ~, nodeids] = addnodes_mfemm(problem, [0, 1, 1, 0], ...
+                                                   [0, 0, 1, 1]);
+    [problem, ~, boundaryName] = addboundaryprop_mfemm(problem, ...
+                                         'UniformField', 0, 'A1', B0);
+    problem = addsegments_mfemm(problem, nodeids, ...
+                                nodeids([2, 3, 4, 1]), ...
+                                'BoundaryMarker', boundaryName);
+    problem = addblocklabel_mfemm(problem, 0.5, 0.5, ...
+                                  'BlockType', 'Air', 'MaxArea', 1);
+
+    problemFile = [tempname(), '.fem'];
+    writefemmfile(problemFile, problem);
+    cleanup = onCleanup(@() deleteProblem(problemFile, options.KeepProblem));
+
+    session = mfemmsession(problemFile);
+    session.setBackend(options.Backend);
+    elementCount = session.mesh();
+    trial = session.solve();
+    expectedA = B0 * trial.x;
+    assert(numel(trial.A) == numel(trial.x), ...
+           'MFEMM:session:unexpectedNodes', ...
+           'Result coordinates must correspond to the nodal solution.');
+    assert(max(abs(trial.A - expectedA)) < 1e-7, ...
+           'MFEMM:session:analyticalMismatch', ...
+           'Session result does not match A = B0*x.');
+
+    session.accept();
+    stateFile = [tempname(), '.mat'];
+    stateCleanup = onCleanup(@() deleteIfPresent(stateFile));
+    session.saveState(stateFile);
+    session.reject();
+    session.loadState(stateFile);
+
+    result = trial;
+    result.B = [0, -B0];
+    result.elementCount = elementCount;
+    if options.KeepProblem, result.problemFile = problemFile; end
+    clear cleanup stateCleanup session;
+end
+
+function deleteProblem(filename, keep)
+    if ~keep, deleteIfPresent(filename); end
+end
+
+function deleteIfPresent(filename)
+    if exist(filename, 'file'), delete(filename); end
+end

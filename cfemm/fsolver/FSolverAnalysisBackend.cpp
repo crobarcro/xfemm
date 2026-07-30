@@ -178,6 +178,13 @@ TrialSolution FSolverAnalysisBackend::solve(const ModelDefinition &model,
     result.real->nodal.magneticVectorPotential.reserve(m_solver->NumNodes);
     for (int i = 0; i < m_solver->NumNodes; ++i)
         result.real->nodal.magneticVectorPotential.push_back(system.b[i]);
+    result.real->nodal.x.reserve(m_solver->NumNodes);
+    result.real->nodal.y.reserve(m_solver->NumNodes);
+    for (const auto &node : m_solver->meshnode) {
+        // FSolver stores imported coordinates internally in centimetres.
+        result.real->nodal.x.push_back(node.x / 100.0);
+        result.real->nodal.y.push_back(node.y / 100.0);
+    }
     for (std::size_t i = 0; i < m_solver->circproplist.size(); ++i) {
         const auto &constraint = parameters.circuitConstraints.at(CircuitId{i});
         CComplex current = constraint.kind == CircuitConstraintKind::PrescribedCurrent

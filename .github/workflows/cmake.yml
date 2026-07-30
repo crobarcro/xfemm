@@ -37,3 +37,42 @@ jobs:
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest -C ${{env.BUILD_TYPE}}
 
+  octave-mex:
+    name: GNU Octave MEX interface
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install GNU Octave toolchain
+      run: sudo apt-get update && sudo apt-get install -y octave octave-dev
+    - name: Build and test the session wrapper
+      run: >-
+        octave --no-gui --quiet --eval
+        "addpath(fullfile(pwd, 'mfemm')); mfemm_setup('ForceMexRecompile', true,
+        'RunTests', false, 'Clean', true, 'Tidy', true, 'SessionOnly', true);
+        Test_mfemmsession;"
+
+  matlab-mex:
+    name: MATLAB MEX interface
+    # Pin the OS and MATLAB release as a supported MEX compiler pair. The
+    # ubuntu-latest image moved to Ubuntu 24.04/GCC 13, which is not supported
+    # by the MATLAB release used by this project.
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v4
+    - uses: matlab-actions/setup-matlab@v2
+      with:
+        release: R2024b
+    - name: Build the session wrapper
+      uses: matlab-actions/run-command@v2
+      with:
+        command: >-
+          addpath(fullfile(pwd, 'mfemm'));
+          mfemm_setup('ForceMexRecompile', true, 'RunTests', false,
+          'Clean', true, 'Tidy', true, 'SessionOnly', true);
+    - name: Test the session wrapper
+      uses: matlab-actions/run-command@v2
+      with:
+        command: >-
+          addpath(fullfile(pwd, 'mfemm'));
+          mfemm_setup('SessionOnly', true);
+          Test_mfemmsession;
