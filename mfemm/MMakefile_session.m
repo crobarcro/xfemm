@@ -28,11 +28,17 @@ function [rules,vars] = MMakefile_session (varargin)
 
     thisfilepath = strrep (thisfilepath, '\', '/');
 
+    if ispc || options.DoCrossBuildWin64
+        trilibraryflag = '-DCPU86';
+    else
+        trilibraryflag = '-DLINUX';
+    end
+
     %vars.LDFLAGS = '${LDFLAGS} -lstdc++ ''-Wl,--no-undefined''';
     vars.LDFLAGS = '${LDFLAGS} ''-Wl,--no-undefined''';
 
     % flags that will be passed direct to mex
-    vars.MEXFLAGS = ['${MEXFLAGS} -D_GLIBCXX_USE_CXX11_ABI=1 -I"../cfemm/fsolver" -I"../cfemm/fmesher" -I"../cfemm/fmesher/triangle" -I"../cfemm/libfemm" -I"../cfemm/libfemm/liblua" ', options.ExtraMEXFLAGS];
+    vars.MEXFLAGS = ['${MEXFLAGS} -D_GLIBCXX_USE_CXX11_ABI=1 -I"../cfemm/fsolver" -I"../cfemm/fmesher" -I"../cfemm/fmesher/triangle" -I"../cfemm/libfemm" -I"../cfemm/libfemm/liblua" ', trilibraryflag, options.ExtraMEXFLAGS];
     %vars.MEXFLAGS = ['${MEXFLAGS} -I"../cfemm/fsolver" -I"../cfemm/fmesher" -I"../cfemm/fmesher/triangle" -I"../cfemm/libfemm" -I"../cfemm/libfemm/liblua" '];
 
     if options.Verbose
@@ -137,7 +143,9 @@ function [rules,vars] = MMakefile_session (varargin)
     rules(end+1).target = 'tidy';
     rules(end).commands = { 'try; delete(''../cfemm/libfemm/liblua/*.${OBJ_EXT}''); catch; end;', ...
                             'try; delete(''../cfemm/libfemm/*.${OBJ_EXT}''); catch; end;', ...
+                            'try; delete(''../cfemm/fsolver/*.${OBJ_EXT}''); catch; end;', ...
                             'try; delete(''../cfemm/fmesher/*.${OBJ_EXT}''); catch; end;', ...
+                            'try; delete(''../cfemm/fmesher/triangle/*.${OBJ_EXT}''); catch; end;', ...
                             'try; delete(''*.${OBJ_EXT}''); catch; end;' };
     tidyruleind = numel (rules);
 

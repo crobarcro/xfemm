@@ -34,6 +34,10 @@ function varargout = mfemm_setup(varargin)
 %
 % 'Clean' - true/false flag indicating whether to run make clean before
 %
+% 'SessionOnly' - true/false flag. If true, compile only the high-level
+%   analysis session MEX gateway. This is useful for focused development and
+%   CI testing without rebuilding unrelated legacy gateways. Defaults false.
+%
 %
 % These may be supplied in any order. An example call the mfemm_setup might
 % be:
@@ -93,6 +97,7 @@ function varargout = mfemm_setup(varargin)
     options.Tidy = true;
     options.DebugSymbols = false;
     options.ExtraMEXFLAGS = '';
+    options.SessionOnly = false;
 
     options = mfemmdeps.parseoptions (options, varargin);
 
@@ -112,11 +117,18 @@ function varargout = mfemm_setup(varargin)
     % add it to the path
     addpath (mexdir);
 
-    if ~(exist('mexfsolver', 'file') == 3) ...
-            || ~(exist('mexfmesher', 'file') == 3) ...
-            || ~(exist('fpproc_interface_mex', 'file') == 3) ...
-            || ~(exist('session_interface_mex', 'file') == 3) ...
-            || options.ForceMexRecompile
+    if options.SessionOnly
+        needcompile = ~(exist('session_interface_mex', 'file') == 3) ...
+                      || options.ForceMexRecompile;
+    else
+        needcompile = ~(exist('mexfsolver', 'file') == 3) ...
+                      || ~(exist('mexfmesher', 'file') == 3) ...
+                      || ~(exist('fpproc_interface_mex', 'file') == 3) ...
+                      || ~(exist('session_interface_mex', 'file') == 3) ...
+                      || options.ForceMexRecompile;
+    end
+
+    if needcompile
 
         if options.Verbose
             fprintf('Compiling mex functions for mfemm.\n');
@@ -145,10 +157,21 @@ function varargout = mfemm_setup(varargin)
                          'MMakefile_hpproc.m', ...
                          'MMakefile_hsolver.m' };
 
+        if options.SessionOnly
+            makefilenames = {'MMakefile_session.m'};
+        end
+
         if options.ForceMexRecompile
             % run make clean for all projects to force complete
             % recompilation
-            delete (fullfile (mexdir, ['*.', thismexext]));
+            if options.SessionOnly
+                sessionmex = fullfile (mexdir, ['session_interface_mex.', thismexext]);
+                if exist(sessionmex, 'file')
+                    delete(sessionmex);
+                end
+            else
+                delete (fullfile (mexdir, ['*.', thismexext]));
+            end
             if options.Clean
                 for ind = 1:numel(makefilenames)
                     mmake.make ('clean', makefilenames{ind});
@@ -192,6 +215,10 @@ function varargout = mfemm_setup(varargin)
                         'fpproc_interface_mex', ...
                         'mexhsolver', ...
                         'hpproc_interface_mex'};
+
+        if options.SessionOnly
+            mexfilenames = {'session_interface_mex'};
+        end
 
         for ind = 1:numel(mexfilenames)
             movefile ([mexfilenames{ind}, '.',  thismexext], mexdir);

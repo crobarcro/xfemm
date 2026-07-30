@@ -48,7 +48,7 @@ jobs:
       run: >-
         octave --no-gui --quiet --eval
         "addpath(fullfile(pwd, 'mfemm')); mfemm_setup('ForceMexRecompile', true,
-        'RunTests', false, 'Clean', true, 'Tidy', true);
+        'RunTests', false, 'Clean', true, 'Tidy', true, 'SessionOnly', true);
         Test_mfemmsession;"
 
   matlab-mex:
@@ -63,5 +63,5 @@ jobs:
         command: >-
           addpath(fullfile(pwd, 'mfemm'));
           mfemm_setup('ForceMexRecompile', true, 'RunTests', false,
-          'Clean', true, 'Tidy', true);
+          'Clean', true, 'Tidy', true, 'SessionOnly', true);
           Test_mfemmsession;
