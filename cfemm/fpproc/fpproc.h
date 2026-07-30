@@ -52,6 +52,8 @@
 
 #include <vector>
 
+class MagneticSolutionSnapshot;
+
 //#ifndef PLANAR
 //#define PLANAR 0
 //#endif
@@ -85,6 +87,8 @@ class FPProc : public femm::PProcIface
 public:
 
     FPProc();
+    /** Initialize a mutable post-processing view directly from an immutable solution. */
+    explicit FPProc(const MagneticSolutionSnapshot &snapshot);
     virtual ~FPProc();
 
     // General problem attributes
@@ -275,6 +279,8 @@ public:
     bool NewDocument();
 //     virtual void Serialize(CArchive& ar);
     bool OpenDocument(std::string lpszPathName) override;
+    /** Freeze the currently loaded solution (selection and contour state are excluded). */
+    MagneticSolutionSnapshot solutionSnapshot() const;
     bool MakeMask();
     //bool LoadMeshNodesFromSolution(bool loadA, FILE* fp);
     //bool LoadMeshElementsFromSolution(FILE* fp);
@@ -287,6 +293,8 @@ public:
     bool luafired;
 
 private:
+
+    void copySolutionFrom(const FPProc &source);
 
     char warnBuf [1028];
 

@@ -39,6 +39,7 @@
 #include "lua.h"
 #include "lualib.h"
 #include "fpproc.h"
+#include "MagneticSolutionSnapshot.h"
 
 //#define DEBUG_FPPROC 1
 
@@ -124,6 +125,76 @@ FPProc::FPProc()
     // point to the PrintWarningMsg function
     WarnMessage = &PrintWarningMsg;
 
+}
+
+FPProc::FPProc(const MagneticSolutionSnapshot &snapshot)
+    : FPProc()
+{
+    copySolutionFrom(*snapshot.m_state);
+}
+
+MagneticSolutionSnapshot FPProc::solutionSnapshot() const
+{
+    auto copy = std::make_shared<FPProc>();
+    copy->copySolutionFrom(*this);
+    return MagneticSolutionSnapshot(std::move(copy));
+}
+
+void FPProc::copySolutionFrom(const FPProc &s)
+{
+    ClearDocument();
+    Frequency=s.Frequency; Depth=s.Depth; Precision=s.Precision;
+    LengthUnits=s.LengthUnits; problemType=s.problemType; Coords=s.Coords;
+    ProblemNote=s.ProblemNote; Smooth=s.Smooth;
+    bMultiplyDefinedLabels=s.bMultiplyDefinedLabels; WeightingScheme=s.WeightingScheme;
+    extRo=s.extRo; extRi=s.extRi; extZo=s.extZo; NumAirGapElems=s.NumAirGapElems;
+    PrevSoln=s.PrevSoln; PrevType=s.PrevType; A_High=s.A_High; A_Low=s.A_Low;
+    A_lb=s.A_lb; A_ub=s.A_ub; B_High=s.B_High; B_Low=s.B_Low; H_High=s.H_High;
+    d_LineIntegralPoints=s.d_LineIntegralPoints; d_ShiftH=s.d_ShiftH;
+    bHasMask=false; bIncremental=s.bIncremental;
+    for (int i=0;i<9;++i) for (int j=0;j<2;++j) {
+        PlotBounds[i][j]=s.PlotBounds[i][j]; d_PlotBounds[i][j]=s.d_PlotBounds[i][j];
+    }
+    nodelist=s.nodelist; linelist=s.linelist; arclist=s.arclist; blocklist=s.blocklist;
+    meshnode=s.meshnode; meshelem=s.meshelem;
+    blockproplist=s.blockproplist; lineproplist=s.lineproplist;
+    nodeproplist=s.nodeproplist; circproplist=s.circproplist;
+
+    agelist.reserve(s.agelist.size());
+    for (const auto &from : s.agelist) {
+        CAirGapElement to = from;
+        const auto copyComplex = [](const CComplex *p, int n) {
+            CComplex *q = p ? static_cast<CComplex *>(calloc(n, sizeof(CComplex))) : nullptr;
+            if (q)
+                std::copy(p, p+n, q);
+            return q;
+        };
+        const auto copyDouble = [](const double *p, int n) {
+            double *q = p ? static_cast<double *>(calloc(n, sizeof(double))) : nullptr;
+            if (q)
+                std::copy(p, p+n, q);
+            return q;
+        };
+        to.brc=copyComplex(from.brc,from.nn); to.brs=copyComplex(from.brs,from.nn);
+        to.btc=copyComplex(from.btc,from.nn); to.bts=copyComplex(from.bts,from.nn);
+        to.br=copyComplex(from.br,from.totalArcElements); to.bt=copyComplex(from.bt,from.totalArcElements);
+        to.brcPrev=copyDouble(from.brcPrev,from.nn); to.brsPrev=copyDouble(from.brsPrev,from.nn);
+        to.btcPrev=copyDouble(from.btcPrev,from.nn); to.btsPrev=copyDouble(from.btsPrev,from.nn);
+        to.brPrev=copyDouble(from.brPrev,from.totalArcElements); to.btPrev=copyDouble(from.btPrev,from.totalArcElements);
+        to.nh=from.nh ? static_cast<int *>(calloc(from.nn,sizeof(int))) : nullptr;
+        if (to.nh) std::copy(from.nh,from.nh+from.nn,to.nh);
+        agelist.push_back(to);
+    }
+
+    NumList=static_cast<int *>(calloc(meshnode.size(),sizeof(int)));
+    ConList=static_cast<int **>(calloc(meshnode.size(),sizeof(int *)));
+    for (const auto &e : meshelem) for (int j=0;j<3;++j) ++NumList[e.p[j]];
+    for (std::size_t i=0;i<meshnode.size();++i) ConList[i]=static_cast<int *>(calloc(NumList[i],sizeof(int)));
+    std::vector<int> offsets(meshnode.size());
+    for (std::size_t i=0;i<meshelem.size();++i) for (int j=0;j<3;++j) {
+        const int node=meshelem[i].p[j]; ConList[node][offsets[node]++]=static_cast<int>(i);
+    }
+    pmeshnode=&meshnode; pmeshelem=&meshelem;
 }
 
 /**
