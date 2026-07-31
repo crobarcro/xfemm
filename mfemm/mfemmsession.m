@@ -57,7 +57,6 @@ classdef mfemmsession < fpproc
                 this.sessionHandle = [];
             end
             this.removeTemporarySolution();
-            delete@fpproc(this);
         end
 
         function setBackend(this, name)

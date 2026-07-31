@@ -34,9 +34,10 @@ function varargout = mfemm_setup(varargin)
 %
 % 'Clean' - true/false flag indicating whether to run make clean before
 %
-% 'SessionOnly' - true/false flag. If true, compile only the high-level
-%   analysis session MEX gateway. This is useful for focused development and
-%   CI testing without rebuilding unrelated legacy gateways. Defaults false.
+% 'SessionOnly' - true/false flag. If true, compile the high-level analysis
+%   session MEX gateway and its magnetic post-processing gateway dependency.
+%   This is useful for focused development and CI testing without rebuilding
+%   unrelated solver gateways. Defaults false.
 %
 %
 % These may be supplied in any order. An example call the mfemm_setup might
@@ -119,6 +120,7 @@ function varargout = mfemm_setup(varargin)
 
     if options.SessionOnly
         needcompile = ~(exist('session_interface_mex', 'file') == 3) ...
+                      || ~(exist('fpproc_interface_mex', 'file') == 3) ...
                       || options.ForceMexRecompile;
     else
         needcompile = ~(exist('mexfsolver', 'file') == 3) ...
@@ -158,16 +160,19 @@ function varargout = mfemm_setup(varargin)
                          'MMakefile_hsolver.m' };
 
         if options.SessionOnly
-            makefilenames = {'MMakefile_session.m'};
+            makefilenames = {'MMakefile_session.m', 'MMakefile_fpproc.m'};
         end
 
         if options.ForceMexRecompile
             % run make clean for all projects to force complete
             % recompilation
             if options.SessionOnly
-                sessionmex = fullfile (mexdir, ['session_interface_mex.', thismexext]);
-                if exist(sessionmex, 'file')
-                    delete(sessionmex);
+                sessionmexfiles = {'session_interface_mex', 'fpproc_interface_mex'};
+                for ind = 1:numel(sessionmexfiles)
+                    sessionmex = fullfile (mexdir, [sessionmexfiles{ind}, '.', thismexext]);
+                    if exist(sessionmex, 'file')
+                        delete(sessionmex);
+                    end
                 end
             else
                 delete (fullfile (mexdir, ['*.', thismexext]));
@@ -217,7 +222,7 @@ function varargout = mfemm_setup(varargin)
                         'hpproc_interface_mex'};
 
         if options.SessionOnly
-            mexfilenames = {'session_interface_mex'};
+            mexfilenames = {'session_interface_mex', 'fpproc_interface_mex'};
         end
 
         for ind = 1:numel(mexfilenames)

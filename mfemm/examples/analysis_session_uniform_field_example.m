@@ -47,6 +47,13 @@ function result = analysis_session_uniform_field_example(varargin)
            'MFEMM:session:analyticalMismatch', ...
            'Session result does not match A = B0*x.');
 
+    % A solved session exposes the complete fpproc interface directly.
+    assert(session.nummeshnodes() == numel(trial.A));
+    B = session.getb(0.5, 0.5);
+    assert(max(abs(B - [0; -B0])) < 1e-7, ...
+           'MFEMM:session:postProcessorMismatch', ...
+           'Session post-processing does not match the analytical field.');
+
     session.accept();
     stateFile = [tempname(), '.mat'];
     stateCleanup = onCleanup(@() deleteIfPresent(stateFile));
