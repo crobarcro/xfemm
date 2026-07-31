@@ -74,8 +74,14 @@ public:
 
     void mesh() { m_session->ensureMesh(); }
     femm::AnalysisSession &session() { return *m_session; }
+    const femm::AnalysisSession &session() const { return *m_session; }
+    const femm::FSolverAnalysisBackend &solver() const { return *m_solver; }
     const std::string &backendName() const { return m_backendName; }
     femm::TrialSolution &trial() {
+        if (!m_trial) throw std::logic_error("there is no trial solution; call solve first");
+        return *m_trial;
+    }
+    const femm::TrialSolution &trial() const {
         if (!m_trial) throw std::logic_error("there is no trial solution; call solve first");
         return *m_trial;
     }
@@ -135,6 +141,29 @@ mxArray *trialStruct(const femm::TrialSolution &trial)
     return out;
 }
 
+mxArray *solveStatusStruct(const SessionGateway &gateway)
+{
+    const auto &trial = gateway.trial();
+    const auto &session = gateway.session();
+    const auto &solver = gateway.solver();
+    const char *fields[] = {"success", "id", "time", "nodeCount", "elementCount",
+                            "meshGenerationCount", "solveCount", "operatorAssemblyCount",
+                            "rightHandSideAssemblyCount"};
+    mxArray *out = mxCreateStructMatrix(1, 1, 9, fields);
+    mxSetField(out, 0, "success", mxCreateLogicalScalar(true));
+    mxSetField(out, 0, "id", mxCreateDoubleScalar(static_cast<double>(trial.id)));
+    mxSetField(out, 0, "time", mxCreateDoubleScalar(trial.time));
+    const auto mesh = session.mesh();
+    mxSetField(out, 0, "nodeCount", mxCreateDoubleScalar(mesh ? mesh->nodes.size() : 0));
+    mxSetField(out, 0, "elementCount", mxCreateDoubleScalar(mesh ? mesh->elements.size() : 0));
+    mxSetField(out, 0, "meshGenerationCount", mxCreateDoubleScalar(session.meshGenerationCount()));
+    mxSetField(out, 0, "solveCount", mxCreateDoubleScalar(solver.solveCount()));
+    mxSetField(out, 0, "operatorAssemblyCount", mxCreateDoubleScalar(solver.operatorAssemblyCount()));
+    mxSetField(out, 0, "rightHandSideAssemblyCount",
+               mxCreateDoubleScalar(solver.rightHandSideAssemblyCount()));
+    return out;
+}
+
 } // namespace
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
@@ -163,7 +192,7 @@ try {
         else if (kind == "coupled") session.setCircuitCoupled(id);
         else throw std::invalid_argument("constraint must be current, voltage, open, or coupled");
     } else if (command == "age") session.setAirGapAngle(session.model().airGap(stringValue(prhs[2], "AGE name")), scalarValue(prhs[3], "inner angle"), scalarValue(prhs[4], "outer angle"));
-    else if (command == "solve") { gateway->solve(); if (nlhs) plhs[0] = trialStruct(gateway->trial()); }
+    else if (command == "solve") { gateway->solve(); if (nlhs) plhs[0] = solveStatusStruct(*gateway); }
     else if (command == "result") plhs[0] = trialStruct(gateway->trial());
     else if (command == "export") gateway->writeSolution(stringValue(prhs[2], "solution path"));
     else if (command == "accept") gateway->accept();

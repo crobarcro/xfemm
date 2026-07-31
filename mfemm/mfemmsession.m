@@ -10,7 +10,7 @@ classdef mfemmsession < fpproc
 %       s.setBackend('tangle');
 %       s.setCircuit('phase-a', 'current', 10);
 %       s.setAGEPosition('airgap', rotorAngle, 0);
-%       result = s.solve();
+%       status = s.solve();
 %       s.accept();                 % or s.reject()
 %
 %   The accepted state can optionally be persisted with SAVESTATE and
@@ -26,8 +26,8 @@ classdef mfemmsession < fpproc
 %     setAGEPosition   - set inner and outer AGE angles in degrees
 %     setFrequency     - set analysis frequency
 %     setTime          - set the evaluation time
-%     solve            - create and return a disposable trial result
-%     result           - return the most recent trial result
+%     solve            - solve and return compact status/statistics
+%     result           - explicitly return the complete latest trial data
 %     accept           - accept the trial as the next initial state
 %     reject           - discard the trial without advancing state
 %     saveState        - save the accepted state to a MAT-file
@@ -95,16 +95,19 @@ classdef mfemmsession < fpproc
         end
 
         function out = solve(this)
-            %SOLVE Synchronize, solve, and return a trial result struct.
-            %   Fields include circuit current, flux linkage, optional
-            %   terminal voltage, nodal magnetic vector potential A, and
-            %   corresponding mesh-node coordinates x and y.
+            %SOLVE Synchronize, solve, and return compact status information.
+            %   The returned struct contains success, solution identity and
+            %   time, mesh sizes, and solver execution counters. Field and
+            %   circuit data are deliberately not copied into this result;
+            %   request quantities with the inherited FPPROC methods instead.
             out = session_interface_mex('solve', this.sessionHandle);
             this.refreshPostProcessor();
         end
 
         function out = result(this)
-            %RESULT Return the latest trial without solving again.
+            %RESULT Explicitly return the complete latest trial data.
+            %   This includes nodal A and coordinates and can be large. Prefer
+            %   the inherited FPPROC analysis methods for requested quantities.
             out = session_interface_mex('result', this.sessionHandle);
         end
 
