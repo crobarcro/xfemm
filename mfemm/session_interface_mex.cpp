@@ -65,9 +65,9 @@ public:
         femm::MagneticsReader reader(problem, errors);
         if (reader.parse(filename) != femm::F_FILE_OK)
             throw std::runtime_error("could not load magnetic problem: " + errors.str());
+        result->m_solver = std::make_shared<femm::FSolverAnalysisBackend>();
         result->m_session.reset(new femm::AnalysisSession(
-            femm::ModelDefinition(std::move(owned)),
-            std::make_shared<femm::FSolverAnalysisBackend>()));
+            femm::ModelDefinition(std::move(owned)), result->m_solver));
         result->m_filename = filename;
         return result;
     }
@@ -80,6 +80,7 @@ public:
         return *m_trial;
     }
     void solve() { m_trial.reset(new femm::TrialSolution(m_session->solve())); }
+    void writeSolution(const std::string &path) { trial(); m_solver->writeSolution(path); }
     void accept() { m_accepted = m_session->acceptSolution(trial()); m_session->setInitialState(m_accepted); }
     void reject() { m_trial.reset(); }
     void restore(std::shared_ptr<const femm::AcceptedState> state) {
@@ -90,6 +91,7 @@ public:
 private:
     SessionGateway() = default;
     std::unique_ptr<femm::AnalysisSession> m_session;
+    std::shared_ptr<femm::FSolverAnalysisBackend> m_solver;
     std::unique_ptr<femm::TrialSolution> m_trial;
     std::shared_ptr<const femm::AcceptedState> m_accepted;
     std::string m_filename, m_backendName = "triangle";
@@ -163,6 +165,7 @@ try {
     } else if (command == "age") session.setAirGapAngle(session.model().airGap(stringValue(prhs[2], "AGE name")), scalarValue(prhs[3], "inner angle"), scalarValue(prhs[4], "outer angle"));
     else if (command == "solve") { gateway->solve(); if (nlhs) plhs[0] = trialStruct(gateway->trial()); }
     else if (command == "result") plhs[0] = trialStruct(gateway->trial());
+    else if (command == "export") gateway->writeSolution(stringValue(prhs[2], "solution path"));
     else if (command == "accept") gateway->accept();
     else if (command == "reject") gateway->reject();
     else if (command == "state") {

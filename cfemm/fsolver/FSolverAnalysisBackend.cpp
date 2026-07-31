@@ -163,7 +163,8 @@ TrialSolution FSolverAnalysisBackend::solve(const ModelDefinition &model,
     configure(model, parameters, prepared);
     if (parameters.frequency != 0)
         throw std::invalid_argument("FSolverAnalysisBackend currently returns real (zero-frequency) solutions only");
-    CBigLinProb system;
+    m_lastSystem.reset(new CBigLinProb);
+    CBigLinProb &system = *m_lastSystem;
     system.Precision = m_solver->Precision;
     if (!system.Create(m_solver->NumNodes, m_solver->BandWidth))
         throw std::runtime_error("FSolver could not allocate the linear system");
@@ -199,6 +200,19 @@ TrialSolution FSolverAnalysisBackend::solve(const ModelDefinition &model,
         result.real->circuits.push_back({CircuitId{i}, current.re, 0.0, realVoltage});
     }
     return result;
+}
+
+void FSolverAnalysisBackend::writeSolution(const std::string &ansPath)
+{
+    if (!m_lastSystem)
+        throw std::logic_error("there is no solved field to export");
+    if (ansPath.size() < 4 || ansPath.substr(ansPath.size() - 4) != ".ans")
+        throw std::invalid_argument("solution export path must end in .ans");
+    m_solver->PathName = ansPath.substr(0, ansPath.size() - 4);
+    // The legacy writer handles both planar and axisymmetric static fields.
+    const bool written = m_solver->WriteStatic2D(*m_lastSystem);
+    if (!written)
+        throw std::runtime_error("FSolver could not export the session solution");
 }
 
 } // namespace femm

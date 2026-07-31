@@ -26,6 +26,9 @@ public:
     TrialSolution solve(const ModelDefinition &, const SolveParameters &,
                         const PreparedAnalysis &) override;
 
+    /** Write the most recently solved field in the legacy .ans format. */
+    void writeSolution(const std::string &ansPath);
+
     std::size_t topologyImportCount() const { return m_topologyImports; }
     std::size_t orderingCount() const { return m_orderings; }
     std::size_t couplingRegenerationCount() const { return m_couplingRegenerations; }
@@ -40,6 +43,7 @@ private:
                    const PreparedAnalysis &);
     void positionAirGaps(const PreparedAnalysis &);
     std::unique_ptr<FSolver> m_solver;
+    std::unique_ptr<CBigLinProb> m_lastSystem;
     std::shared_ptr<const mesh::SolverMesh> m_mesh;
     std::uint64_t m_topologyIdentity = 0;
     std::size_t m_topologyImports = 0;
