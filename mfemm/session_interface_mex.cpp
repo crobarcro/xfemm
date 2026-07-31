@@ -65,21 +65,28 @@ public:
         femm::MagneticsReader reader(problem, errors);
         if (reader.parse(filename) != femm::F_FILE_OK)
             throw std::runtime_error("could not load magnetic problem: " + errors.str());
+        result->m_solver = std::make_shared<femm::FSolverAnalysisBackend>();
         result->m_session.reset(new femm::AnalysisSession(
-            femm::ModelDefinition(std::move(owned)),
-            std::make_shared<femm::FSolverAnalysisBackend>()));
+            femm::ModelDefinition(std::move(owned)), result->m_solver));
         result->m_filename = filename;
         return result;
     }
 
     void mesh() { m_session->ensureMesh(); }
     femm::AnalysisSession &session() { return *m_session; }
+    const femm::AnalysisSession &session() const { return *m_session; }
+    const femm::FSolverAnalysisBackend &solver() const { return *m_solver; }
     const std::string &backendName() const { return m_backendName; }
     femm::TrialSolution &trial() {
         if (!m_trial) throw std::logic_error("there is no trial solution; call solve first");
         return *m_trial;
     }
+    const femm::TrialSolution &trial() const {
+        if (!m_trial) throw std::logic_error("there is no trial solution; call solve first");
+        return *m_trial;
+    }
     void solve() { m_trial.reset(new femm::TrialSolution(m_session->solve())); }
+    void writeSolution(const std::string &path) { trial(); m_solver->writeSolution(path); }
     void accept() { m_accepted = m_session->acceptSolution(trial()); m_session->setInitialState(m_accepted); }
     void reject() { m_trial.reset(); }
     void restore(std::shared_ptr<const femm::AcceptedState> state) {
@@ -90,6 +97,7 @@ public:
 private:
     SessionGateway() = default;
     std::unique_ptr<femm::AnalysisSession> m_session;
+    std::shared_ptr<femm::FSolverAnalysisBackend> m_solver;
     std::unique_ptr<femm::TrialSolution> m_trial;
     std::shared_ptr<const femm::AcceptedState> m_accepted;
     std::string m_filename, m_backendName = "triangle";
@@ -133,6 +141,29 @@ mxArray *trialStruct(const femm::TrialSolution &trial)
     return out;
 }
 
+mxArray *solveStatusStruct(const SessionGateway &gateway)
+{
+    const auto &trial = gateway.trial();
+    const auto &session = gateway.session();
+    const auto &solver = gateway.solver();
+    const char *fields[] = {"success", "id", "time", "nodeCount", "elementCount",
+                            "meshGenerationCount", "solveCount", "operatorAssemblyCount",
+                            "rightHandSideAssemblyCount"};
+    mxArray *out = mxCreateStructMatrix(1, 1, 9, fields);
+    mxSetField(out, 0, "success", mxCreateLogicalScalar(true));
+    mxSetField(out, 0, "id", mxCreateDoubleScalar(static_cast<double>(trial.id)));
+    mxSetField(out, 0, "time", mxCreateDoubleScalar(trial.time));
+    const auto mesh = session.mesh();
+    mxSetField(out, 0, "nodeCount", mxCreateDoubleScalar(mesh ? mesh->nodes.size() : 0));
+    mxSetField(out, 0, "elementCount", mxCreateDoubleScalar(mesh ? mesh->elements.size() : 0));
+    mxSetField(out, 0, "meshGenerationCount", mxCreateDoubleScalar(session.meshGenerationCount()));
+    mxSetField(out, 0, "solveCount", mxCreateDoubleScalar(solver.solveCount()));
+    mxSetField(out, 0, "operatorAssemblyCount", mxCreateDoubleScalar(solver.operatorAssemblyCount()));
+    mxSetField(out, 0, "rightHandSideAssemblyCount",
+               mxCreateDoubleScalar(solver.rightHandSideAssemblyCount()));
+    return out;
+}
+
 } // namespace
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
@@ -161,8 +192,9 @@ try {
         else if (kind == "coupled") session.setCircuitCoupled(id);
         else throw std::invalid_argument("constraint must be current, voltage, open, or coupled");
     } else if (command == "age") session.setAirGapAngle(session.model().airGap(stringValue(prhs[2], "AGE name")), scalarValue(prhs[3], "inner angle"), scalarValue(prhs[4], "outer angle"));
-    else if (command == "solve") { gateway->solve(); if (nlhs) plhs[0] = trialStruct(gateway->trial()); }
+    else if (command == "solve") { gateway->solve(); if (nlhs) plhs[0] = solveStatusStruct(*gateway); }
     else if (command == "result") plhs[0] = trialStruct(gateway->trial());
+    else if (command == "export") gateway->writeSolution(stringValue(prhs[2], "solution path"));
     else if (command == "accept") gateway->accept();
     else if (command == "reject") gateway->reject();
     else if (command == "state") {

@@ -38,14 +38,24 @@ function result = analysis_session_uniform_field_example(varargin)
     session = mfemmsession(problemFile);
     session.setBackend(options.Backend);
     elementCount = session.mesh();
-    trial = session.solve();
-    expectedA = B0 * trial.x;
-    assert(numel(trial.A) == numel(trial.x), ...
-           'MFEMM:session:unexpectedNodes', ...
-           'Result coordinates must correspond to the nodal solution.');
-    assert(max(abs(trial.A - expectedA)) < 1e-7, ...
+    status = session.solve();
+    assert(status.success && status.elementCount == elementCount);
+    assert(~isfield(status, 'A') && ~isfield(status, 'x') && ~isfield(status, 'y'), ...
+           'MFEMM:session:unexpectedFieldData', ...
+           'SOLVE status must not copy the nodal field solution.');
+
+    sampleX = [0.25, 0.5, 0.75];
+    sampleA = session.geta(sampleX, 0.5 * ones(size(sampleX)));
+    assert(max(abs(sampleA - B0 * sampleX)) < 1e-7, ...
            'MFEMM:session:analyticalMismatch', ...
            'Session result does not match A = B0*x.');
+
+    % A solved session exposes the complete fpproc interface directly.
+    assert(session.nummeshnodes() == status.nodeCount);
+    B = session.getb(0.5, 0.5);
+    assert(max(abs(B - [0; -B0])) < 1e-7, ...
+           'MFEMM:session:postProcessorMismatch', ...
+           'Session post-processing does not match the analytical field.');
 
     session.accept();
     stateFile = [tempname(), '.mat'];
@@ -54,7 +64,7 @@ function result = analysis_session_uniform_field_example(varargin)
     session.reject();
     session.loadState(stateFile);
 
-    result = trial;
+    result = status;
     result.B = [0, -B0];
     result.elementCount = elementCount;
     if options.KeepProblem, result.problemFile = problemFile; end
