@@ -1,4 +1,4 @@
-# Python `femmsession` interface plan
+# Python `FemmSession` interface plan
 
 ## Scope and compatibility target
 
@@ -12,9 +12,9 @@ constructed or user-visible `fpproc` object.
 The proposed import and construction syntax is:
 
 ```python
-from xfemm import femmsession
+from xfemm import FemmSession
 
-with femmsession("motor.fem") as session:
+with FemmSession("motor.fem") as session:
     session.setBackend("tangle")
     session.setCircuit("phase-a", "current", 10 + 0j)
     session.setAGEPosition("airgap", rotor_angle, 0.0)
@@ -23,9 +23,10 @@ with femmsession("motor.fem") as session:
     session.accept()
 ```
 
-`FemmSession` may also be exported as a PEP 8-friendly alias, but `femmsession`
-is the cross-language compatibility name. The name deliberately omits the `m`
-from mfemm because the Python class is not MATLAB-specific. Existing MATLAB
+`FemmSession` is the sole public Python class name. It follows Python class-naming
+conventions and deliberately omits the `m` from mfemm because it is not
+MATLAB-specific. MATLAB keeps the idiomatic package-qualified spelling
+`xfemm.femmsession`. Existing MATLAB
 camel-case method spellings are intentional. Adding snake-case aliases is not
 part of the first release.
 
@@ -64,7 +65,7 @@ In-memory post-processing is a version-1 requirement, not a later optimization.
 the solved model, mesh, nodal values, circuits, and AGE data and install a native
 post-processor view over that snapshot. Every point, contour, block, mesh,
 circuit, and air-gap query is then immediately available on the same
-`femmsession` instance. The normal solve/query path must neither write nor parse
+`FemmSession` instance. The normal solve/query path must neither write nor parse
 an `.ans` file, and it must work in a directory where the process has no write
 permission.
 
@@ -89,6 +90,24 @@ concurrently only after tests demonstrate that the underlying solver has no
 process-global mutable state. Until then, document all solve/post-processing
 calls as serialized. Release the GIL around long native meshing and solving
 operations only when that condition is satisfied.
+
+### Initial implementation status
+
+The first implementation slice now lives under `python/` and exports only the
+idiomatic `FemmSession` name. It already binds model loading, Triangle/Tangle
+selection, meshing, circuit/AGE/frequency/time setters, solve/result,
+accept/reject, lifecycle management, basic mesh tables, and NumPy `geta`/`getb`
+queries. Nodal values are mapped back onto the owned `SolverMesh` in memory and
+the point queries use element interpolation; tests verify that the analytical
+uniform-field workflow creates no `.ans` file.
+
+This slice is intentionally not presented as the finished post-processor.
+`getb` is currently the unsmoothed planar element gradient, and the full
+material-aware point values, axisymmetric field conversion, smoothing,
+contours, block/circuit integrals, groups, and AGE harmonics still require the
+neutral solution-data/`FPProc` integration described above. Unsupported methods
+are absent rather than returning approximate or fabricated data. Explicit
+`.ans` and accepted-state persistence are also still pending.
 
 ## Python data conventions
 
@@ -137,7 +156,7 @@ It must be called out prominently in migration documentation.
 
 | Method | Python signature | Return contract |
 |---|---|---|
-| constructor | `femmsession(filename)` | New open session; raises on parse failure. |
+| constructor | `FemmSession(filename)` | New open session; raises on parse failure. |
 | `close` | `close()` | `None`; idempotently releases native resources. |
 | context manager | `__enter__()`, `__exit__(...)` | Returns self and always calls `close`. |
 | `setBackend` | `setBackend(name)` | `None`; accepts case-insensitive `"triangle"` or `"tangle"`. |
@@ -285,7 +304,7 @@ disabled. It may be moved only through ordinary Python reference assignment.
 2. **The MATLAB surface includes inherited methods.** A Python implementation
    could accidentally expose only the session gateway methods and force users
    into a second post-processor object. This plan instead puts every
-   computational session and post-processing method on `femmsession` itself and
+   computational session and post-processing method on `FemmSession` itself and
    defers only plotting to milestone 2.
 3. **The current MATLAB refresh is file-backed.** Reusing it would make hidden
    file I/O part of every Python solve and undermine optimization-loop use. The
@@ -324,13 +343,11 @@ The following choices are proposed defaults, but should be explicitly approved:
    than literal MATLAB `(fields, n)` output?
 2. **Indexing:** retain one-based indices for compatibility (proposed), or make
    all Python indices zero-based and provide an opt-in compatibility mode?
-3. **Class naming:** the cross-language class name is settled as `femmsession`;
-   should Python additionally export the conventional `FemmSession` alias?
-4. **State files:** is semantic compatibility sufficient, or must Python read
+3. **State files:** is semantic compatibility sufficient, or must Python read
    and write MATLAB `saveState` MAT-files in version 1?
-5. **Plotting:** is deferring the three plotting helpers acceptable for the
+4. **Plotting:** is deferring the three plotting helpers acceptable for the
    first usable release?
-6. **Platform baseline:** are CPython 3.10+, NumPy 1.23+, and 64-bit desktop
+5. **Platform baseline:** are CPython 3.10+, NumPy 1.23+, and 64-bit desktop
    platforms acceptable?
 
 ## Implementation milestones and acceptance tests
@@ -348,7 +365,7 @@ The following choices are proposed defaults, but should be explicitly approved:
    construction, cleanup, setters, mesh, solve/result, accept/reject, context
    management, and direct ownership of the snapshot-backed post-processor.
 5. **Computational post-processing:** implement point, contour, block, circuit,
-   mesh, group, and air-gap methods on `femmsession` with centralized NumPy
+   mesh, group, and air-gap methods on `FemmSession` with centralized NumPy
    conversions.
 6. **Persistence:** add schema validation, model/ABI identity checking, corrupt
    file tests, and atomic writes.
