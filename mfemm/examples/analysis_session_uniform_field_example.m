@@ -1,11 +1,11 @@
 function result = analysis_session_uniform_field_example(varargin)
-%ANALYSIS_SESSION_UNIFORM_FIELD_EXAMPLE Verify MFEMMSESSION analytically.
+%ANALYSIS_SESSION_UNIFORM_FIELD_EXAMPLE Verify FEMMSESSION analytically.
 %   RESULT = ANALYSIS_SESSION_UNIFORM_FIELD_EXAMPLE creates a one metre
 %   square of air with vector potential A = B0*x prescribed along its
 %   boundary. Because that potential is linear, the finite-element solution
 %   is exactly A = B0*x on any conforming first-order mesh and the magnetic flux
 %   density is the uniform field B = [0,-B0]. The function solves through
-%   MFEMMSESSION and asserts that the native nodal result agrees with the
+%   FEMMSESSION and asserts that the native nodal result agrees with the
 %   analytical vector potential.
 %
 %   ...('Backend', NAME) selects 'triangle' (default) or 'tangle'.
@@ -35,7 +35,7 @@ function result = analysis_session_uniform_field_example(varargin)
     writefemmfile(problemFile, problem);
     cleanup = onCleanup(@() deleteProblem(problemFile, options.KeepProblem));
 
-    session = mfemmsession(problemFile);
+    session = xfemm.femmsession(problemFile);
     session.setBackend(options.Backend);
     elementCount = session.mesh();
     status = session.solve();

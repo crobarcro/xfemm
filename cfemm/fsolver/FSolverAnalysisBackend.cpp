@@ -215,4 +215,16 @@ void FSolverAnalysisBackend::writeSolution(const std::string &ansPath)
         throw std::runtime_error("FSolver could not export the session solution");
 }
 
+const FSolver &FSolverAnalysisBackend::solvedSolver() const
+{
+    if (!m_lastSystem) throw std::logic_error("there is no solved field; call solve first");
+    return *m_solver;
+}
+
+const CBigLinProb &FSolverAnalysisBackend::solvedSystem() const
+{
+    if (!m_lastSystem) throw std::logic_error("there is no solved field; call solve first");
+    return *m_lastSystem;
+}
+
 } // namespace femm
