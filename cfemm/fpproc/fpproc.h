@@ -52,6 +52,9 @@
 
 #include <vector>
 
+class FSolver;
+class CBigLinProb;
+
 class MagneticSolutionSnapshot;
 
 //#ifndef PLANAR
@@ -279,6 +282,11 @@ public:
     bool NewDocument();
 //     virtual void Serialize(CArchive& ar);
     bool OpenDocument(std::string lpszPathName) override;
+    /** Load a solved static magnetic analysis without serializing an .ans file. */
+    bool OpenDocument(const femm::FemmProblem &problem, const FSolver &solver,
+                      const CBigLinProb &solution);
+    /** Prepare derived post-processing state after an in-memory solution import. */
+    bool finalizeSolution();
     /** Freeze the currently loaded solution (selection and contour state are excluded). */
     MagneticSolutionSnapshot solutionSnapshot() const;
     bool MakeMask();

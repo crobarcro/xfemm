@@ -4,9 +4,10 @@ add_library(fpproc STATIC
     CMPointVals.cpp
     CPostProcMElement.cpp
     MagneticSolutionSnapshot.cpp
+    InMemorySolution.cpp
     )
 target_include_directories(fpproc PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}> $<INSTALL_INTERFACE:include>)
-target_link_libraries(fpproc PUBLIC femm)
+target_link_libraries(fpproc PUBLIC femm fsolver)
 
 add_executable(fpproc-test
     main.cpp

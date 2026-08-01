@@ -102,16 +102,22 @@ meshing, circuit/AGE/frequency/time setters, solve/result, accept/reject, and
 lifecycle management directly to the existing session C++ APIs. Tests verify
 that solving creates no `.ans` file.
 
-Post-processing is intentionally not exposed in this slice. An earlier draft
-implemented planar interpolation and mesh-derived queries inside the pybind11
-gateway; that code was removed because it duplicated `FPProc`, would inevitably
-drift from MATLAB, and could not correctly cover smoothing, axisymmetry,
-materials, periodic/AGE behavior, and every integral. The next implementation
-step is the neutral solution-data/`FPProc` integration described above. Once it
-exists, the Python methods below will be thin argument/result conversions around
-the same tested C++ methods used by MATLAB. Unsupported methods remain absent
-rather than returning approximate or fabricated data. Explicit `.ans` and
-accepted-state persistence are also still pending.
+The native in-memory bridge now initializes `FPProc` from the solved `FSolver`
+state and reuses the same finalization path as `.ans` loading. Python point
+values, smoothing, contour/line integrals, block selection/integrals, problem
+and circuit information, and mesh counts are thin conversions around `FPProc`.
+No `.ans` file is created in this path. The earlier independently implemented
+planar interpolation was removed. Remaining mesh/group tables and air-gap
+conveniences must likewise be added only as thin `FPProc` bindings. Explicit
+`.ans` and accepted-state persistence are still pending.
+
+The MATLAB `xfemm.femmsession` wrapper still refreshes its inherited `fpproc`
+through a private temporary `.ans` file. That is now a wrapper limitation, not
+a native requirement: the new `FPProc::OpenDocument(problem, solver, solution)`
+path performs the same initialization entirely in memory. A follow-up should
+move the shared session gateway out of the MEX file and have MATLAB select this
+path too; explicit solution export should remain the only operation that writes
+an `.ans` file.
 
 ## Python data conventions
 

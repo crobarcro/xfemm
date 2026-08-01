@@ -8,6 +8,7 @@
 #include "FemmReader.h"
 #include "TangleMesherBackend.h"
 #include "TriangleMesherBackend.h"
+#include "fpproc.h"
 
 #include <cmath>
 #include <memory>
@@ -72,6 +73,10 @@ public:
     py::dict solve()
     {
         m_trial.reset(new femm::TrialSolution(m_session->solve()));
+        m_post.reset(new FPProc);
+        if (!m_post->OpenDocument(m_session->model().problem(), m_solver->solvedSolver(),
+                                  m_solver->solvedSystem()))
+            throw std::runtime_error("could not initialize in-memory post-processor");
         const auto mesh = m_session->mesh();
         py::dict out;
         out["success"] = true;
@@ -123,7 +128,52 @@ public:
         m_session->setInitialState(m_accepted);
     }
 
-    void reject() { m_trial.reset(); }
+    void reject() { m_trial.reset(); m_post.reset(); }
+
+    py::array_t<std::complex<double>> pointValues(const py::array_t<double> &points)
+    {
+        requirePost();
+        auto in = points.unchecked<2>();
+        py::array_t<std::complex<double>> out(
+            std::vector<py::ssize_t>{in.shape(0), 14});
+        auto values = out.mutable_unchecked<2>();
+        for (py::ssize_t i = 0; i < in.shape(0); ++i) {
+            CMPointVals v;
+            if (!m_post->GetPointValues(in(i, 0), in(i, 1), v)) {
+                for (int j = 0; j < 14; ++j) values(i, j) = {NAN, NAN};
+                continue;
+            }
+            values(i,0)={v.A.re,v.A.im}; values(i,1)={v.B1.re,v.B1.im};
+            values(i,2)={v.B2.re,v.B2.im}; values(i,3)=v.c; values(i,4)=v.E;
+            values(i,5)={v.H1.re,v.H1.im}; values(i,6)={v.H2.re,v.H2.im};
+            values(i,7)={v.Je.re,v.Je.im}; values(i,8)={v.Js.re,v.Js.im};
+            values(i,9)={v.mu1.re,v.mu1.im}; values(i,10)={v.mu2.re,v.mu2.im};
+            values(i,11)=v.Pe; values(i,12)=v.Ph; values(i,13)=v.ff;
+        }
+        return out;
+    }
+
+    void smooth(bool enabled) { requirePost(); m_post->Smooth = enabled; }
+    void clearContour() { requirePost(); m_post->contour.clear(); }
+    void addContour(const py::array_t<double> &points) {
+        requirePost(); auto in=points.unchecked<2>();
+        for(py::ssize_t i=0;i<in.shape(0);++i) m_post->contour.emplace_back(in(i,0),in(i,1));
+    }
+    py::array_t<std::complex<double>> lineIntegral(int type) {
+        requirePost(); if(type<0||type>5) throw std::invalid_argument("line integral type must be 0..5");
+        CComplex z[4]{}; m_post->LineIntegral(type,z); int count=(type==3&&m_post->Frequency!=0)?4:(type==2?2:(type==0||type==1||type==5?2:1));
+        py::array_t<std::complex<double>> out(count); auto a=out.mutable_unchecked<1>();
+        if(type==2){a(0)=z[0].re;a(1)=z[0].im;} else for(int i=0;i<count;++i)a(i)={z[i].re,z[i].im}; return out;
+    }
+    void selectBlock(double x,double y){requirePost();int e=m_post->InTriangle(x,y);if(e>=0)m_post->blocklist[m_post->meshelem[e].lbl].IsSelected=true;}
+    void groupSelectBlock(int group){requirePost();for(auto &label:m_post->blocklist)if(label.InGroup==group)label.IsSelected=true;}
+    void selectAllBlocks(){requirePost();for(auto &label:m_post->blocklist)label.IsSelected=true;}
+    void clearBlock(){requirePost();for(auto &label:m_post->blocklist)label.IsSelected=false;}
+    std::complex<double> blockIntegral(int type){requirePost();if(type>=18&&type<=23)m_post->MakeMask();auto z=m_post->BlockIntegral(type);return {z.re,z.im};}
+    py::array_t<double> problemInfo(){requirePost();py::array_t<double> o(4);auto a=o.mutable_unchecked<1>();a(0)=m_post->problemType;a(1)=m_post->Frequency;a(2)=m_post->Depth;a(3)=m_post->LengthConv[m_post->LengthUnits];return o;}
+    py::array_t<std::complex<double>> circuitProps(const std::string &name){requirePost();int k=-1;for(std::size_t i=0;i<m_post->circproplist.size();++i)if(m_post->circproplist[i].CircName==name)k=i;if(k<0)throw std::invalid_argument("unknown circuit");py::array_t<std::complex<double>>o(3);auto a=o.mutable_unchecked<1>();auto c=m_post->circproplist[k].Amps,v=m_post->GetVoltageDrop(k),f=m_post->GetFluxLinkage(k);a(0)={c.re,c.im};a(1)={v.re,v.im};a(2)={f.re,f.im};return o;}
+    int numNodes(){requirePost();return m_post->numNodes();}
+    int numElements(){requirePost();return m_post->numElements();}
 
 private:
     static py::array_t<double> vectorArray(const std::vector<double> &source)
@@ -140,11 +190,13 @@ private:
         if (!m_trial) throw std::logic_error("there is no trial solution; call solve first");
         return *m_trial;
     }
+    void requirePost() const { if(!m_post) throw std::logic_error("there is no post-processor; call solve first"); }
 
     std::unique_ptr<femm::AnalysisSession> m_session;
     std::shared_ptr<femm::FSolverAnalysisBackend> m_solver;
     std::unique_ptr<femm::TrialSolution> m_trial;
     std::shared_ptr<const femm::AcceptedState> m_accepted;
+    std::unique_ptr<FPProc> m_post;
 };
 
 } // namespace
@@ -163,5 +215,19 @@ PYBIND11_MODULE(_xfemm, module)
         .def("solve", &PythonSession::solve)
         .def("result", &PythonSession::result)
         .def("accept", &PythonSession::accept)
-        .def("reject", &PythonSession::reject);
+        .def("reject", &PythonSession::reject)
+        .def("getpointvalues", &PythonSession::pointValues)
+        .def("smooth", &PythonSession::smooth)
+        .def("clearcontour", &PythonSession::clearContour)
+        .def("addcontour", &PythonSession::addContour)
+        .def("lineintegral", &PythonSession::lineIntegral)
+        .def("selectblock", &PythonSession::selectBlock)
+        .def("groupselectblock", &PythonSession::groupSelectBlock)
+        .def("selectallblocks", &PythonSession::selectAllBlocks)
+        .def("clearblock", &PythonSession::clearBlock)
+        .def("blockintegral", &PythonSession::blockIntegral)
+        .def("getprobleminfo", &PythonSession::problemInfo)
+        .def("getcircuitprops", &PythonSession::circuitProps)
+        .def("nummeshnodes", &PythonSession::numNodes)
+        .def("numelements", &PythonSession::numElements);
 }

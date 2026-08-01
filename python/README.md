@@ -13,8 +13,8 @@ with FemmSession("model.fem") as session:
     nodal_solution = session.result()["A"]
 ```
 
-This is an initial implementation. Session lifecycle and compact/full native
-solver results are available. Post-processing methods will be exposed only
-after `AnalysisSession` can hand an in-memory solution snapshot to the existing
-`FPProc` C++ implementation; they will not be independently reimplemented in
-the Python binding. See `docs/python-session-interface.md` for that work plan.
+The session constructs `FPProc` directly from the solved native state, without
+writing or parsing an `.ans` file. Point values, smoothing, contours and line
+integrals, block selection/integrals, problem and circuit information, and mesh
+counts are thin wrappers around `FPProc`. Additional mesh-table, group-table,
+and air-gap convenience bindings remain to be completed.

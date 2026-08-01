@@ -297,7 +297,7 @@ bool FPProc::OpenDocument(string pathname)
     int i,j,k,t, sscnt;
     char s[1024],q[1024];
     char *v;
-    double b,bi,br;
+    double b;
     double zr,zi;
     bool flag = false;
     CMPointProp    PProp;
@@ -1358,7 +1358,7 @@ bool FPProc::OpenDocument(string pathname)
             return false;
         }
     }
-    
+
     // read in circuit data;
     fscanf(fp,"%i\n",&k);
     #ifdef DEBUG_FPPROC
@@ -1477,12 +1477,19 @@ bool FPProc::OpenDocument(string pathname)
 	}
 
 	fclose(fp);
-    
+
     #ifdef DEBUG_FPPROC
     printf("Loading ANS file done!\n");
     fflush(stdout);
     #endif
 
+    return finalizeSolution();
+}
+
+bool FPProc::finalizeSolution()
+{
+    int i, j, k;
+    double b, bi, br;
 	// figure out amplitudes of harmonics for AGE boundary conditions
     #ifdef DEBUG_FPPROC
     printf("agelist.size: %d\n",agelist.size());
@@ -1712,7 +1719,7 @@ bool FPProc::OpenDocument(string pathname)
 			}
 		}
 	}
-    
+
     #ifdef DEBUG_FPPROC
     printf("Scaling length units\n");
     fflush(stdout);
@@ -1922,7 +1929,7 @@ bool FPProc::OpenDocument(string pathname)
         printf("find extreme values of J\n");
         fflush(stdout);
         #endif
-    
+
         CComplex Jelm[3],Aelm[3];
 
         double J_Low, J_High;
@@ -1983,7 +1990,7 @@ bool FPProc::OpenDocument(string pathname)
         printf("find extreme values of B and H\n");
         fflush(stdout);
         #endif
-        
+
         double Br_Low, Br_High;
         double Bi_Low, Bi_High;
         double H_Low;
@@ -2040,7 +2047,7 @@ bool FPProc::OpenDocument(string pathname)
         B_Low   = sqrt(Br_Low*Br_Low + Bi_Low*Bi_Low);
         B_High  = B_Low;
         //a0      = sqrt(meshelem[i].rsqr) * B_High * B_High; // ### typo! index [i], is always i == meshelem.size(), it was causing random segfaults!
-        a0      = sqrt(meshelem[0].rsqr) * B_High * B_High; 
+        a0      = sqrt(meshelem[0].rsqr) * B_High * B_High;
 
         if (Frequency!=0)
             GetH(meshelem[0].B1,meshelem[0].B2,h1,h2,0);
@@ -2241,7 +2248,7 @@ bool FPProc::OpenDocument(string pathname)
             }
         }
     }
-    
+
     #ifdef DEBUG_FPPROC
     printf("FPProc::OpenDocument() done!\n");
     fflush(stdout);
@@ -2601,7 +2608,7 @@ bool FPProc::GetPointValues(double x, double y, int k, CMPointVals &u)
 		lbl=meshelem[k].lbl;
 		j=blocklist[lbl].InCircuit;
 		if(j>=0){
- 			if(blocklist[lbl].Case==0){
+            if(blocklist[lbl].Case==0){
 				if (problemType==PLANAR)
 					u.Js-=Re(blocklist[meshelem[k].lbl].o)*
 						  blocklist[lbl].dVolts;

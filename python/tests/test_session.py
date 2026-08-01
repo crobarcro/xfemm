@@ -38,6 +38,10 @@ def test_uniform_field_solve_is_in_memory(tmp_path, monkeypatch):
     with FemmSession(UNIFORM_MODEL) as session:
         status = session.solve()
         assert status["nodeCount"] == session.result()["A"].size
+        x = np.array([0.25, 0.5, 0.75])
+        np.testing.assert_allclose(session.geta(x, 0.5).real, 0.25 * x, atol=1e-7)
+        np.testing.assert_allclose(session.getb([[0.5, 0.5]]).real,
+                                   [[0.0, -0.25]], atol=1e-7)
 
     # Solving must not use a hidden legacy solution round trip.
     assert list(tmp_path.iterdir()) == []
