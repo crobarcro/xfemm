@@ -1,12 +1,12 @@
-classdef mfemmsession < fpproc
-%MFEMMSESSION Stateful, in-memory magnetic analysis session.
-%   S = MFEMMSESSION(FILENAME) loads a magnetic .fem problem and owns its
+classdef femmsession < fpproc
+%FEMMSESSION Stateful, in-memory magnetic analysis session.
+%   S = FEMMSESSION(FILENAME) loads a magnetic .fem problem and owns its
 %   native model, mesher, solver, trial solution, and accepted state. Native
 %   pointers never leave session_interface_mex; OBJECTHANDLE is an opaque
 %   class handle used only by this wrapper.
 %
 %   A typical evaluation is:
-%       s = mfemmsession('motor.fem');
+%       s = xfemm.femmsession('motor.fem');
 %       s.setBackend('tangle');
 %       s.setCircuit('phase-a', 'current', 10);
 %       s.setAGEPosition('airgap', rotorAngle, 0);
@@ -19,7 +19,7 @@ classdef mfemmsession < fpproc
 %   all magnetic point, contour, block, circuit, mesh, and air-gap analysis
 %   methods documented by FPPROC can be called directly on the session.
 %
-%   MFEMMSESSION methods:
+%   FEMMSESSION methods:
 %     setBackend      - select 'triangle' (default) or 'tangle' meshing
 %     mesh             - create the mesh now and return its element count
 %     setCircuit       - set current/voltage/open/coupled circuit constraint
@@ -40,8 +40,8 @@ classdef mfemmsession < fpproc
     end
 
     methods
-        function this = mfemmsession(filename)
-            %MFEMMSESSION Load FILENAME and create a native analysis session.
+        function this = femmsession(filename)
+            %FEMMSESSION Load FILENAME and create a native analysis session.
             narginchk(1, 1);
             this@fpproc();
             this.sessionHandle = session_interface_mex('new', filename);

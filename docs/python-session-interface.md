@@ -1,19 +1,20 @@
-# Python `mfemmsession` interface plan
+# Python `femmsession` interface plan
 
 ## Scope and compatibility target
 
 The first Python API will be a single stateful magnetic-analysis class equivalent
-to MATLAB's `mfemmsession`. It will not reproduce the older MATLAB problem,
-property, or post-processor class hierarchy. The compatibility target is the
-public method surface of `mfemmsession`, including the useful analysis methods it
-inherits from `fpproc`.
+to MATLAB's new `xfemm.femmsession`. It will not reproduce the older MATLAB
+problem, property, or post-processor class hierarchy. The compatibility target
+is the public method surface of `xfemm.femmsession`, including all of its useful
+analysis methods. Post-processing is part of this one class, not a separately
+constructed or user-visible `fpproc` object.
 
 The proposed import and construction syntax is:
 
 ```python
-from xfemm import mfemmsession
+from xfemm import femmsession
 
-with mfemmsession("motor.fem") as session:
+with femmsession("motor.fem") as session:
     session.setBackend("tangle")
     session.setCircuit("phase-a", "current", 10 + 0j)
     session.setAGEPosition("airgap", rotor_angle, 0.0)
@@ -22,14 +23,21 @@ with mfemmsession("motor.fem") as session:
     session.accept()
 ```
 
-`MfemmSession` may also be exported as a PEP 8-friendly alias, but
-`mfemmsession` is the compatibility name and must remain supported. Existing
-MATLAB camel-case spellings are intentional. Adding snake-case aliases is not
+`FemmSession` may also be exported as a PEP 8-friendly alias, but `femmsession`
+is the cross-language compatibility name. The name deliberately omits the `m`
+from mfemm because the Python class is not MATLAB-specific. Existing MATLAB
+camel-case method spellings are intentional. Adding snake-case aliases is not
 part of the first release.
 
 The initial package supports magnetic `.fem`/`.ans` files only. Electrostatic
 and heat-flow sessions, model construction, Lua command emulation, and the
 legacy multi-class API are explicitly out of scope.
+
+The MATLAB class moves into its own package at `+xfemm/femmsession.m`, so its
+fully qualified spelling is also `xfemm.femmsession(...)`. This is an intentional
+breaking rename from the short-lived `mfemmsession`: the old class and alias are
+not retained because the interface has not yet been released, and retaining the
+MATLAB-derived `m` would give the wrong meaning to the shared API.
 
 ## Packaging and implementation architecture
 
@@ -46,17 +54,29 @@ python/
 ```
 
 The native layer should call the same `AnalysisSession`, mesher, solver, and
-post-processor C++ APIs as the MEX wrappers. Before binding them, move the
+post-processing C++ APIs as the MEX wrappers. Before binding them, move the
 reusable `SessionGateway` logic out of `session_interface_mex.cpp` into a
 MATLAB-independent C++ class. Both bindings should use that class, preventing
 the Python and MATLAB session semantics from drifting.
 
-For the first implementation, exporting the trial to a temporary `.ans` file
-and opening it with `fpproc` is acceptable because it exactly matches the
-current MATLAB wrapper. Temporary files must be private, cleaned on `close()`,
-and cleaned after constructor/solve failures. A later optimization may connect
-the solver result directly to a post-processor, but it must not alter the public
-API or numerical results.
+In-memory post-processing is a version-1 requirement, not a later optimization.
+`solve()` must construct an immutable native solution snapshot directly from
+the solved model, mesh, nodal values, circuits, and AGE data and install a native
+post-processor view over that snapshot. Every point, contour, block, mesh,
+circuit, and air-gap query is then immediately available on the same
+`femmsession` instance. The normal solve/query path must neither write nor parse
+an `.ans` file, and it must work in a directory where the process has no write
+permission.
+
+The existing `MagneticSolutionSnapshot`/`FPProc` work demonstrates the desired
+ownership model, but the solver still needs a file-format-independent transfer
+object. Introduce a neutral `MagneticSolutionData` (name provisional) in a
+common native library. It should own the problem description, mesh topology,
+nodal solution, circuit results, and periodic/AGE coupling needed by
+post-processing. `FSolverAnalysisBackend` populates it directly, and `FPProc`
+constructs its immutable snapshot from it. The `.ans` reader and writer become
+optional adapters to and from the same data rather than the bridge between the
+solver and post-processor.
 
 Build wheels with `scikit-build-core` and CMake so the extension shares xfemm's
 existing build definitions. Start with CPython 3.10+ and NumPy 1.23+ on 64-bit
@@ -117,8 +137,8 @@ It must be called out prominently in migration documentation.
 
 | Method | Python signature | Return contract |
 |---|---|---|
-| constructor | `mfemmsession(filename)` | New open session; raises on parse failure. |
-| `close` | `close()` | `None`; idempotently releases native and temporary resources. |
+| constructor | `femmsession(filename)` | New open session; raises on parse failure. |
+| `close` | `close()` | `None`; idempotently releases native resources. |
 | context manager | `__enter__()`, `__exit__(...)` | Returns self and always calls `close`. |
 | `setBackend` | `setBackend(name)` | `None`; accepts case-insensitive `"triangle"` or `"tangle"`. |
 | `mesh` | `mesh()` | Python `int` element count. |
@@ -132,6 +152,8 @@ It must be called out prominently in migration documentation.
 | `reject` | `reject()` | `None`; discards latest trial and invalidates post-processing access to it. |
 | `saveState` | `saveState(filename)` | `None`; writes a versioned, non-pickle archive. |
 | `loadState` | `loadState(filename)` | `None`; validates schema and model identity before mutation. |
+| `saveSolution` | `saveSolution(filename)` | `None`; explicitly persists the current trial as a legacy `.ans` file. |
+| `loadSolution` | `loadSolution(filename)` | `None`; validates and installs a `.ans` solution matching the session model, without solving. |
 
 `solve()` returns exactly these keys: `success` (`bool`), `id` (`int`), `time`
 (`float`), `nodeCount`, `elementCount`, `meshGenerationCount`, `solveCount`,
@@ -154,6 +176,15 @@ mandatory when loading. Loading a mismatched model or ABI fails before changing
 the current session. MATLAB/Python state-file interoperability is not promised
 in version 1; the accepted-state semantics are interoperable, the serialization
 containers are not.
+
+Legacy solution I/O remains useful but is always explicit. `saveSolution()` is
+invalid before a solve or load. `loadSolution()` imports through the `.ans`
+adapter into the same immutable snapshot used by in-memory solves, validates
+that its problem identity matches the session's loaded `.fem` model, and then
+makes all query methods available. Neither method is called implicitly by
+`solve()`. A future `fromSolution()` read-only constructor could be added if
+users need to inspect an `.ans` file without its matching model, but it is not
+required for version 1.
 
 ## Post-processing method surface
 
@@ -251,13 +282,17 @@ disabled. It may be moved only through ordinary Python reference assignment.
    results use quantities-by-points while Python convention is
    samples-by-features. This plan chooses row-oriented Python results and treats
    values, not memory layout, as the equivalence criterion.
-2. **Exact inherited scope is unclear.** `mfemmsession` inherits plotting and
-   derived helpers in addition to native post-processing. This plan includes
-   every computational method and defers only plotting to milestone 2.
-3. **The current MATLAB refresh is file-backed.** A truly in-memory Python API
-   requires additional post-processor integration. Starting with the proven
-   temporary-file path lowers correctness risk but is not zero-copy and may be
-   expensive in optimization loops.
+2. **The MATLAB surface includes inherited methods.** A Python implementation
+   could accidentally expose only the session gateway methods and force users
+   into a second post-processor object. This plan instead puts every
+   computational session and post-processing method on `femmsession` itself and
+   defers only plotting to milestone 2.
+3. **The current MATLAB refresh is file-backed.** Reusing it would make hidden
+   file I/O part of every Python solve and undermine optimization-loop use. The
+   first release therefore requires a native solution-data transfer into the
+   post-processor. This is more implementation work, but the repository's
+   immutable snapshot support provides a foundation and `.ans` parity fixtures
+   can verify the new adapter.
 4. **MATLAB output arity is dynamic.** Python cannot reproduce `nargout`.
    Tuple-returning methods need one stable full tuple, particularly
    `lineintegral`, `gapintegral`, and `getprobleminfo`.
@@ -289,8 +324,8 @@ The following choices are proposed defaults, but should be explicitly approved:
    than literal MATLAB `(fields, n)` output?
 2. **Indexing:** retain one-based indices for compatibility (proposed), or make
    all Python indices zero-based and provide an opt-in compatibility mode?
-3. **Class naming:** export lowercase `mfemmsession` as canonical and
-   `MfemmSession` as an alias (proposed), or use only the lowercase name?
+3. **Class naming:** the cross-language class name is settled as `femmsession`;
+   should Python additionally export the conventional `FemmSession` alias?
 4. **State files:** is semantic compatibility sufficient, or must Python read
    and write MATLAB `saveState` MAT-files in version 1?
 5. **Plotting:** is deferring the three plotting helpers acceptable for the
@@ -306,23 +341,28 @@ The following choices are proposed defaults, but should be explicitly approved:
 2. **Shared native gateway:** extract session ownership/operations from the MEX
    file without changing MATLAB behavior; run existing C++ and MATLAB session
    tests.
-3. **Python build and lifecycle:** add packaging, native construction, cleanup,
-   setters, mesh, solve/result, accept/reject, and context management.
-4. **Computational post-processing:** implement point, contour, block, circuit,
-   mesh, group, and air-gap methods with centralized NumPy conversions.
-5. **Persistence:** add schema validation, model/ABI identity checking, corrupt
+3. **Direct solution snapshot:** introduce the neutral native solution data,
+   populate it from `FSolverAnalysisBackend`, construct `FPProc` without `.ans`
+   serialization, and prove parity against a persisted round trip.
+4. **Python build and single-class lifecycle:** add packaging, native
+   construction, cleanup, setters, mesh, solve/result, accept/reject, context
+   management, and direct ownership of the snapshot-backed post-processor.
+5. **Computational post-processing:** implement point, contour, block, circuit,
+   mesh, group, and air-gap methods on `femmsession` with centralized NumPy
+   conversions.
+6. **Persistence:** add schema validation, model/ABI identity checking, corrupt
    file tests, and atomic writes.
-6. **Parity suite:** compare Python outputs element-by-element with stored
+7. **Parity suite:** compare Python outputs element-by-element with stored
    MATLAB fixtures. Use exact checks for topology/counts and documented
    tolerances for floating/complex results. Include empty, scalar, batched,
    non-contiguous, invalid-name, invalid-index, pre-solve, rejected, and closed
    cases.
-7. **Distribution and documentation:** build and install wheels in clean
+8. **Distribution and documentation:** build and install wheels in clean
    environments, audit bundled licenses, document the intentional orientation
    and indexing decisions, and add a MATLAB-to-Python migration example.
-8. **Optional plotting and performance:** add the Matplotlib extra, benchmark
-   solve loops, and replace temporary `.ans` transfer only if profiling
-   justifies a direct result-to-post-processor path.
+9. **Optional plotting and performance:** add the Matplotlib extra and benchmark
+   solve/query loops. Add a test that traces filesystem operations and proves a
+   normal in-memory solve and post-processing workflow creates no solution file.
 
 The first release is complete when the computational surface above is present,
 all arrays follow the declared shapes/dtypes, MATLAB fixture comparisons pass,
