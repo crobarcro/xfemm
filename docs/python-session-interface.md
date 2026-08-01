@@ -54,8 +54,11 @@ python/
   tests/                     pytest compatibility and numerical tests
 ```
 
-The native layer should call the same `AnalysisSession`, mesher, solver, and
-post-processing C++ APIs as the MEX wrappers. Before binding them, move the
+The native layer must call the same `AnalysisSession`, mesher, solver, and
+`FPProc` C++ APIs as the MEX wrappers. Python and MATLAB are conversion and
+lifetime-management layers only: field interpolation, smoothing, selection,
+contours, integrals, mesh-derived values, circuits, and AGE calculations must
+not be independently implemented in either wrapper. Before binding them, move the
 reusable `SessionGateway` logic out of `session_interface_mex.cpp` into a
 MATLAB-independent C++ class. Both bindings should use that class, preventing
 the Python and MATLAB session semantics from drifting.
@@ -94,20 +97,21 @@ operations only when that condition is satisfied.
 ### Initial implementation status
 
 The first implementation slice now lives under `python/` and exports only the
-idiomatic `FemmSession` name. It already binds model loading, Triangle/Tangle
-selection, meshing, circuit/AGE/frequency/time setters, solve/result,
-accept/reject, lifecycle management, basic mesh tables, and NumPy `geta`/`getb`
-queries. Nodal values are mapped back onto the owned `SolverMesh` in memory and
-the point queries use element interpolation; tests verify that the analytical
-uniform-field workflow creates no `.ans` file.
+idiomatic `FemmSession` name. It binds model loading, Triangle/Tangle selection,
+meshing, circuit/AGE/frequency/time setters, solve/result, accept/reject, and
+lifecycle management directly to the existing session C++ APIs. Tests verify
+that solving creates no `.ans` file.
 
-This slice is intentionally not presented as the finished post-processor.
-`getb` is currently the unsmoothed planar element gradient, and the full
-material-aware point values, axisymmetric field conversion, smoothing,
-contours, block/circuit integrals, groups, and AGE harmonics still require the
-neutral solution-data/`FPProc` integration described above. Unsupported methods
-are absent rather than returning approximate or fabricated data. Explicit
-`.ans` and accepted-state persistence are also still pending.
+Post-processing is intentionally not exposed in this slice. An earlier draft
+implemented planar interpolation and mesh-derived queries inside the pybind11
+gateway; that code was removed because it duplicated `FPProc`, would inevitably
+drift from MATLAB, and could not correctly cover smoothing, axisymmetry,
+materials, periodic/AGE behavior, and every integral. The next implementation
+step is the neutral solution-data/`FPProc` integration described above. Once it
+exists, the Python methods below will be thin argument/result conversions around
+the same tested C++ methods used by MATLAB. Unsupported methods remain absent
+rather than returning approximate or fabricated data. Explicit `.ans` and
+accepted-state persistence are also still pending.
 
 ## Python data conventions
 
@@ -360,13 +364,14 @@ The following choices are proposed defaults, but should be explicitly approved:
    tests.
 3. **Direct solution snapshot:** introduce the neutral native solution data,
    populate it from `FSolverAnalysisBackend`, construct `FPProc` without `.ans`
-   serialization, and prove parity against a persisted round trip.
+   serialization, and prove parity against a persisted round trip. This C++
+   bridge is a prerequisite for exposing any Python post-processing method.
 4. **Python build and single-class lifecycle:** add packaging, native
    construction, cleanup, setters, mesh, solve/result, accept/reject, context
    management, and direct ownership of the snapshot-backed post-processor.
-5. **Computational post-processing:** implement point, contour, block, circuit,
-   mesh, group, and air-gap methods on `FemmSession` with centralized NumPy
-   conversions.
+5. **Computational post-processing:** bind the existing `FPProc` point, contour,
+   block, circuit, mesh, group, and air-gap methods on `FemmSession`; the binding
+   contains only centralized NumPy input/output conversions.
 6. **Persistence:** add schema validation, model/ABI identity checking, corrupt
    file tests, and atomic writes.
 7. **Parity suite:** compare Python outputs element-by-element with stored

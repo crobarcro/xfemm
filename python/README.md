@@ -10,12 +10,11 @@ from xfemm import FemmSession
 with FemmSession("model.fem") as session:
     session.setCircuit("phase-a", "current", 10)
     status = session.solve()
-    potential = session.geta([[0, 0], [1, 0]])
+    nodal_solution = session.result()["A"]
 ```
 
-This is an initial implementation. Session lifecycle, compact/full results,
-mesh queries, and unsmoothed `geta`/`getb` point queries are available. The
-remaining post-processing methods documented in
-`docs/python-session-interface.md` will be added as the native solution snapshot
-is expanded.
-
+This is an initial implementation. Session lifecycle and compact/full native
+solver results are available. Post-processing methods will be exposed only
+after `AnalysisSession` can hand an in-memory solution snapshot to the existing
+`FPProc` C++ implementation; they will not be independently reimplemented in
+the Python binding. See `docs/python-session-interface.md` for that work plan.

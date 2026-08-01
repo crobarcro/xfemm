@@ -5,8 +5,6 @@ from __future__ import annotations
 from os import PathLike
 from typing import Any
 
-import numpy as np
-
 from ._xfemm import NativeSession
 
 
@@ -95,62 +93,3 @@ class FemmSession:
 
     def reject(self) -> None:
         self._require_open().reject()
-
-    def nummeshnodes(self) -> int:
-        return self._require_open().nummeshnodes()
-
-    def numelements(self) -> int:
-        return self._require_open().numelements()
-
-    def getvertices(self, n: Any = None) -> np.ndarray:
-        return self._require_open().getvertices(_indices(n))
-
-    def getelements(self, n: Any = None) -> np.ndarray:
-        return self._require_open().getelements(_indices(n))
-
-    def getcentroids(self, n: Any = None) -> np.ndarray:
-        return self._require_open().getcentroids(_indices(n))
-
-    def getareas(self, n: Any = None) -> np.ndarray:
-        return self._require_open().getareas(_indices(n))
-
-    def geta(self, x: Any, y: Any = None) -> np.ndarray:
-        points = _points(x, y)
-        native = self._require_open()
-        try:
-            return native.geta(points)
-        except RuntimeError as exc:
-            raise XfemmError(str(exc)) from exc
-
-    def getb(self, x: Any, y: Any = None) -> np.ndarray:
-        points = _points(x, y)
-        native = self._require_open()
-        try:
-            return native.getb(points)
-        except RuntimeError as exc:
-            raise XfemmError(str(exc)) from exc
-
-
-def _indices(value: Any) -> np.ndarray:
-    if value is None:
-        return np.empty(0, dtype=np.int64)
-    original = np.asarray(value)
-    if original.dtype == np.bool_:
-        raise TypeError("element indices cannot be boolean")
-    result = np.asarray(value, dtype=np.int64).reshape(-1)
-    if not np.all(np.asarray(value).reshape(-1) == result):
-        raise ValueError("element indices must be integers")
-    return np.ascontiguousarray(result)
-
-
-def _points(x: Any, y: Any) -> np.ndarray:
-    if y is None:
-        result = np.asarray(x, dtype=np.float64)
-        if result.ndim == 1 and result.size == 2:
-            result = result.reshape(1, 2)
-        if result.ndim < 2 or result.shape[-1] != 2:
-            raise ValueError("a single coordinate argument must have final dimension 2")
-        return np.ascontiguousarray(result.reshape(-1, 2))
-    xa, ya = np.broadcast_arrays(np.asarray(x, dtype=np.float64),
-                                 np.asarray(y, dtype=np.float64))
-    return np.ascontiguousarray(np.column_stack((xa.reshape(-1), ya.reshape(-1))))
