@@ -111,13 +111,11 @@ planar interpolation was removed. Remaining mesh/group tables and air-gap
 conveniences must likewise be added only as thin `FPProc` bindings. Explicit
 `.ans` and accepted-state persistence are still pending.
 
-The MATLAB `xfemm.femmsession` wrapper still refreshes its inherited `fpproc`
-through a private temporary `.ans` file. That is now a wrapper limitation, not
-a native requirement: the new `FPProc::OpenDocument(problem, solver, solution)`
-path performs the same initialization entirely in memory. A follow-up should
-move the shared session gateway out of the MEX file and have MATLAB select this
-path too; explicit solution export should remain the only operation that writes
-an `.ans` file.
+The MATLAB `xfemm.femmsession` wrapper also initializes `FPProc` through
+`FPProc::OpenDocument(problem, solver, solution)` in the session MEX gateway.
+Its inherited post-processing methods dispatch to that session-owned processor,
+so repeated solves do not create or parse temporary `.ans` files. Explicit
+solution export remains the only session operation that writes an `.ans` file.
 
 ## Python data conventions
 

@@ -88,7 +88,15 @@ classdef fpproc < mfemmpproc
 
         %% Destructor - Destroy the C++ class instance
         function delete(this)
-            fpproc_interface_mex('delete', this.objectHandle);
+            for ind = 1:numel(this)
+                if ~isempty(this(ind).objectHandle)
+                    objectHandle = this(ind).objectHandle;
+                    % Clear first so Octave's later handle-class cleanup is
+                    % harmless after an explicit delete(obj) call.
+                    this(ind).objectHandle = [];
+                    fpproc_interface_mex('delete', objectHandle);
+                end
+            end
         end
 
         %%%%%%      The C++ Class Interface Methods       %%%%%%%
@@ -125,7 +133,7 @@ classdef fpproc < mfemmpproc
                 checkedfilename = filename;
             end
             
-            result = fpproc_interface_mex('opendocument', this.objectHandle, checkedfilename);
+            result = this.callPostProcessor('opendocument', checkedfilename);
             
             if result == 0
                 this.isdocopen = false;
@@ -192,7 +200,7 @@ classdef fpproc < mfemmpproc
                 x = x(:,1);
             end
             
-            pvals = fpproc_interface_mex('getpointvals', this.objectHandle, x(:), y(:));
+            pvals = this.callPostProcessor('getpointvals', x(:), y(:));
             
         end
         
@@ -329,7 +337,7 @@ classdef fpproc < mfemmpproc
             if ~this.isdocopen
                 error('No solution document has been opened.')
             end
-            fpproc_interface_mex('smoothon', this.objectHandle);
+            this.callPostProcessor('smoothon');
         end
         
         function smoothoff(this)
@@ -352,7 +360,7 @@ classdef fpproc < mfemmpproc
             if ~this.isdocopen
                 error('No solution document has been opened.')
             end
-            fpproc_interface_mex('smoothoff', this.objectHandle);
+            this.callPostProcessor('smoothoff');
         end
 
         function clearcontour(this)
@@ -366,7 +374,7 @@ classdef fpproc < mfemmpproc
             if ~this.isdocopen
                 error('No solution document has been opened.')
             end
-            fpproc_interface_mex('clearcontour', this.objectHandle);
+            this.callPostProcessor('clearcontour');
         end
 
         function varargout = addcontour(this, x, y)
@@ -380,14 +388,14 @@ classdef fpproc < mfemmpproc
             if ~this.isdocopen
                 error('No solution document has been opened.')
             end
-            [varargout{1:nargout}] = fpproc_interface_mex('addcontour', this.objectHandle, x(:), y(:));
+            [varargout{1:nargout}] = this.callPostProcessor('addcontour', x(:), y(:));
         end
         
         function varargout = lineintegral(this, type)
             if ~this.isdocopen
                 error('No solution document has been opened.')
             end
-            [varargout{1:nargout}] = fpproc_interface_mex('lineintegral', this.objectHandle, type);
+            [varargout{1:nargout}] = this.callPostProcessor('lineintegral', type);
         end
         
         function selectblock(this, x, y, clearselected)
@@ -415,7 +423,7 @@ classdef fpproc < mfemmpproc
             if clearselected
                 this.clearblock();
             end
-            fpproc_interface_mex('selectblock', this.objectHandle, x, y);
+            this.callPostProcessor('selectblock', x, y);
         end
         
         function groupselectblock(this, groupno, clearselected)
@@ -441,10 +449,10 @@ classdef fpproc < mfemmpproc
                 this.clearblock();
             end
             if isempty (groupno)
-                fpproc_interface_mex('groupselectblock', this.objectHandle, groupno);
+                this.callPostProcessor('groupselectblock', groupno);
             else
                 for gpind = 1:numel(groupno)
-                    fpproc_interface_mex('groupselectblock', this.objectHandle, groupno(gpind));
+                    this.callPostProcessor('groupselectblock', groupno(gpind));
                 end
             end
         end
@@ -469,7 +477,7 @@ classdef fpproc < mfemmpproc
             if ~this.isdocopen
                 error('No solution document has been opened.')
             end
-            fpproc_interface_mex('clearblock', this.objectHandle);
+            this.callPostProcessor('clearblock');
         end
         
         function int = blockintegral(this, type, x, y)
@@ -551,7 +559,7 @@ classdef fpproc < mfemmpproc
                 end
             end
             % perform the block integral
-            int = fpproc_interface_mex('blockintegral', this.objectHandle, type);
+            int = this.callPostProcessor('blockintegral', type);
             
         end
         
@@ -578,7 +586,7 @@ classdef fpproc < mfemmpproc
             end
             
             % perform the gap integral
-            int = fpproc_interface_mex('gapintegral', this.objectHandle, boundname, type);
+            int = this.callPostProcessor('gapintegral', boundname, type);
             
         end
         
@@ -586,7 +594,7 @@ classdef fpproc < mfemmpproc
             if ~this.isdocopen
                 error('No solution document has been opened.')
             end
-            [varargout{1:nargout}] = fpproc_interface_mex('getprobleminfo', this.objectHandle);
+            [varargout{1:nargout}] = this.callPostProcessor('getprobleminfo');
         end
         
         function circprops = getcircuitprops(this, circuitname)
@@ -616,7 +624,7 @@ classdef fpproc < mfemmpproc
                 error('No solution document has been opened.')
             end
             
-            circprops = fpproc_interface_mex('getcircuitprops', this.objectHandle, circuitname);
+            circprops = this.callPostProcessor('getcircuitprops', circuitname);
             
         end
 
@@ -906,12 +914,12 @@ classdef fpproc < mfemmpproc
         
         function n = nummeshnodes (this)
             % return the number of nodes in the mesh
-            n = fpproc_interface_mex('numnodes', this.objectHandle);
+            n = this.callPostProcessor('numnodes');
         end
         
         function n = numelements (this)
             % return the number of elements in the mesh
-            n = fpproc_interface_mex('numelements', this.objectHandle);
+            n = this.callPostProcessor('numelements');
         end
         
         function vert = getvertices (this, n)
@@ -943,7 +951,7 @@ classdef fpproc < mfemmpproc
                 n = 1:this.numelements ();
             end
             
-            vert = fpproc_interface_mex('getvertices', this.objectHandle, n(:));
+            vert = this.callPostProcessor('getvertices', n(:));
         
         end
          
@@ -978,7 +986,7 @@ classdef fpproc < mfemmpproc
                 n = 1:this.numelements ();
             end
             
-            elm = fpproc_interface_mex('getelements', this.objectHandle, n(:));
+            elm = this.callPostProcessor('getelements', n(:));
         
         end
         
@@ -1011,7 +1019,7 @@ classdef fpproc < mfemmpproc
                 n = 1:this.numelements ();
             end
             
-            centr = fpproc_interface_mex('getcentroids', this.objectHandle, n(:));
+            centr = this.callPostProcessor('getcentroids', n(:));
         
         end
         
@@ -1040,7 +1048,7 @@ classdef fpproc < mfemmpproc
                 n = 1:this.numelements ();
             end
             
-            areas = fpproc_interface_mex('getareas', this.objectHandle, n(:));
+            areas = this.callPostProcessor('getareas', n(:));
         
         end
         
@@ -1069,7 +1077,7 @@ classdef fpproc < mfemmpproc
                 n = 1:this.numelements ();
             end
             
-            vols = fpproc_interface_mex('getareas', this.objectHandle, n(:));
+            vols = this.callPostProcessor('getareas', n(:));
         
         end
         
@@ -1099,7 +1107,7 @@ classdef fpproc < mfemmpproc
             n = zeros (size(groupno));
             
             for ind = 1:numel(groupno) 
-                n(ind) = fpproc_interface_mex('numgroupelements', this.objectHandle, groupno(ind));
+                n(ind) = this.callPostProcessor('numgroupelements', groupno(ind));
             end
             
         end
@@ -1134,7 +1142,7 @@ classdef fpproc < mfemmpproc
             
             for ind = 1:numel(groupno)
                 
-                vert = [vert; fpproc_interface_mex('getgroupvertices', this.objectHandle, groupno(ind))];
+                vert = [vert; this.callPostProcessor('getgroupvertices', groupno(ind))];
             
             end
         
@@ -1173,7 +1181,7 @@ classdef fpproc < mfemmpproc
             
             for ind = 1:numel(groupno)
                 
-                elm = [elm; fpproc_interface_mex('getgroupelements', this.objectHandle, groupno(ind))];
+                elm = [elm; this.callPostProcessor('getgroupelements', groupno(ind))];
                 
             end
         
@@ -1209,7 +1217,7 @@ classdef fpproc < mfemmpproc
             
             for ind = 1:numel(groupno)
                 
-                centr = [centr; fpproc_interface_mex('getgroupcentroids', this.objectHandle, groupno(ind))];
+                centr = [centr; this.callPostProcessor('getgroupcentroids', groupno(ind))];
             end
         
         end
@@ -1239,7 +1247,7 @@ classdef fpproc < mfemmpproc
             
             for ind = 1:numel(groupno)
             
-                areas = [areas; fpproc_interface_mex('getgroupareas', this.objectHandle, groupno(ind))];
+                areas = [areas; this.callPostProcessor('getgroupareas', groupno(ind))];
             
             end
         
@@ -1270,7 +1278,7 @@ classdef fpproc < mfemmpproc
             
             for ind = 1:numel(groupno)
             
-                vols = [vols; fpproc_interface_mex('getgroupvolumes', this.objectHandle, groupno(ind))];
+                vols = [vols; this.callPostProcessor('getgroupvolumes', groupno(ind))];
             
             end
         
@@ -1305,7 +1313,7 @@ classdef fpproc < mfemmpproc
             
             for ind = 1:numel(angles)
             
-                [Br, Bt] = fpproc_interface_mex('getgapb', this.objectHandle, bound_name, angles(ind));
+                [Br, Bt] = this.callPostProcessor('getgapb', bound_name, angles(ind));
                 
                 B(ind,1:2) = [Br, Bt];
             
@@ -1342,7 +1350,7 @@ classdef fpproc < mfemmpproc
             
             for ind = 1:numel(angles)
             
-                [Br, Bt] = fpproc_interface_mex('getgapa', this.objectHandle, bound_name, angles(ind));
+                [Br, Bt] = this.callPostProcessor('getgapa', bound_name, angles(ind));
                 
                 B(ind,1:2) = [Br, Bt];
             
@@ -1369,7 +1377,7 @@ classdef fpproc < mfemmpproc
             %
             %
             
-            nh = fpproc_interface_mex ('numgapharmonics', this.objectHandle, bound_name);
+            nh = this.callPostProcessor('numgapharmonics', bound_name);
             
         end
         
@@ -1414,7 +1422,7 @@ classdef fpproc < mfemmpproc
             for ind = 1:numel(n)
             
                 [acc(ind,1), acs(ind,1), brc(ind,1), brs(ind,1), btc(ind,1), bts(ind,1)] ...
-                    = fpproc_interface_mex('getgapharmonics', this.objectHandle, bound_name, n(ind));
+                    = this.callPostProcessor('getgapharmonics', bound_name, n(ind));
             
             end
             
@@ -1422,5 +1430,13 @@ classdef fpproc < mfemmpproc
         
         
     end
-    
+
+    methods (Access = protected)
+        function varargout = callPostProcessor(this, varargin)
+            [varargout{1:nargout}] = fpproc_interface_mex(varargin{1}, ...
+                                                           this.objectHandle, ...
+                                                           varargin{2:end});
+        end
+    end
+
 end

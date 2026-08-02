@@ -17,6 +17,8 @@ public:
 
     // constructor
     FPProc_interface();
+    /** Native processor access for gateways that already own solved state. */
+    FPProc &processor() { return theFPProc; }
     //~FPProc_interface();
 
     int opendocument(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]);

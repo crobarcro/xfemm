@@ -8,6 +8,7 @@
 #include "FemmReader.h"
 #include "TangleMesherBackend.h"
 #include "TriangleMesherBackend.h"
+#include "postproc/fpproc_interface.h"
 
 #include <memory>
 #include <sstream>
@@ -85,7 +86,13 @@ public:
         if (!m_trial) throw std::logic_error("there is no trial solution; call solve first");
         return *m_trial;
     }
-    void solve() { m_trial.reset(new femm::TrialSolution(m_session->solve())); }
+    void solve() {
+        m_trial.reset(new femm::TrialSolution(m_session->solve()));
+        if (!m_postProcessor.processor().OpenDocument(m_session->model().problem(),
+                                                      m_solver->solvedSolver(),
+                                                      m_solver->solvedSystem()))
+            throw std::runtime_error("could not initialize in-memory post-processor");
+    }
     void writeSolution(const std::string &path) { trial(); m_solver->writeSolution(path); }
     void accept() { m_accepted = m_session->acceptSolution(trial()); m_session->setInitialState(m_accepted); }
     void reject() { m_trial.reset(); }
@@ -93,6 +100,7 @@ public:
         m_accepted = std::move(state); m_session->setInitialState(m_accepted);
     }
     std::shared_ptr<const femm::AcceptedState> accepted() const { return m_accepted; }
+    FPProc_interface &postProcessor() { return m_postProcessor; }
 
 private:
     SessionGateway() = default;
@@ -100,8 +108,47 @@ private:
     std::shared_ptr<femm::FSolverAnalysisBackend> m_solver;
     std::unique_ptr<femm::TrialSolution> m_trial;
     std::shared_ptr<const femm::AcceptedState> m_accepted;
+    FPProc_interface m_postProcessor;
     std::string m_filename, m_backendName = "triangle";
 };
+
+bool dispatchPostProcessor(const std::string &command, FPProc_interface &post,
+                           int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
+{
+    if (command == "opendocument") post.opendocument(nlhs, plhs, nrhs, prhs);
+    else if (command == "getpointvals") post.getpointvals(nlhs, plhs, nrhs, prhs);
+    else if (command == "clearcontour") post.clearcontour();
+    else if (command == "addcontour") post.addcontour(nlhs, plhs, nrhs, prhs);
+    else if (command == "selectblock") post.selectblock(nlhs, plhs, nrhs, prhs);
+    else if (command == "groupselectblock") post.groupselectblock(nlhs, plhs, nrhs, prhs);
+    else if (command == "clearblock") post.clearblock();
+    else if (command == "blockintegral") post.blockintegral(nlhs, plhs, nrhs, prhs);
+    else if (command == "gapintegral") post.gapintegral(nlhs, plhs, nrhs, prhs);
+    else if (command == "lineintegral") post.lineintegral(nlhs, plhs, nrhs, prhs);
+    else if (command == "smoothon") post.smoothon();
+    else if (command == "smoothoff") post.smoothoff();
+    else if (command == "getprobleminfo") post.getprobleminfo(nlhs, plhs, nrhs, prhs);
+    else if (command == "getcircuitprops") post.getcircuitprops(nlhs, plhs, nrhs, prhs);
+    else if (command == "numnodes") post.numnodes(nlhs, plhs, nrhs, prhs);
+    else if (command == "numelements") post.numelements(nlhs, plhs, nrhs, prhs);
+    else if (command == "getelements") post.getelements(nlhs, plhs, nrhs, prhs);
+    else if (command == "getvertices") post.getvertices(nlhs, plhs, nrhs, prhs);
+    else if (command == "getcentroids") post.getcentroids(nlhs, plhs, nrhs, prhs);
+    else if (command == "getareas") post.getareas(nlhs, plhs, nrhs, prhs);
+    else if (command == "getvolumes") post.getvolumes(nlhs, plhs, nrhs, prhs);
+    else if (command == "numgroupelements") post.numgroupelements(nlhs, plhs, nrhs, prhs);
+    else if (command == "getgroupelements") post.getgroupelements(nlhs, plhs, nrhs, prhs);
+    else if (command == "getgroupvertices") post.getgroupvertices(nlhs, plhs, nrhs, prhs);
+    else if (command == "getgroupcentroids") post.getgroupcentroids(nlhs, plhs, nrhs, prhs);
+    else if (command == "getgroupareas") post.getgroupareas(nlhs, plhs, nrhs, prhs);
+    else if (command == "getgroupvolumes") post.getgroupvolumes(nlhs, plhs, nrhs, prhs);
+    else if (command == "getgapb") post.getgapb(nlhs, plhs, nrhs, prhs);
+    else if (command == "getgapa") post.getgapa(nlhs, plhs, nrhs, prhs);
+    else if (command == "getgapharmonics") post.getgapharmonics(nlhs, plhs, nrhs, prhs);
+    else if (command == "numgapharmonics") post.numgapharmonics(nlhs, plhs, nrhs, prhs);
+    else return false;
+    return true;
+}
 
 mxArray *trialStruct(const femm::TrialSolution &trial)
 {
@@ -223,7 +270,9 @@ try {
         if (!field) throw std::invalid_argument("saved state has no backendState");
         state->backendState = stringValue(field, "backendState");
         gateway->restore(state);
-    } else throw std::invalid_argument("unknown session command: " + command);
+    } else if (!dispatchPostProcessor(command, gateway->postProcessor(),
+                                      nlhs, plhs, nrhs, prhs))
+        throw std::invalid_argument("unknown session command: " + command);
 } catch (const std::exception &error) {
     mexErrMsgIdAndTxt("MFEMM:session:error", "%s", error.what());
 }

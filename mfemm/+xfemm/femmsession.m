@@ -17,7 +17,8 @@ classdef femmsession < fpproc
 %   restored into another session for the same model with LOADSTATE.
 %   After SOLVE, the object is also a fully initialized FPPROC instance;
 %   all magnetic point, contour, block, circuit, mesh, and air-gap analysis
-%   methods documented by FPPROC can be called directly on the session.
+%   methods documented by FPPROC can be called directly on the session. The
+%   post-processor is refreshed in memory; SOLVE does not write an .ans file.
 %
 %   FEMMSESSION methods:
 %     setBackend      - select 'triangle' (default) or 'tangle' meshing
@@ -35,8 +36,6 @@ classdef femmsession < fpproc
 
     properties (Access = private, Hidden = true)
         sessionHandle
-        temporarySolution = ''
-        modelFilename = ''
     end
 
     methods
@@ -45,7 +44,6 @@ classdef femmsession < fpproc
             narginchk(1, 1);
             this@fpproc();
             this.sessionHandle = session_interface_mex('new', filename);
-            this.modelFilename = filename;
             this.openfilename = filename;
             this.FemmProblem = loadfemmfile(filename);
         end
@@ -56,7 +54,6 @@ classdef femmsession < fpproc
                 session_interface_mex('delete', this.sessionHandle);
                 this.sessionHandle = [];
             end
-            this.removeTemporarySolution();
         end
 
         function setBackend(this, name)
@@ -101,7 +98,7 @@ classdef femmsession < fpproc
             %   circuit data are deliberately not copied into this result;
             %   request quantities with the inherited FPPROC methods instead.
             out = session_interface_mex('solve', this.sessionHandle);
-            this.refreshPostProcessor();
+            this.isdocopen = true;
         end
 
         function out = result(this)
@@ -138,31 +135,11 @@ classdef femmsession < fpproc
         end
     end
 
-    methods (Access = private)
-        function refreshPostProcessor(this)
-            this.removeTemporarySolution();
-            base = tempname;
-            femfile = [base, '.fem'];
-            ansfile = [base, '.ans'];
-            copyfile(this.modelFilename, femfile);
-            try
-                session_interface_mex('export', this.sessionHandle, ansfile);
-                this.opendocument(ansfile);
-                this.temporarySolution = base;
-            catch exception
-                if exist(femfile, 'file'), delete(femfile); end
-                if exist(ansfile, 'file'), delete(ansfile); end
-                rethrow(exception);
-            end
-        end
-
-        function removeTemporarySolution(this)
-            if isempty(this.temporarySolution), return; end
-            files = {[this.temporarySolution, '.fem'], [this.temporarySolution, '.ans']};
-            for i = 1:numel(files)
-                if exist(files{i}, 'file'), delete(files{i}); end
-            end
-            this.temporarySolution = '';
+    methods (Access = protected)
+        function varargout = callPostProcessor(this, varargin)
+            [varargout{1:nargout}] = session_interface_mex(varargin{1}, ...
+                                                            this.sessionHandle, ...
+                                                            varargin{2:end});
         end
     end
 end

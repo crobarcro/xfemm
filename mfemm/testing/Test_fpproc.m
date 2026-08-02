@@ -26,4 +26,13 @@ force_from_stress_tensor = solution.lineintegral (3)
 torque_from_stress_tensor = solution.lineintegral (4)
 Bn2 = solution.lineintegral (5)
 
+% Explicit deletion followed by variable cleanup must not try to destroy the
+% native object a second time under Octave.
+lastwarn('');
+delete(solution);
+clear solution;
+[deleteWarning, ~] = lastwarn();
+assert(isempty(deleteWarning), ...
+       'MFEMM:fpproc:doubleDelete', ...
+       'Explicit fpproc deletion caused a second native handle deletion.');
 
