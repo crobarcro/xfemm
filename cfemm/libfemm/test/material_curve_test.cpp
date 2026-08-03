@@ -1,8 +1,12 @@
 #include "CMaterialProp.h"
+#include "FemmReader.h"
 
 #include <cassert>
 #include <cmath>
 #include <limits>
+#include <fstream>
+#include <cstdio>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -65,4 +69,24 @@ int main()
     femm::CMSolverMaterialProp::fromStream(malformed, errors);
     assert(malformed.fail());
     assert(errors.str().find("zero points or at least two") != std::string::npos);
+
+    const std::string filename = "invalid_material_curve_test.fem";
+    {
+        std::ofstream file(filename);
+        file << "[Format] = 4.0\n"
+                "[Frequency] = 0\n"
+                "[BlockProps] = 1\n"
+                "<BeginBlock>\n"
+                "<BlockName> = \"bad\"\n"
+                "<BHPoints> = 1\n"
+                "0 0\n"
+                "<EndBlock>\n";
+    }
+    auto problem = std::make_shared<femm::FemmProblem>(femm::FileType::MagneticsFile);
+    std::ostringstream loadErrors;
+    femm::MagneticsReader reader(problem, loadErrors);
+    assert(reader.parse(filename) == femm::F_FILE_MALFORMED);
+    assert(problem->blockproplist.empty());
+    assert(loadErrors.str().find("zero points or at least two") != std::string::npos);
+    std::remove(filename.c_str());
 }
