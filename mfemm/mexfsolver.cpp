@@ -126,7 +126,17 @@ void mexFunction( int nlhs, mxArray *plhs[],
 
     if (verbose == true) mexPrintf("Solving problem ...");
 
-    if ( !SolveObj->runSolver(verbose) )
+    bool solved = false;
+    try
+    {
+        solved = SolveObj->runSolver(verbose);
+    }
+    catch (const std::exception &error)
+    {
+        mexErrMsgIdAndTxt("MFEMM:fsolver:material", "%s", error.what());
+    }
+
+    if ( !solved )
     {
         if (verbose == true) mexPrintf("Problem NOT solved, exiting solver.");
 

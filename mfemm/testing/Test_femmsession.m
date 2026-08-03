@@ -29,5 +29,31 @@ function Test_femmsession
     assert(exist([scratchBase, '.ans'], 'file') == 0);
     delete(session);
 
+    % Invalid nonlinear material data must become a normal MATLAB error;
+    % no C++ exception may escape the MEX boundary.
+    invalidModel = [tempname(), '.fem'];
+    text = fileread(source);
+    text = regexprep(text, '<BHPoints>\s*=\s*9', '<BHPoints> = 1', 'once');
+    fid = fopen(invalidModel, 'w');
+    assert(fid ~= -1);
+    cleanup = onCleanup(@() deleteIfPresent(invalidModel));
+    fwrite(fid, text);
+    fclose(fid);
+    try
+        invalidSession = xfemm.femmsession(invalidModel); %#ok<NASGU>
+        error('Test_femmsession:ExpectedError', ...
+              'Invalid B-H curve was unexpectedly accepted.');
+    catch exception
+        assert(~strcmp(exception.identifier, 'Test_femmsession:ExpectedError'));
+        assert(~isempty(strfind(exception.message, ...
+                               'zero points or at least two'))); %#ok<STREMP>
+    end
+
     fprintf('femmsession analytical integration test passed.\n');
+end
+
+function deleteIfPresent(filename)
+    if exist(filename, 'file') == 2
+        delete(filename);
+    end
 end

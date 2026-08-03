@@ -433,8 +433,10 @@ bool FEASolver<PointPropT,BoundaryPropT,BlockPropT,CircuitPropT,BlockLabelT,Mesh
             while (input.good() && NumBlockProps < k)
             {
                 BlockPropT next = BlockPropT::fromStream(input, err);
-                blockproplist.push_back(next);
-                NumBlockProps++;
+                if (input.good()) {
+                    blockproplist.push_back(next);
+                    NumBlockProps++;
+                }
             }
             // message will be printed after parsing is done
             if (NumBlockProps != k)

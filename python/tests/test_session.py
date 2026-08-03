@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from xfemm import FemmSession, SessionStateError
+from xfemm import FemmSession, SessionStateError, XfemmError
 
 
 MODEL = Path(__file__).parents[2] / "cfemm" / "fsolver" / "test" / "Temp.fem"
@@ -31,6 +31,16 @@ def test_result_requires_solve():
     with FemmSession(MODEL) as session:
         with pytest.raises(SessionStateError, match="solve first"):
             session.result()
+
+
+def test_invalid_material_curve_is_reported_at_load(tmp_path):
+    model = tmp_path / "invalid-curve.fem"
+    text = UNIFORM_MODEL.read_text()
+    text = text.replace("<BHPoints> = 0", "<BHPoints> = 1\n0 0", 1)
+    model.write_text(text)
+
+    with pytest.raises(XfemmError, match="zero points or at least two"):
+        FemmSession(model)
 
 
 def test_uniform_field_solve_is_in_memory(tmp_path, monkeypatch):
