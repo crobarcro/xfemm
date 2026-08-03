@@ -79,4 +79,6 @@ target_include_directories(femm
     $<INSTALL_INTERFACE:include>
     )
 target_link_libraries(femm PUBLIC luacomplex)
+
+add_subdirectory(test)
 # vi:expandtab:tabstop=4 shiftwidth=4:
