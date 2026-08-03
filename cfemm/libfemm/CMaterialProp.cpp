@@ -37,6 +37,7 @@
 #include <cstdlib>
 #include <ctype.h>
 #include <istream>
+#include <stdexcept>
 
 #ifdef DEBUG_MEX
 #include "mex.h"
@@ -126,6 +127,20 @@ void CMMaterialProp::clearSlopes()
 
 void CMMaterialProp::GetSlopes(double omega)
 {
+    if (BHpoints < 0 || BHpoints == 1)
+        throw std::invalid_argument("B-H curve must contain either zero points or at least two points");
+    if (Bdata.size() != static_cast<size_t>(BHpoints)
+            || Hdata.size() != static_cast<size_t>(BHpoints))
+        throw std::invalid_argument("B-H curve point count does not match its B and H data sizes");
+    for (int point = 0; point < BHpoints; ++point) {
+        if (!std::isfinite(Bdata[point]) || !std::isfinite(Hdata[point].re)
+                || !std::isfinite(Hdata[point].im))
+            throw std::invalid_argument("B-H curve contains a non-finite B or H component at point "
+                                        + std::to_string(point));
+        if (point > 0 && !(Bdata[point] > Bdata[point - 1]))
+            throw std::invalid_argument("B-H curve B values must be strictly increasing (invalid interval at point "
+                                        + std::to_string(point) + ")");
+    }
     if (BHpoints==0) return; // catch trivial case;
     if (!slope.empty()) return; // already have computed the slopes;
 
@@ -195,8 +210,25 @@ void CMMaterialProp::GetSlopes(double omega)
         MuMax = mumax / muo;
     }
 
+    const int maxCurveRepairIterations = 100;
+    int curveRepairIterations = 0;
     while(CurveOK!=true)
     {
+        if (++curveRepairIterations > maxCurveRepairIterations) {
+            free(bn);
+            free(hn);
+            throw std::runtime_error("B-H curve repair did not converge after "
+                                     + std::to_string(maxCurveRepairIterations) + " iterations");
+        }
+        for (i = 1; i < BHpoints; ++i) {
+            if (!std::isfinite(Bdata[i]) || !std::isfinite(Hdata[i].re)
+                    || !std::isfinite(Hdata[i].im) || !(Bdata[i] > Bdata[i - 1])) {
+                free(bn);
+                free(hn);
+                throw std::runtime_error("B-H curve processing produced an invalid interpolation interval at point "
+                                         + std::to_string(i));
+            }
+        }
         slope.clear();
         debug << "curve not ok yet.\n";
         // make sure that the space for computing slopes is cleared out
@@ -281,6 +313,15 @@ void CMMaterialProp::GetSlopes(double omega)
             {
                 bn[i]=(Bdata[i-1]+Bdata[i]+Bdata[i+1])/3.;
                 hn[i]=(Hdata[i-1]+Hdata[i]+Hdata[i+1])/3.;
+            }
+
+            bool madeProgress = false;
+            for(i=1;i<BHpoints-1;i++)
+                madeProgress = madeProgress || bn[i] != Bdata[i] || hn[i] != Hdata[i];
+            if (!madeProgress) {
+                free(bn);
+                free(hn);
+                throw std::runtime_error("B-H curve repair cannot make progress");
             }
 
             for(i=1;i<BHpoints-1;i++){
@@ -1300,6 +1341,12 @@ CMSolverMaterialProp CMSolverMaterialProp::fromStream(std::istream &input, std::
             {
                 expectChar(input, '=', err);
                 parseValue(input, prop.BHpoints, err);
+                if (prop.BHpoints < 0 || prop.BHpoints == 1)
+                {
+                    err << "CMSolverMaterialProp: B-H curve must contain either zero points or at least two points\n";
+                    input.setstate(std::ios::failbit);
+                    break;
+                }
                 if (prop.BHpoints > 0)
                 {
                     prop.Hdata.reserve(prop.BHpoints);
@@ -1309,8 +1356,33 @@ CMSolverMaterialProp CMSolverMaterialProp::fromStream(std::istream &input, std::
                         double b;
                         CComplex h;
                         input >> b >> h.re;
+                        if (!input)
+                        {
+                            err << "CMSolverMaterialProp: could not read B-H point " << i << "\n";
+                            break;
+                        }
                         prop.Bdata.push_back(b);
                         prop.Hdata.push_back(h);
+                    }
+                }
+                if (input && (prop.Bdata.size() != static_cast<size_t>(prop.BHpoints)
+                              || prop.Hdata.size() != static_cast<size_t>(prop.BHpoints)))
+                {
+                    err << "CMSolverMaterialProp: B-H curve point count does not match parsed data\n";
+                    input.setstate(std::ios::failbit);
+                }
+                for (int i = 0; input && i < prop.BHpoints; ++i)
+                {
+                    if (!std::isfinite(prop.Bdata[i]) || !std::isfinite(prop.Hdata[i].re)
+                            || !std::isfinite(prop.Hdata[i].im))
+                    {
+                        err << "CMSolverMaterialProp: non-finite B or H component at B-H point " << i << "\n";
+                        input.setstate(std::ios::failbit);
+                    }
+                    else if (i > 0 && !(prop.Bdata[i] > prop.Bdata[i - 1]))
+                    {
+                        err << "CMSolverMaterialProp: B values must be strictly increasing; invalid interval at B-H point " << i << "\n";
+                        input.setstate(std::ios::failbit);
                     }
                 }
                 continue;
@@ -1626,5 +1698,3 @@ void CSMaterialProp::toStream(ostream &out) const
     out << "    <qv> = " << qv << "\n";
     out << "  <EndBlock>\n";
 }
-
-
