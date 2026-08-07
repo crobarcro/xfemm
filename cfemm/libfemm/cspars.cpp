@@ -394,7 +394,7 @@ void CBigComplexLinProb::MultConjA(CComplex *X, CComplex *Y, int k)
             Y[i]+=(e->x.Conj()*X[e->c]);
             if (k==1)
                 Y[e->c]+=(e->x*X[i]);   // case in which the matrix is hermitian
-            if (k==3)
+            else if (k==3)
                 Y[e->c]+=(-e->x*X[i]);   // case in which the matrix is antihermitian
             else
                 Y[e->c]+=(e->x.Conj()*X[i]); // case in which the matrix is complex-symmetric

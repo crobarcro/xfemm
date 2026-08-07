@@ -76,7 +76,7 @@ class FemmSession:
         native = self._require_open()
         try:
             return native.solve()
-        except RuntimeError as exc:
+        except (RuntimeError, ValueError) as exc:
             raise SolverError(str(exc)) from exc
 
     def result(self) -> dict[str, Any]:

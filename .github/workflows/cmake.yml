@@ -51,6 +51,19 @@ jobs:
         'RunTests', true, 'Clean', true, 'Tidy', true);
         Test_femmsession;"
 
+  python:
+    name: Python interface
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Build Python extension
+      run: python -m pip install -e 'python[test]'
+    - name: Test Python interface
+      run: python -m pytest python/tests -q
+
   matlab-mex:
     name: MATLAB MEX interface
     # Pin the OS and MATLAB release as a supported MEX compiler pair. The
