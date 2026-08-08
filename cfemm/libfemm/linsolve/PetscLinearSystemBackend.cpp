@@ -214,13 +214,10 @@ bool PetscLinearSystemBackend<Scalar>::create(int dimension, int bandwidth,
     {
         KSPCreate(PETSC_COMM_SELF, &impl.ksp);
     }
-    // Bind the matrix to the KSP.  The 4-argument form is used by PETSc 3.16+;
-    // earlier versions take only the two matrices.
-#if PETSC_VERSION_GE(3, 16, 0)
-    KSPSetOperators(impl.ksp, impl.A, impl.A, SAME_NONZERO_PATTERN);
-#else
+    // Bind the matrix to the KSP (3-argument form in all supported PETSc
+    // releases; the preconditioner is rebuilt per solve via
+    // KSPSetReusePreconditioner).
     KSPSetOperators(impl.ksp, impl.A, impl.A);
-#endif
 
     // KSP/PC defaults.  Apply PETSc option-database overrides first, then
     // install the backend defaults for anything the user did not specify.
