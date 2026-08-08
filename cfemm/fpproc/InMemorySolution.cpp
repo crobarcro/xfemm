@@ -1,15 +1,15 @@
 #include "fpproc.h"
 
 #include "fsolver.h"
-#include "spars.h"
+#include "linsolve/LinearSystemBackend.h"
 
 #include <stdexcept>
 #include <cmath>
 
 bool FPProc::OpenDocument(const femm::FemmProblem &problem, const FSolver &solver,
-                          const CBigLinProb &solution)
+                          const femm::LinearSystemBackend<double> &solution)
 {
-    if (solution.n != solver.NumNodes)
+    if (solution.dimension() != solver.NumNodes)
         throw std::invalid_argument("solution and solver node counts differ");
 
     NewDocument();
@@ -54,7 +54,7 @@ bool FPProc::OpenDocument(const femm::FemmProblem &problem, const FSolver &solve
     for (std::size_t i = 0; i < solver.meshnode.size(); ++i) {
         meshnode[i].x = solver.meshnode[i].x / coordinateScale;
         meshnode[i].y = solver.meshnode[i].y / coordinateScale;
-        meshnode[i].A = solution.b[i];
+        meshnode[i].A = solution.rhs()[i];
     }
 
     meshelem.resize(solver.meshele.size());

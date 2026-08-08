@@ -30,7 +30,7 @@
 #include "femmcomplex.h"
 #include "femmconstants.h"
 #include "fparse.h"
-#include "spars.h"
+#include "linsolve/backend_factory.h"
 
 #include <cassert>
 #include <cmath>
@@ -498,7 +498,8 @@ bool PostProcessor::makeMask()
 {
     if(bHasMask) return true;
 
-    CBigLinProb L;
+    std::unique_ptr<femm::LinearSystemBackend<double>> L =
+        femm::create_backend<double>(femm::default_backend_kind());
     double Me[3][3],be[3];     // element matrix;
     double p[3],q[3];       // element shape parameters;
     int n[3];               // numbers of nodes for a particular element;
@@ -522,7 +523,7 @@ bool PostProcessor::makeMask()
     bw++;
 
     int NumNodes=(int) meshnodes.size();
-    L.Create(NumNodes,bw);
+    L->create(NumNodes,bw);
 
     // Sort through materials to see if they denote air;
     int *matflag=(int*)calloc(problem->blockproplist.size(),sizeof(int));
@@ -547,8 +548,8 @@ bool PostProcessor::makeMask()
     for(int i=0;i<NumNodes;i++){
         // Note(ZaJ): I have added the field Q to CMeshNode, and set it to -2 for CMMeshNode
         //            this makes the code here equivalent to the fpproc implementation
-        if (meshnodes[i]->Q!=-2) L.V[i]=0;
-        else L.V[i]=-1;
+        if (meshnodes[i]->Q!=-2) L->solution()[i]=0;
+        else L->solution()[i]=-1;
     }
 
     // if the problem is axisymmetric, does the selection lie along r=0?
@@ -563,9 +564,9 @@ bool PostProcessor::makeMask()
             {
                 int k;
                 k=meshelems[i]->p[plus1mod3[j]];
-                if((!bOnAxis) || (isKosher(k))) L.V[k]=0;
+                if((!bOnAxis) || (isKosher(k))) L->solution()[k]=0;
                 k=meshelems[i]->p[minus1mod3[j]];
-                if((!bOnAxis) || (isKosher(k))) L.V[k]=0;
+                if((!bOnAxis) || (isKosher(k))) L->solution()[k]=0;
             }
         }
     }
@@ -576,12 +577,12 @@ bool PostProcessor::makeMask()
         if(problem->labellist[meshelems[i]->lbl]->IsSelected)
         {
             for(int j=0;j<3;j++){
-                L.V[meshelems[i]->p[j]]=1;
+                L->solution()[meshelems[i]->p[j]]=1;
             }
         }
         else if(lblflag[meshelems[i]->lbl]!=0)
         {
-            for(int j=0;j<3;j++) L.V[meshelems[i]->p[j]]=0;
+            for(int j=0;j<3;j++) L->solution()[meshelems[i]->p[j]]=0;
         }
     }
     // Any nodes that have point currents applied to them but are not in the
@@ -603,7 +604,7 @@ bool PostProcessor::makeMask()
                 for(int j=0;j<npts;j++)
                     if(abs(p[j]-meshnodes[i]->CC())<1.e-8)
                     {
-                        if (L.V[i]<0) L.V[i]=0.;
+                        if (L->solution()[i]<0) L->solution()[i]=0.;
                         npts--;
                         if(npts>0){
                             p[j]=p[npts];
@@ -624,7 +625,7 @@ bool PostProcessor::makeMask()
         for(int i=0;i<NumNodes;i++)
         {
             const femmsolver::CSMeshNode *node = reinterpret_cast<femmsolver::CSMeshNode*>(meshnodes[i].get());
-            if (node->IsSelected==true) L.V[i]=1;
+            if (node->IsSelected==true) L->solution()[i]=1;
         }
     }
     // build up element matrices;
@@ -660,7 +661,7 @@ bool PostProcessor::makeMask()
         if ((!problem->labellist[meshelems[i]->lbl]->IsSelected) && (lblflag[meshelems[i]->lbl]))
         {
             int k=0;
-            for(int j=0;j<3;j++) if (L.V[n[j]]==0) k++;
+            for(int j=0;j<3;j++) if (L->solution()[n[j]]==0) k++;
             if(k<3){
                 std::string outmsg = "The selected region is invalid. A valid selection\n"
                                      "cannot abut a region which is not free space.";
@@ -684,17 +685,17 @@ bool PostProcessor::makeMask()
         // doing it here saves a lot of time.
         for(int j=0;j<3;j++)
         {
-            if(L.V[n[j]]>=0)
+            if(L->solution()[n[j]]>=0)
             {
                 for(int k=0;k<3;k++)
                 {
                     if(j!=k){
-                        be[k]-=Me[k][j]*L.V[n[j]];
+                        be[k]-=Me[k][j]*L->solution()[n[j]];
                         Me[k][j]=0;
                         Me[j][k]=0;
                     }
                 }
-                be[j]=L.V[n[j]]*Me[j][j];
+                be[j]=L->solution()[n[j]]*Me[j][j];
             }
         }
 
@@ -703,21 +704,23 @@ bool PostProcessor::makeMask()
         {
             for (int k=j;k<3;k++)
                 if(Me[j][k]!=0)
-                    L.Put(L.Get(n[j],n[k])-Me[j][k],n[j],n[k]);
-            L.b[n[j]]-=be[j];
+                    L->put(L->get(n[j],n[k])-Me[j][k],n[j],n[k]);
+            L->rhs()[n[j]]-=be[j];
         }
     }
 
     free(lblflag);
 
     // solve the problem;
-    if (!L.PCGSolve(false))
+    femm::SolveOptions opts;
+    opts.warm_start = false;
+    if (!L->solve(opts).converged)
         return false;
 
     // Process the results to get one row of elements
     // that runs down the center of the gap away from boundaries.
     for(int i=0;i<NumNodes;i++)
-        if (L.V[i]>0.5) meshnodes[i]->msk = 1;
+        if (L->solution()[i]>0.5) meshnodes[i]->msk = 1;
         else meshnodes[i]->msk = 0;
 
     bHasMask=true;

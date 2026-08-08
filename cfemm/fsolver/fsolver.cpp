@@ -35,7 +35,7 @@
 #include <fparse.h>
 #include <fsolver.h>
 #include <LuaInstance.h>
-#include <spars.h>
+#include <linsolve/backend_factory.h>
 
 #include <algorithm>
 #include <cassert>
@@ -1069,11 +1069,17 @@ bool FSolver::runSolver(bool verbose)
             WarnMessage("Cannot handle incremental permeability problems with frequency 0.\n");
             return false;
         }
-        CBigLinProb L;
-        L.Precision = Precision;
+        std::unique_ptr<femm::LinearSystemBackend<double>> L =
+            femm::create_backend<double>(femm::default_backend_kind());
+        if (!L)
+        {
+            WarnMessage("couldn't create linear system backend\n");
+            return false;
+        }
+        L->set_precision(Precision);
 
         // initialize the problem, allocating the space required to solve it.
-        if (L.Create(NumNodes, BandWidth) == false)
+        if (L->create(NumNodes, BandWidth) == false)
         {
             WarnMessage("couldn't allocate enough space for matrices\n");
             return false;
@@ -1083,7 +1089,7 @@ bool FSolver::runSolver(bool verbose)
         if (ProblemType == PLANAR)
         {
 
-            if (Static2D(L) == false)
+            if (Static2D(*L) == false)
             {
                 WarnMessage("Couldn't solve the problem\n");
                 return false;
@@ -1091,7 +1097,7 @@ bool FSolver::runSolver(bool verbose)
             if (verbose)
                 PrintMessage("Static 2-D problem solved\n");
         } else {
-            if (StaticAxisymmetric(L) == false)
+            if (StaticAxisymmetric(*L) == false)
             {
                 WarnMessage("Couldn't solve the problem");
                 return false;
@@ -1100,7 +1106,7 @@ bool FSolver::runSolver(bool verbose)
                 PrintMessage("Static axisymmetric problem solved\n");
         }
 
-        if (WriteStatic2D(L) == false)
+        if (WriteStatic2D(*L) == false)
         {
             WarnMessage("couldn't write results to disk\n");
             return false;
@@ -1108,11 +1114,17 @@ bool FSolver::runSolver(bool verbose)
         if (verbose)
             PrintMessage("results written to disk\n");
     } else {
-        CBigComplexLinProb L;
-        L.Precision = Precision;
+        std::unique_ptr<femm::LinearSystemBackend<CComplex>> L =
+            femm::create_backend<CComplex>(femm::default_backend_kind());
+        if (!L)
+        {
+            WarnMessage("couldn't create linear system backend\n");
+            return false;
+        }
+        L->set_precision(Precision);
 
         // initialize the problem, allocating the space required to solve it.
-        if (!L.Create(NumNodes+NumCircProps, BandWidth, NumNodes))
+        if (!L->create(NumNodes+NumCircProps, BandWidth, NumNodes))
         {
             WarnMessage("couldn't allocate enough space for matrices\n");
             return false;
@@ -1125,7 +1137,7 @@ bool FSolver::runSolver(bool verbose)
             {
                 WarnMessage("Harmonic planar incremental permeability problems are work in progress. RESULTS WON'T BE VALID!\n");
             }
-            if (!Harmonic2D(L,verbose))
+            if (!Harmonic2D(*L,verbose))
             {
                 WarnMessage("Couldn't solve the problem\n");
                 return false;
@@ -1139,7 +1151,7 @@ bool FSolver::runSolver(bool verbose)
                 WarnMessage("Cannot handle harmonic axisymmetric incremental problems.\n");
                 return false;
             }
-            if (!HarmonicAxisymmetric(L,verbose))
+            if (!HarmonicAxisymmetric(*L,verbose))
             {
                 WarnMessage("Couldn't solve the problem\n");
                 return false;
@@ -1147,7 +1159,7 @@ bool FSolver::runSolver(bool verbose)
             if (verbose){ PrintMessage("Harmonic axisymmetric problem solved\n"); }
         }
 
-        if (!WriteHarmonic2D(L))
+        if (!WriteHarmonic2D(*L))
         {
             WarnMessage("couldn't write results to disk\n");
             return false;

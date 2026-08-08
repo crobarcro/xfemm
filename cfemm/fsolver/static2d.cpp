@@ -22,7 +22,7 @@
 #include "femmcomplex.h"
 #include "femmconstants.h"
 #include "CElement.h"
-#include "spars.h"
+#include "linsolve/LinearSystemBackend.h"
 #include "fsolver.h"
 #include "lua.h"
 #include "LuaInstance.h"
@@ -50,7 +50,7 @@ double Power(double x, int y)
 	return pow(x,(double) y);
 }
 
-int FSolver::Static2D(CBigLinProb &L)
+int FSolver::Static2D(femm::LinearSystemBackend<double> &L)
 {
 
     int i,j,k,w,s;
@@ -185,7 +185,7 @@ int FSolver::Static2D(CBigLinProb &L)
 
         if(Iter > 0)
         {
-            L.Wipe();
+            L.wipe();
         }
 
         // first, tack in air gap element contributions
@@ -344,7 +344,7 @@ int FSolver::Static2D(CBigLinProb &L)
                 // scale by weight to get periodic/antiperiodic right and tack into mesh
                 for(int ii=0;ii<10;ii++)
                     for(int jj=ii;jj<10;jj++)
-                        L.AddTo(MG[ii][jj]*ww[ii]*ww[jj],nn[ii],nn[jj]);
+                        L.add_to(MG[ii][jj]*ww[ii]*ww[jj],nn[ii],nn[jj]);
             }
 
         }
@@ -690,8 +690,8 @@ int FSolver::Static2D(CBigLinProb &L)
                 {
                     for(j = 0,B1 = 0.,B2 = 0.; j<3; j++)
                     {
-                        B1+=L.V[n[j]]*q[j];
-                        B2+=L.V[n[j]]*p[j];
+                        B1+=L.solution()[n[j]]*q[j];
+                        B2+=L.solution()[n[j]]*p[j];
                     }
                     B = c*sqrt(B1*B1+B2*B2)/(0.02*a);
                     // correction for lengths in cm of 1/0.02
@@ -704,7 +704,7 @@ int FSolver::Static2D(CBigLinProb &L)
                     for(j = 0; j<3; j++)
                     {
                         for(w = 0,v[j] = 0; w<3; w++)
-                            v[j]+=(Mx[j][w]+My[j][w])*L.V[n[w]];
+                            v[j]+=(Mx[j][w]+My[j][w])*L.solution()[n[w]];
                     }
                     K = -200.*c*c*c*dv/a;
                     for(j = 0; j<3; j++)
@@ -722,8 +722,8 @@ int FSolver::Static2D(CBigLinProb &L)
 
                     for(j = 0,B1 = 0.,B2 = 0.; j<3; j++)
                     {
-                        B1+=L.V[n[j]]*q[j];
-                        B2+=L.V[n[j]]*p[j]/t;
+                        B1+=L.solution()[n[j]]*q[j];
+                        B2+=L.solution()[n[j]]*p[j]/t;
                     }
 
                     B = c*sqrt(B1*B1+B2*B2)/(0.02*a);
@@ -740,8 +740,8 @@ int FSolver::Static2D(CBigLinProb &L)
                     {
                         for(w = 0,v[j] = 0,u[j] = 0; w<3; w++)
                         {
-                            v[j]+=(My[j][w]/t+Mx[j][w])*L.V[n[w]];
-                            u[j]+=(My[j][w]/t + t*Mx[j][w])*L.V[n[w]];
+                            v[j]+=(My[j][w]/t+Mx[j][w])*L.solution()[n[w]];
+                            u[j]+=(My[j][w]/t + t*Mx[j][w])*L.solution()[n[w]];
                         }
                     }
 
@@ -761,8 +761,8 @@ int FSolver::Static2D(CBigLinProb &L)
 
                     for(j = 0,B1 = 0.,B2 = 0.; j<3; j++)
                     {
-                        B1+=(L.V[n[j]]*q[j])/t;
-                        B2+=L.V[n[j]]*p[j];
+                        B1+=(L.solution()[n[j]]*q[j])/t;
+                        B2+=L.solution()[n[j]]*p[j];
                     }
 
                     B = c*sqrt(B1*B1+B2*B2)/(0.02*a);
@@ -779,8 +779,8 @@ int FSolver::Static2D(CBigLinProb &L)
                     {
                         for(w = 0,v[j] = 0,u[j] = 0; w<3; w++)
                         {
-                            v[j]+=(Mx[j][w]/t + My[j][w])*L.V[n[w]];
-                            u[j]+=(Mx[j][w]/t + t*My[j][w])*L.V[n[w]];
+                            v[j]+=(Mx[j][w]/t + My[j][w])*L.solution()[n[w]];
+                            u[j]+=(Mx[j][w]/t + t*My[j][w])*L.solution()[n[w]];
                         }
                     }
 
@@ -801,17 +801,17 @@ int FSolver::Static2D(CBigLinProb &L)
                 for (k = 0; k<3; k++)
                 {
                     Me[j][k]+= (Mx[j][k]/Re(El->mu2) + My[j][k]/Re(El->mu1) + Mxy[j][k] * Re(El->v12) + Mn[j][k]);
-                    be[j]+=Mn[j][k]*L.V[n[k]];
+                    be[j]+=Mn[j][k]*L.solution()[n[k]];
                 }
 
             for (j = 0; j<3; j++)
             {
                 for (k = j; k<3; k++)
                 {
-                    L.AddTo(-Me[j][k],n[j],n[k]);
+                    L.add_to(-Me[j][k],n[j],n[k]);
                 }
 
-                L.b[n[j]]-=be[j];
+                L.rhs()[n[j]]-=be[j];
             }
         }
 
@@ -820,7 +820,7 @@ int FSolver::Static2D(CBigLinProb &L)
         {
             if(meshnode[i].BoundaryMarker>=0)
             {
-                L.b[i]+=(0.01*nodeproplist[meshnode[i].BoundaryMarker].J.re);
+                L.rhs()[i]+=(0.01*nodeproplist[meshnode[i].BoundaryMarker].J.re);
             }
         }
 
@@ -832,7 +832,7 @@ int FSolver::Static2D(CBigLinProb &L)
                 if((nodeproplist[meshnode[i].BoundaryMarker].J.re==0) &&
                         (nodeproplist[meshnode[i].BoundaryMarker].J.im==0))
                 {
-                    L.SetValue(i,nodeproplist[meshnode[i].BoundaryMarker].A.re / c);
+                    L.set_value(i,nodeproplist[meshnode[i].BoundaryMarker].A.re / c);
                 }
             }
         }
@@ -865,7 +865,7 @@ int FSolver::Static2D(CBigLinProb &L)
                                 y*lineproplist[s].A2;
                             // just take ``real'' component.
                             a*=cos(lineproplist[s].phi*DEG);
-                            L.SetValue(meshele[i].p[j],a/c);
+                            L.set_value(meshele[i].p[j],a/c);
 
                             // second point on the side;
                             x = meshnode[meshele[i].p[k]].x;
@@ -877,7 +877,7 @@ int FSolver::Static2D(CBigLinProb &L)
                                 y*lineproplist[s].A2;
                             // just take``real'' component.
                             a*=cos(lineproplist[s].phi*DEG);
-                            L.SetValue(meshele[i].p[k],a/c);
+                            L.set_value(meshele[i].p[k],a/c);
                         }
                         else
                         {
@@ -898,7 +898,7 @@ int FSolver::Static2D(CBigLinProb &L)
                             a = lineproplist[s].A0 + r*lineproplist[s].A1 +
                                 t*lineproplist[s].A2;
                             a*=cos(lineproplist[s].phi*DEG); // just take ``real'' component.
-                            L.SetValue(meshele[i].p[j],a/c);
+                            L.set_value(meshele[i].p[j],a/c);
 
                             // second point on the side;
                             x = meshnode[meshele[i].p[k]].x;
@@ -917,7 +917,7 @@ int FSolver::Static2D(CBigLinProb &L)
                             a = lineproplist[s].A0 + r*lineproplist[s].A1 +
                                 t*lineproplist[s].A2;
                             a*=cos(lineproplist[s].phi*DEG); // just take ``real'' component.
-                            L.SetValue(meshele[i].p[k],a/c);
+                            L.set_value(meshele[i].p[k],a/c);
                         }
 
                     }
@@ -931,21 +931,23 @@ int FSolver::Static2D(CBigLinProb &L)
         {
             if (pbclist[k].t==0)
             {
-                L.Periodicity(pbclist[k].x,pbclist[k].y);
+                L.constrain_periodic(pbclist[k].x,pbclist[k].y,false);
             }
             if (pbclist[k].t==1)
             {
-                L.AntiPeriodicity(pbclist[k].x,pbclist[k].y);
+                L.constrain_periodic(pbclist[k].x,pbclist[k].y,true);
             }
         }
 
         // solve the problem;
         for(j=0;j<NumNodes;j++)
         {
-            V_old[j]=L.V[j];
+            V_old[j]=L.solution()[j];
         }
 
-        if (L.PCGSolve(Iter)==false)
+        femm::SolveOptions opts;
+        opts.warm_start = (Iter > 0);
+        if (L.solve(opts).converged==false)
         {
             return false;
         }
@@ -955,8 +957,8 @@ int FSolver::Static2D(CBigLinProb &L)
 
             for(j = 0,x = 0,y = 0; j<NumNodes; j++)
             {
-                x+=(L.V[j]-V_old[j])*(L.V[j]-V_old[j]);
-                y+=(L.V[j]*L.V[j]);
+                x+=(L.solution()[j]-V_old[j])*(L.solution()[j]-V_old[j]);
+                y+=(L.solution()[j]*L.solution()[j]);
             }
 
             if (y==0)
@@ -984,7 +986,7 @@ int FSolver::Static2D(CBigLinProb &L)
 
                 for(j = 0; j<NumNodes; j++)
                 {
-                    L.V[j] = Relax*L.V[j]+(1.0-Relax)*V_old[j];
+                    L.solution()[j] = Relax*L.solution()[j]+(1.0-Relax)*V_old[j];
                 }
             }
 
@@ -1017,7 +1019,7 @@ int FSolver::Static2D(CBigLinProb &L)
 
     for(i = 0; i<NumNodes; i++)
     {
-        L.b[i] = L.V[i]*c;    // convert answer to Amps
+        L.rhs()[i] = L.solution()[i]*c;    // convert answer to Amps
     }
 
     free(V_old);
@@ -1035,7 +1037,7 @@ int FSolver::Static2D(CBigLinProb &L)
 //=========================================================================
 //=========================================================================
 
-int FSolver::WriteStatic2D(CBigLinProb &L)
+int FSolver::WriteStatic2D(femm::LinearSystemBackend<double> &L)
 {
     // write solution to disk;
 
@@ -1087,7 +1089,7 @@ int FSolver::WriteStatic2D(CBigLinProb &L)
         fprintf( fp, "%.17g\t%.17g\t%.17g\t%i",
                  meshnode[i].x/cf,
                  meshnode[i].y/cf,
-                 L.b[i],
+                 L.rhs()[i],
                  meshnode[i].BoundaryMarker );
 
         // include A from previous solution if this is an incremental permeability problem

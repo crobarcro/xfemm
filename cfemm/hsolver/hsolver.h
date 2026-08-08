@@ -35,7 +35,7 @@
 #define HSOLVER_H
 
 #include "feasolver.h"
-#include "spars.h"
+#include "linsolve/LinearSystemBackend.h"
 #include "CBlockLabel.h"
 #include "CBoundaryProp.h"
 #include "CCircuit.h"
@@ -79,9 +79,9 @@ public:
     LoadMeshErr LoadMesh(bool deleteFiles=true) override;
     int LoadPrev();
     bool LoadProblemFile();
-    double ChargeOnConductor(int OnConductor, CBigLinProb &L);
-	int WriteResults(CBigLinProb &L);
-    int AnalyzeProblem(CBigLinProb &L);
+    double ChargeOnConductor(int OnConductor, femm::LinearSystemBackend<double> &L);
+	int WriteResults(femm::LinearSystemBackend<double> &L);
+    int AnalyzeProblem(femm::LinearSystemBackend<double> &L);
     int (*WarnMessage)(const char*, ...);
 
     virtual bool runSolver(bool verbose=false) override;

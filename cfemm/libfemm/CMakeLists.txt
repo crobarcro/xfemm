@@ -71,7 +71,11 @@ add_library(femm
     PostProcessor.cpp
     spars.cpp
     stringTools.cpp
+    linsolve/backend_factory.cpp
     )
+if(XFEMM_USE_PETSc)
+    target_sources(femm PRIVATE linsolve/PetscLinearSystemBackend.cpp)
+endif()
 target_include_directories(femm
     PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
@@ -79,6 +83,48 @@ target_include_directories(femm
     $<INSTALL_INTERFACE:include>
     )
 target_link_libraries(femm PUBLIC luacomplex)
+
+# ---------------------------------------------------------------------------
+# Optional PETSc linear solver backend
+# ---------------------------------------------------------------------------
+option(XFEMM_USE_PETSc "Use the PETSc linear solver backend" OFF)
+if(XFEMM_USE_PETSc)
+    # Locate a PETSc build with complex scalars.  The Debian/Ubuntu package
+    # layout puts it in /usr/lib/petscdir/petsc<VERSION>/<arch>-complex; the
+    # PETSC_DIR/PETSC_ARCH environment variables are honoured as well.
+    set(_petsc_hints)
+    file(GLOB _petsc_complex_dirs "/usr/lib/petscdir/petsc*/x86_64-linux-gnu-complex")
+    list(APPEND _petsc_hints ${_petsc_complex_dirs})
+    if(DEFINED ENV{PETSC_DIR})
+        if(DEFINED ENV{PETSC_ARCH})
+            list(APPEND _petsc_hints "$ENV{PETSC_DIR}/$ENV{PETSC_ARCH}")
+        else()
+            list(APPEND _petsc_hints "$ENV{PETSC_DIR}")
+        endif()
+    endif()
+    find_path(PETSC_INCLUDE_DIR petsc.h PATHS ${_petsc_hints} PATH_SUFFIXES include NO_DEFAULT_PATH)
+    find_library(PETSC_LIBRARY petsc_complex PATHS ${_petsc_hints} PATH_SUFFIXES lib NO_DEFAULT_PATH)
+    if(NOT PETSC_INCLUDE_DIR OR NOT PETSC_LIBRARY)
+        message(FATAL_ERROR
+            "XFEMM_USE_PETSc was requested but no complex-scalar PETSc build was found. "
+            "Install the PETSc complex development package (libpetsc-complex-dev) or set "
+            "PETSC_DIR/PETSC_ARCH.")
+    endif()
+    message(STATUS "Using PETSc (complex) headers: ${PETSC_INCLUDE_DIR}")
+    message(STATUS "Using PETSc (complex) library: ${PETSC_LIBRARY}")
+    # PETSc headers require MPI headers.
+    find_package(MPI QUIET COMPONENTS CXX)
+    if(MPI_CXX_FOUND)
+        set(PETSC_INCLUDE_DIRS ${PETSC_INCLUDE_DIR} ${MPI_CXX_INCLUDE_PATH})
+        set(PETSC_LINK_LIBRARIES ${PETSC_LIBRARY} ${MPI_CXX_LIBRARIES})
+    else()
+        set(PETSC_INCLUDE_DIRS ${PETSC_INCLUDE_DIR})
+        set(PETSC_LINK_LIBRARIES ${PETSC_LIBRARY})
+    endif()
+    target_include_directories(femm PRIVATE ${PETSC_INCLUDE_DIRS})
+    target_compile_definitions(femm PRIVATE XFEMM_USE_PETSc)
+    target_link_libraries(femm PUBLIC ${PETSC_LINK_LIBRARIES})
+endif()
 
 add_subdirectory(test)
 # vi:expandtab:tabstop=4 shiftwidth=4:

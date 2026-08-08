@@ -34,7 +34,7 @@
 
 #include "femmcomplex.h"
 #include "femmconstants.h"
-#include "spars.h"
+#include "linsolve/backend_factory.h"
 //#include "fparse.h"
 #include "esolver.h"
 
@@ -386,7 +386,7 @@ LoadMeshErr ESolver::LoadMesh(bool deleteFiles)
  * - \femm42{belasolv/prob1big.cpp,CFemmeDocCore::AnalyzeProblem()}
  * \endinternal
  */
-int ESolver::AnalyzeProblem(CBigLinProb &L)
+int ESolver::AnalyzeProblem(femm::LinearSystemBackend<double> &L)
 {
     int i,j,k;
 	double Me[3][3],be[3];		// element matrices;
@@ -409,19 +409,19 @@ int ESolver::AnalyzeProblem(CBigLinProb &L)
 	// The V vector denotes the assigned value
 	for(i=0;i<NumNodes;i++)
 	{
-		L.Q[i]=-2;
+		L.node_flag()[i]=-2;
         if(meshnode[i].BoundaryMarker >=0)
             if(nodeproplist[meshnode[i].BoundaryMarker].qp==0)
 			{
-                L.V[i]=nodeproplist[meshnode[i].BoundaryMarker].V;
-				L.Q[i]=-1;
+                L.solution()[i]=nodeproplist[meshnode[i].BoundaryMarker].V;
+				L.node_flag()[i]=-1;
 			}
 
 		if(meshnode[i].InConductor>=0)
 			if(circproplist[meshnode[i].InConductor].CircType==1)
 			{
-				L.V[i]=circproplist[meshnode[i].InConductor].V;
-				L.Q[i]=meshnode[i].InConductor;
+				L.solution()[i]=circproplist[meshnode[i].InConductor].V;
+				L.node_flag()[i]=meshnode[i].InConductor;
 			}
 	}
 
@@ -434,10 +434,10 @@ int ESolver::AnalyzeProblem(CBigLinProb &L)
 			{
 				if(lineproplist[ meshele[i].e[j] ].BdryFormat==0)
 				{
-					L.V[meshele[i].p[j]]=lineproplist[meshele[i].e[j]].V;
-					L.V[meshele[i].p[k]]=lineproplist[meshele[i].e[j]].V;
-					L.Q[meshele[i].p[j]]=-1;
-					L.Q[meshele[i].p[k]]=-1;
+					L.solution()[meshele[i].p[j]]=lineproplist[meshele[i].e[j]].V;
+					L.solution()[meshele[i].p[k]]=lineproplist[meshele[i].e[j]].V;
+					L.node_flag()[meshele[i].p[j]]=-1;
+					L.node_flag()[meshele[i].p[k]]=-1;
 				}
 			}
 		}
@@ -550,17 +550,17 @@ int ESolver::AnalyzeProblem(CBigLinProb &L)
 		// process any prescribed nodal values;
 		for(j=0;j<3;j++)
 		{
-			if(L.Q[n[j]]!=-2)
+			if(L.node_flag()[n[j]]!=-2)
 			{
 				for(k=0;k<3;k++)
 				{
 					if(j!=k){
-						be[k]-=Me[k][j]*L.V[n[j]];
+						be[k]-=Me[k][j]*L.solution()[n[j]];
 						Me[k][j]=0;
 						Me[j][k]=0;
 					}
 				}
-				be[j]=L.V[n[j]]*Me[j][j];
+				be[j]=L.solution()[n[j]]*Me[j][j];
 			}
 		}
 
@@ -574,13 +574,13 @@ int ESolver::AnalyzeProblem(CBigLinProb &L)
 		}
 		for (j=0;j<3;j++){
 			for (k=j;k<3;k++)
-				L.Put(L.Get(ne[j],ne[k])-Me[j][k],ne[j],ne[k]);
-			L.b[ne[j]]-=be[j];
+				L.put(L.get(ne[j],ne[k])-Me[j][k],ne[j],ne[k]);
+			L.rhs()[ne[j]]-=be[j];
 
 			if(ne[j]!=n[j])
 			{
-				L.Put(L.Get(n[j],n[j])-Me[j][j],n[j],n[j]);
-				L.Put(L.Get(n[j],ne[j])+Me[j][j],n[j],ne[j]);
+				L.put(L.get(n[j],n[j])-Me[j][j],n[j],n[j]);
+				L.put(L.get(n[j],ne[j])+Me[j][j],n[j],ne[j]);
 			}
 		}
 
@@ -589,22 +589,22 @@ int ESolver::AnalyzeProblem(CBigLinProb &L)
 	// add in contribution from point charge density;
 	for(i=0;i<NumNodes;i++)
 	{
-        if((meshnode[i].BoundaryMarker>=0) && (L.Q[i]==-2))
+        if((meshnode[i].BoundaryMarker>=0) && (L.node_flag()[i]==-2))
 		{
 			if (ProblemType==AXISYMMETRIC) Depth=2.*PI*meshnode[i].x;
-            L.b[i]+=((1.e6)*Depth*c*nodeproplist[meshnode[i].BoundaryMarker].qp);
-			L.Q[i]=-1;
+            L.rhs()[i]+=((1.e6)*Depth*c*nodeproplist[meshnode[i].BoundaryMarker].qp);
+			L.node_flag()[i]=-1;
 		}
 
 		// some bookkeeping to denote which nodes we can smooth over
-		if(meshnode[i].InConductor>=0) L.Q[i]=meshnode[i].InConductor;
+		if(meshnode[i].InConductor>=0) L.node_flag()[i]=meshnode[i].InConductor;
 	}
 
 	// Apply any periodicity/antiperiodicity boundary conditions that we have
     for(k=0;k<NumPBCs;k++)
 	{
-		if (pbclist[k].t==0) L.Periodicity(pbclist[k].x,pbclist[k].y);
-		if (pbclist[k].t==1) L.AntiPeriodicity(pbclist[k].x,pbclist[k].y);
+		if (pbclist[k].t==0) L.constrain_periodic(pbclist[k].x,pbclist[k].y,false);
+		if (pbclist[k].t==1) L.constrain_periodic(pbclist[k].x,pbclist[k].y,true);
 	}
 
 	// Finish building the equations that assign conductor voltage;
@@ -615,26 +615,28 @@ int ESolver::AnalyzeProblem(CBigLinProb &L)
 
 		if (circproplist[i].CircType==1)
 		{
-			K=L.Get(0,0);
-			L.Put(K,k,k);
-			L.b[k]=K*circproplist[i].V;
+			K=L.get(0,0);
+			L.put(K,k,k);
+			L.rhs()[k]=K*circproplist[i].V;
 		}
 
 		if(circproplist[i].CircType==0)
 		{
-			for(j=0,K=0;j<L.n;j++) if(j!=k) K+=L.Get(k,j);
+			for(j=0,K=0;j<L.dimension();j++) if(j!=k) K+=L.get(k,j);
 			if(K!=0){
-				L.Put(-K,k,k);
-				L.b[k]=(1.e9)*c*circproplist[i].q;
+				L.put(-K,k,k);
+				L.rhs()[k]=(1.e9)*c*circproplist[i].q;
 			}
-			else L.Put(L.Get(0,0),k,k);
+			else L.put(L.get(0,0),k,k);
 
 
 		}
 	}
 
 	// solve the problem;
-    if (! L.PCGSolve(false)) return false;
+    femm::SolveOptions opts;
+    opts.warm_start = false;
+    if (!L.solve(opts).converged) return false;
 
 	// compute total charge on conductors
 	// with a specified voltage
@@ -675,16 +677,21 @@ bool ESolver::runSolver(bool verbose)
         std::cout << "Precision: " << Precision << "\n";
     }
 
-    CBigLinProb L;
-
-    L.Precision = Precision;
-    if (!L.Create(NumNodes+NumCircProps,BandWidth))
+    std::unique_ptr<femm::LinearSystemBackend<double>> L =
+        femm::create_backend<double>(femm::default_backend_kind());
+    if (!L)
+    {
+        WarnMessage("couldn't create linear system backend\n");
+        return false;
+    }
+    L->set_precision(Precision);
+    if (!L->create(NumNodes+NumCircProps,BandWidth))
     {
         WarnMessage("couldn't allocate enough space for matrices\n");
         return false;
     }
 
-    if (!AnalyzeProblem(L))
+    if (!AnalyzeProblem(*L))
     {
         WarnMessage("Couldn't solve the problem\n");
         return false;
@@ -693,7 +700,7 @@ bool ESolver::runSolver(bool verbose)
     if (verbose)
         PrintMessage("Problem solved\n");
 
-    if (!WriteResults(L))
+    if (!WriteResults(*L))
     {
         WarnMessage("couldn't write results to disk\n");
         return false;
@@ -717,7 +724,7 @@ bool ESolver::runSolver(bool verbose)
  * - \femm42{belasolv/prob1big.cpp,CFemmeDocCore::WriteResults()}
  * \endinternal
  */
-int ESolver::WriteResults(CBigLinProb &L)
+int ESolver::WriteResults(femm::LinearSystemBackend<double> &L)
 {
 	// write solution to disk;
 
@@ -757,7 +764,7 @@ int ESolver::WriteResults(CBigLinProb &L)
 	fprintf(fp,"%i\n",NumNodes);
 	for(i=0;i<NumNodes;i++)
     {
-		fprintf(fp,"%.17g	%.17g	%.17g	%i\n",meshnode[i].x/cf,meshnode[i].y/cf,L.V[i],L.Q[i]);
+		fprintf(fp,"%.17g	%.17g	%.17g	%i\n",meshnode[i].x/cf,meshnode[i].y/cf,L.solution()[i],L.node_flag()[i]);
     }
 
 	fprintf(fp,"%i\n",NumEls);
@@ -772,7 +779,7 @@ int ESolver::WriteResults(CBigLinProb &L)
 	fprintf(fp,"%i\n",NumCircProps);
 	for(i=0;i<NumCircProps;i++)
     {
-		fprintf(fp,"%.17g	%.17g\n",L.V[NumNodes+i],circproplist[i].q);
+		fprintf(fp,"%.17g	%.17g\n",L.solution()[NumNodes+i],circproplist[i].q);
     }
 
 	fclose(fp);
@@ -794,7 +801,7 @@ int ESolver::WriteResults(CBigLinProb &L)
  * - \femm42{belasolv/prob1big.cpp,CFemmeDocCore::ChargeOnConductor()}
  * \endinternal
  */
-double ESolver::ChargeOnConductor(int conductor, CBigLinProb &L)
+double ESolver::ChargeOnConductor(int conductor, femm::LinearSystemBackend<double> &L)
 {
 	int i,k;
 	double b[3],c[3];		// element shape parameters;
@@ -803,15 +810,15 @@ double ESolver::ChargeOnConductor(int conductor, CBigLinProb &L)
 	double LengthConv=0.001;
 
 	for(i=0;i<NumNodes;i++)
-        if(meshnode[i].InConductor==conductor) L.P[i]=1;
-		else L.P[i]=0;
+        if(meshnode[i].InConductor==conductor) L.scratch()[i]=1;
+		else L.scratch()[i]=0;
 
 	// build element matrices using the matrices derived in Allaire's book.
 	for(i=0,Z=0;i<NumEls;i++)
 	{
 		for(k=0;k<3;k++) n[k]=meshele[i].p[k];
 
-		if((L.P[n[0]]!=0) || (L.P[n[1]]!=0) || (L.P[n[2]]!=0))
+		if((L.scratch()[n[0]]!=0) || (L.scratch()[n[1]]!=0) || (L.scratch()[n[2]]!=0))
 		{
 			// Determine shape parameters.
 			b[0]=meshnode[n[1]].y - meshnode[n[2]].y;
@@ -828,10 +835,10 @@ double ESolver::ChargeOnConductor(int conductor, CBigLinProb &L)
 			// get normal vector and element flux density;
 			for(k=0,vx=0,vy=0,Dx=0,Dy=0;k<3;k++)
 			{
-				vx-=(L.P[n[k]]*b[k])/(da*LengthConv);
-				vy-=(L.P[n[k]]*c[k])/(da*LengthConv);
-				Dx-=(L.V[n[k]]*b[k])/(da*LengthConv);
-				Dy-=(L.V[n[k]]*c[k])/(da*LengthConv);
+				vx-=(L.scratch()[n[k]]*b[k])/(da*LengthConv);
+				vy-=(L.scratch()[n[k]]*c[k])/(da*LengthConv);
+				Dx-=(L.solution()[n[k]]*b[k])/(da*LengthConv);
+				Dy-=(L.solution()[n[k]]*c[k])/(da*LengthConv);
 			}
 			Dx*=(eo*blockproplist[meshele[i].blk].ex);
 			Dy*=(eo*blockproplist[meshele[i].blk].ey);

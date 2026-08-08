@@ -35,7 +35,7 @@
 #include <string>
 #include <vector>
 #include "feasolver.h"
-#include "cspars.h"
+#include "linsolve/LinearSystemBackend.h"
 #include "CBlockLabel.h"
 #include "CCircuit.h"
 #include "CElement.h"
@@ -94,7 +94,7 @@ public:
     bool LoadPBCFromSolution(FILE* fp);
     bool LoadAGEsFromSolution(FILE* fp);
     bool LoadProblemFile();
-    int Static2D(CBigLinProb &L);
+    int Static2D(femm::LinearSystemBackend<double> &L);
     /**
      * @brief WriteStatic2D
      * @param L
@@ -104,11 +104,11 @@ public:
      *  - \femm42{fkn/prob1big.cpp,CFemmeDocCore::WriteStatic2D()}
      * \endinternal
      */
-    int WriteStatic2D(CBigLinProb &L);
-    int Harmonic2D(CBigComplexLinProb &L,bool verbose=false);
-    int WriteHarmonic2D(CBigComplexLinProb &L);
-    int StaticAxisymmetric(CBigLinProb &L);
-    int HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose=false);
+    int WriteStatic2D(femm::LinearSystemBackend<double> &L);
+    int Harmonic2D(femm::LinearSystemBackend<CComplex> &L,bool verbose=false);
+    int WriteHarmonic2D(femm::LinearSystemBackend<CComplex> &L);
+    int StaticAxisymmetric(femm::LinearSystemBackend<double> &L);
+    int HarmonicAxisymmetric(femm::LinearSystemBackend<CComplex> &L,bool verbose=false);
     void GetFillFactor(int lbl);
     double ElmArea(int i);
 

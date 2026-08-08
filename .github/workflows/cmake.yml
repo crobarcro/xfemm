@@ -37,9 +37,30 @@ jobs:
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest -C ${{env.BUILD_TYPE}}
 
-  octave-mex:
-    name: GNU Octave MEX interface
+  petsc:
+    name: PETSc linear solver backend
     runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install PETSc (complex)
+      run: sudo apt-get update && sudo apt-get install -y libpetsc-complex-dev
+    - name: Configure CMake
+      run: >
+        cmake -B ${{github.workspace}}/build
+        -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+        -DXFEMM_USE_PETSc=ON
+        cfemm
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} -j2
+    - name: Test with the legacy backend (default)
+      working-directory: ${{github.workspace}}/build
+      run: ctest -C ${{env.BUILD_TYPE}}
+    - name: Test with the PETSc backend
+      working-directory: ${{github.workspace}}/build
+      run: XFEMM_SOLVER_BACKEND=petsc ctest -C ${{env.BUILD_TYPE}}
+
+  octave-mex:
+    name: GNU Octave MEX interface    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - name: Install GNU Octave toolchain

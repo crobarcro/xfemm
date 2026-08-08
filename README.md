@@ -72,6 +72,39 @@ in a different location, you'll need to tell cmake where to find it:
     cmake . -DCMAKE_PREFIX_PATH=<triangle install dir>
     make
 
+## Optional PETSc linear solver backend
+
+The linear systems that the solvers build can optionally be solved with
+PETSc instead of the built-in conjugate-gradient solver.  This gives access
+to the PETSc solver/preconditioner catalogue (CG, GMRES, BiCGStab, ... ;
+Jacobi, SOR, ILU, Hypre AMG, and direct solves via LU/MUMPS/SuperLU) and to
+better convergence diagnostics.
+
+A PETSc build with complex scalars is required (e.g. the Debian/Ubuntu
+package `libpetsc-complex-dev`).  Enable it at configure time:
+
+    cd <install dir>/xfemm/cfemm
+    cmake . -DXFEMM_USE_PETSc=ON
+    make
+
+The PETSc backend is then selected at run time with the
+`XFEMM_SOLVER_BACKEND` environment variable:
+
+    XFEMM_SOLVER_BACKEND=petsc fsolver <problem>
+
+The legacy solver remains the default, so existing scripts are unaffected.
+The PETSc solver/PC choices can be tuned with the standard `PETSC_OPTIONS`
+environment variable, e.g.:
+
+    PETSC_OPTIONS="-ksp_type cg -pc_type hypre -pc_hypre_type boomeramg" \
+        XFEMM_SOLVER_BACKEND=petsc fsolver <problem>
+    PETSC_OPTIONS="-ksp_type preonly -pc_type lu -pc_factor_mat_solver_type mumps" \
+        XFEMM_SOLVER_BACKEND=petsc fsolver <problem>
+
+Known limitation: harmonic problems that use the Newton iteration
+(`ACSolver = 1` in the problem file) are not yet supported by the PETSc
+backend; use the legacy backend for those.
+
 ## Compiling Matlab Interface
 
 Detailed instructions for compiling the Matlab inteface can be found in

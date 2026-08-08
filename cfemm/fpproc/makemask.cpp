@@ -9,7 +9,7 @@
 //#include "MainFrm.h"
 //#include "maskprogress.h"
 //#include "lua.h"
-#include "spars.h"
+#include "linsolve/backend_factory.h"
 #include "fparse.h"
 
 //extern bool bLinehook;
@@ -50,7 +50,8 @@ bool FPProc::MakeMask()
     if(bHasMask) return true;
 
 	int i,j,k,d;
-	CBigLinProb L;
+	std::unique_ptr<femm::LinearSystemBackend<double>> L =
+		femm::create_backend<double>(femm::default_backend_kind());
 	//CMaskProgress dlg;
 	double bsq,dbsq,v;
 	double Me[3][3],be[3];		// element matrix;
@@ -89,7 +90,7 @@ bool FPProc::MakeMask()
 	}
 	bw++;
 
-	L.Create(NumNodes,bw);
+	L->create(NumNodes,bw);
 
 	 // if the problem is axisymmetric, does the selection lie along r=0?
 	if(problemType==AXISYMMETRIC)
@@ -133,7 +134,7 @@ bool FPProc::MakeMask()
 
 	// Determine which nodal values should be fixed
 	// and what values they should be fixed at;
-	for(i=0;i<NumNodes;i++) L.V[i]=-1;
+	for(i=0;i<NumNodes;i++) L->solution()[i]=-1;
 
 	// Figure out which nodes are exterior edges and set them to zero;
 	for(i=0;i<NumEls;i++)
@@ -143,9 +144,9 @@ bool FPProc::MakeMask()
 			if (meshelem[i].n[j]==1)
 			{
 				k=meshelem[i].p[plus1mod3[j]];
-				if((!bOnAxis) || (IsKosher(k))) L.V[k]=0;
+				if((!bOnAxis) || (IsKosher(k))) L->solution()[k]=0;
 				k=meshelem[i].p[minus1mod3[j]];
-				if((!bOnAxis) || (IsKosher(k))) L.V[k]=0;
+				if((!bOnAxis) || (IsKosher(k))) L->solution()[k]=0;
 			}
 		}
 	}
@@ -156,12 +157,12 @@ bool FPProc::MakeMask()
 		if(blocklist[meshelem[i].lbl].IsSelected)
 		{
 			for(j=0;j<3;j++){
-				L.V[meshelem[i].p[j]]=1;
+				L->solution()[meshelem[i].p[j]]=1;
 			}
 		}
 		else if(lblflag[meshelem[i].lbl]!=0)
 		{
-			for(j=0;j<3;j++) L.V[meshelem[i].p[j]]=0;
+			for(j=0;j<3;j++) L->solution()[meshelem[i].p[j]]=0;
 		}
 	}
 
@@ -186,7 +187,7 @@ bool FPProc::MakeMask()
 				for(j=0;j<npts;j++)
 					if(abs(p[j]-meshnode[i].CC())<1.e-8)
 					{
-						if (L.V[i]<0) L.V[i]=0.;
+						if (L->solution()[i]<0) L->solution()[i]=0.;
 						npts--;
 						if(npts>0){
 							p[j]=p[npts];
@@ -232,7 +233,7 @@ bool FPProc::MakeMask()
 		// integration has been selected in an invalid way;
 		if ((!blocklist[meshelem[i].lbl].IsSelected) && (lblflag[meshelem[i].lbl]))
 		{
-			for(j=0,k=0;j<3;j++) if (L.V[n[j]]==0) k++;
+			for(j=0,k=0;j<3;j++) if (L->solution()[n[j]]==0) k++;
 			if(k<3){
 				string outmsg;
 
@@ -315,17 +316,17 @@ bool FPProc::MakeMask()
 		// doing it here saves a lot of time.
 		for(j=0;j<3;j++)
 		{
-			if(L.V[n[j]]>=0)
+			if(L->solution()[n[j]]>=0)
 			{
 				for(k=0;k<3;k++)
 				{
 					if(j!=k){
-						be[k]-=Me[k][j]*L.V[n[j]];
+						be[k]-=Me[k][j]*L->solution()[n[j]];
 						Me[k][j]=0;
 						Me[j][k]=0;
 					}
 				}
-				be[j]=L.V[n[j]]*Me[j][j];
+				be[j]=L->solution()[n[j]]*Me[j][j];
 			}
 		}
 
@@ -333,16 +334,18 @@ bool FPProc::MakeMask()
 		for (j=0;j<3;j++)
 		{
 			for (k=j;k<3;k++)
-				if(Me[j][k]!=0)	L.Put(L.Get(n[j],n[k])-Me[j][k],n[j],n[k]);
-			L.b[n[j]]-=be[j];
+				if(Me[j][k]!=0)	L->put(L->get(n[j],n[k])-Me[j][k],n[j],n[k]);
+			L->rhs()[n[j]]-=be[j];
 		}
 	}
 
 	// solve the problem;
 	//bLinehook=BuildMask;
-	L.Precision = Precision;
+	femm::SolveOptions opts;
+	opts.warm_start = false;
+	opts.tolerance = Precision;
 
-    if (L.PCGSolve(0)==false)
+    if (L->solve(opts).converged==false)
 	{
 	    free(matflag);
         free(lblflag);
@@ -355,7 +358,7 @@ bool FPProc::MakeMask()
 		switch(WeightingScheme)
 		{
 			case 0:
-				if(L.V[i]>0.5)
+				if(L->solution()[i]>0.5)
 				{
 				    meshnode[i].msk=1;
 				}
@@ -367,7 +370,7 @@ bool FPProc::MakeMask()
 				break;
 
 			default:
-				meshnode[i].msk = L.V[i];
+				meshnode[i].msk = L->solution()[i];
 				break;
 		}
 	}
