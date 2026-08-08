@@ -60,7 +60,8 @@ jobs:
       run: XFEMM_SOLVER_BACKEND=petsc ctest -C ${{env.BUILD_TYPE}}
 
   octave-mex:
-    name: GNU Octave MEX interface    runs-on: ubuntu-latest
+    name: GNU Octave MEX interface    
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - name: Install GNU Octave toolchain
