@@ -11,9 +11,12 @@ periodic or antiperiodic field symmetry.
 The design discussion that motivated the work is preserved in the
 [shared ChatGPT conversation](https://chatgpt.com/share/6a7f0e14-117c-83eb-b8a4-3318d91d9154).
 The first implementation deliberately materialises an ordinary `SolverMesh` so
-that Triangle and the magnetic solver remain the reference implementations.
-Compressed storage and solver optimisations come only after equivalence has been
-demonstrated.
+that the magnetic solver remains unchanged.  The default meshing engine for this
+work is [Tangle](https://github.com/dcm3c/tangle), a C++17 constrained Delaunay
+mesher with native FEMM, synchronized periodic-boundary, arc, and AGE support.
+Triangle remains a compatibility and differential-testing backend while Tangle
+becomes the production path.  Compressed storage and solver optimisations come
+only after equivalence has been demonstrated.
 
 Repository reconnaissance for this plan used
 [crobarcro/rnfoundry at `9585b267`](https://github.com/crobarcro/rnfoundry/commit/9585b26767175dc53a7451acb12c38068d45b256).
@@ -41,7 +44,8 @@ Stage 4 begins; do not silently generate baselines from a moving default branch.
 
 ### Deferred work
 
-- Do not change Triangle or replace it in the first implementation.
+- Do not remove Triangle while introducing Tangle; retain it as a fallback and
+  independent comparison backend through native-instancing validation.
 - Do not require the legacy `FSolver` to consume compressed templates initially.
 - Do not identify fields across instance seams as a consequence of instancing.
   Conventional periodic constraints remain an explicit, separate choice.
@@ -57,8 +61,8 @@ The current pipeline already has an appropriate compatibility boundary:
 ```text
 FemmProblem
   -> MesherBackend::mesh(...)
-  -> TriangleMesherBackend
-  -> FMesher periodic/non-periodic workflow
+  -> TangleMesherBackend (default)
+  -> Tangle in-memory meshing API
   -> SolverMesh
   -> AnalysisSession cache
   -> FSolverAnalysisBackend::synchronize()
@@ -71,17 +75,50 @@ holds nodes, elements, edges, ordinary periodic node pairs, and AGE topology.
 identity changes.  These properties make materialisation immediately upstream of
 `SolverMesh` the least disruptive first insertion point.
 
-The periodic Triangle workflow is also a useful starting point, but should not be
-reused as-is.  It performs a trial triangulation, observes and orders boundary
-subdivisions, reconciles paired segment/arc spacing, and performs the final mesh.
-That boundary-template operation is currently entangled with the creation of
-periodic field constraints.  Instancing needs the former without automatically
-requesting the latter.
+Tangle's synchronized periodic-boundary splitting is the primary starting point
+for template seams: paired chains are refined together and retain ordered
+node-to-node correspondence.  The xfemm integration must generalise that facility
+so a boundary match can request identical discretisation without automatically
+creating a periodic field constraint.  The legacy periodic Triangle workflow,
+which discovers boundary subdivisions through a trial mesh and then reconciles
+paired segment/arc spacing, remains the behavioural reference for existing
+models, not the implementation base for new instancing work.
 
 The AGE data must remain a coupling boundary rather than be treated as evidence
 of instancing.  Ordinary periodic pairs occupy the primary `.pbc` section and AGE
 records are only an optional extension; both must be remapped independently when
 a mesh is materialised.
+
+### Tangle dependency and backend policy
+
+The canonical Tangle project is housed at
+[`dcm3c/tangle`](https://github.com/dcm3c/tangle).  Integration work must record an
+exact upstream commit and its MIT license in xfemm's dependency metadata.  Prefer
+a normal CMake library dependency fetched or supplied at configure time over
+copying untracked snapshots of `tangle.cpp` into xfemm.  Release and offline builds
+must have a documented way to use a pinned vendored source archive, and installed
+license material must include Tangle's license.
+
+This plan was checked against Tangle revision
+[`a808c624`](https://github.com/dcm3c/tangle/commit/a808c624ec0584569e43593662f54890b602c6af),
+whose public `tangle_mesh_fem` entry point returns an in-memory `Mesh` but currently
+accepts a FEMM input path.  Stage 0 should pin the then-current reviewed revision
+and coordinate any required library/CMake and in-memory-input API changes in the
+Tangle repository.
+
+The present `TangleMesherBackend` is only a compatibility facade: it delegates to
+`TriangleMesherBackend` and relabels diagnostics.  Stage 0 must replace that
+delegation with Tangle's real C++ API and convert Tangle's `Mesh`, PBC pairs, and
+AGE definitions directly into xfemm's value-only `SolverMesh`.  No temporary mesh
+files are allowed on the backend API path.  If the upstream API cannot yet accept
+an in-memory `FemmProblem`/PSLG, make the required reusable input API an upstream
+Tangle change rather than adding file round-tripping to xfemm.
+
+Once differential tests pass, `AnalysisSession` and new instancing entry points
+select `TangleMesherBackend` by default.  `TriangleMesherBackend` stays explicitly
+selectable for compatibility, baseline generation, and fault isolation.  Backend
+diagnostics must report the engine actually executed; a Triangle result must never
+be labelled as Tangle.
 
 ## Proposed contracts
 
@@ -140,7 +177,7 @@ During materialisation:
 - duplicate seam edges are canonicalised, while physical boundary markers are
   rejected if the two sides disagree;
 - all periodic and AGE indices are remapped through the node provenance table;
-- markers and Triangle region attributes remain unchanged at this layer.
+- markers and mesher region attributes remain unchanged at this layer.
 
 ### Meshing request (`cfemm/libfemm/mesh/Meshing.h`)
 
@@ -195,33 +232,45 @@ Anisotropic materials are rejected until their tensor transform is implemented.
 Every stage ends with a usable, tested state.  Later stages must not be started by
 silently weakening an earlier stage's equivalence checks.
 
-### Stage 0 — Characterise and extract boundary matching
+### Stage 0 — Integrate Tangle and characterise boundary matching
 
-**Goal:** isolate the proven part of periodic meshing before adding a new mesh
+**Goal:** make the real Tangle engine the tested default and expose its synchronized
+boundary refinement independently of field periodicity before adding a new mesh
 representation.
 
 Work:
 
-1. Add focused tests for ordered segment and arc matches in both forward and
+1. Pin and integrate `dcm3c/tangle` as a CMake library dependency, install its
+   license, and replace the compatibility delegation in `TangleMesherBackend` with
+   checked conversion between Tangle and `SolverMesh` value types.
+2. Add focused tests for ordered segment and arc matches in both forward and
    reverse orientation, including unequal geometry rejection.
-2. Add characterization tests proving that an ordinary periodic model produces
+3. Add characterization tests proving that an ordinary periodic model produces
    node pairs but no AGE, and that the machine fixture produces AGE topology.
-3. Extract trial-mesh boundary discovery and spacing reconciliation from
-   `FMesher::doPeriodicTriangleWorkflow()` into a boundary-discretisation helper.
-4. Make periodic meshing call the helper and compare generated node pairs with the
-   pre-refactor baseline byte-for-byte or structurally, as appropriate.
+4. Extend Tangle's paired-chain refinement API with a topology-only boundary-match
+   mode that returns ordered correspondence without emitting PBC field semantics.
+   Keep the legacy Triangle workflow unchanged as the differential baseline.
 5. Introduce `MeshingRequest` and retain the legacy overload as an adapter.
+6. Compare Tangle and Triangle on the checked-in ordinary, periodic, and AGE
+   fixtures.  Compare invariants and solver observables rather than requiring
+   identical triangulations.
+7. Switch `AnalysisSession`'s default construction to `TangleMesherBackend` only
+   after those comparisons pass; retain explicit Triangle injection.
 
 Exit criteria:
 
-- Existing mesher, solver, femmcli, and MATLAB tests pass unchanged.
-- The helper can match two boundaries without emitting a field constraint.
+- Existing mesher, solver, femmcli, and MATLAB tests pass with Tangle as the
+  default and also pass their designated Triangle compatibility configurations.
+- Instrumentation proves that the Tangle backend executes Tangle rather than the
+  Triangle compatibility kernel and creates no temporary files.
+- Tangle can match two boundaries without emitting a field constraint.
 - Invalid count, length, arc geometry, and orientation inputs produce diagnostics
   rather than partial meshes.
 
 ### Stage 1 — Value model and deterministic materialisation
 
-**Goal:** prove mesh repetition independently of `FemmProblem` and Triangle.
+**Goal:** prove mesh repetition independently of `FemmProblem` and any meshing
+engine.
 
 Work:
 
@@ -243,14 +292,14 @@ Exit criteria:
 - Materialising the same input twice is deterministic.
 - Address/undefined-behaviour sanitizers pass the new unit tests.
 
-### Stage 2 — Triangle-generated templates
+### Stage 2 — Tangle-generated templates
 
 **Goal:** mesh one geometry tile and produce a solver-compatible full mesh.
 
 Work:
 
-1. Extend `TriangleMesherBackend` to honour one `TemplateRequest` using the
-   boundary-matching helper from Stage 0.
+1. Extend `TangleMesherBackend` to honour one `TemplateRequest` using Tangle's
+   topology-only boundary matching from Stage 0.
 2. Mesh only the selected tile geometry, capture each declared seam's ordered
    returned nodes, construct `InstancedMesh`, and materialise it.
 3. Initially support one planar rotational template about a declared centre,
@@ -265,7 +314,7 @@ Exit criteria:
 - A repeated full ring solves through the unmodified `FSolver`.
 - Its mesh invariants and sampled field results agree with a conventionally
   generated full-ring control model at documented tolerances.
-- The template is triangulated once (verified with an injectable/counting test
+- Tangle triangulates the template once (verified with an injectable/counting test
   backend), even though the returned compatibility mesh is expanded.
 
 ### Stage 3 — Session integration and per-instance physics
@@ -378,7 +427,7 @@ equivalence test against the unoptimised native path.
 | Level | Mandatory cases | Principal assertions |
 | --- | --- | --- |
 | Unit | transform, seam ordering, closed ring, invalid seam, index overflow | deterministic maps, positive elements, precise diagnostics |
-| Mesher | line/arc match, periodic without AGE, AGE, one Triangle template | ordered conformity; field constraints emitted only when requested |
+| Mesher | Tangle/Triangle differential fixtures, line/arc match, periodic without AGE, AGE, one Tangle template | ordered conformity; correct engine diagnostics; field constraints emitted only when requested |
 | Solver | independent instance fields, alternating coils/magnets, periodic control | residual and field/energy/force agreement |
 | Session | current change, instance-layout change, AGE angle change | correct cache invalidation and import/meshing counters |
 | MATLAB | current fixture API plus an instanced smoke case | no interface regression and correct result shapes |
@@ -392,10 +441,10 @@ number of mesh calls) are exact assertions and must not use numerical tolerances
 
 Keep reviews bounded by using this order:
 
-1. characterization tests and boundary-match extraction;
+1. real Tangle dependency/backend integration and differential characterization;
 2. `MeshingRequest` compatibility migration;
 3. instanced value model and materialiser;
-4. Triangle template integration;
+4. Tangle template integration;
 5. session/provenance and physics overrides;
 6. RNFoundry fixture generation and machine equivalence;
 7. native solver view/assembly;
@@ -415,7 +464,7 @@ with representation changes.
   only explicit periodic constraints identify or sign-link fields.
 - **Transform changes element orientation:** initially accept only
   orientation-preserving transforms and verify signed area.
-- **Physics metadata is confused with Triangle attributes:** retain provenance and
+- **Physics metadata is confused with mesher region attributes:** retain provenance and
   resolve per-instance physics in prepared analysis, not in `SolverMesh`.
 - **AGE indices become stale after welding:** remap every ring, quadrature, and
   node-index reference through the same checked node map.
