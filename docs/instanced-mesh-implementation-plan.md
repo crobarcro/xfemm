@@ -231,6 +231,9 @@ Anisotropic materials are rejected until their tensor transform is implemented.
 
 Every stage ends with a usable, tested state.  Later stages must not be started by
 silently weakening an earlier stage's equivalence checks.
+The issue-sized implementation order, dependencies, and completion checklist are
+maintained in the companion
+[instanced mesh task breakdown](instanced-mesh-task-breakdown.md).
 
 ### Stage 0 — Integrate Tangle and characterise boundary matching
 
