@@ -25,15 +25,15 @@ returns a validated `SolverMesh`, and is trustworthy enough to become the defaul
 
 ### A1 — Define and pin the Tangle dependency
 
-- [ ] **A1.1: Choose the upstream integration contract.**
+- [x] **A1.1: Choose the upstream integration contract.**
   - Depends on: none.
-  - Confirm with `dcm3c/tangle` whether xfemm will consume a CMake target directly
-    or temporarily provide a thin target around the pinned upstream sources.
+  - Determine from `dcm3c/tangle` whether xfemm can consume a CMake target directly
+    or must temporarily provide a thin target around the pinned upstream sources.
   - Require a callable library entry point with no CLI `main`, no global process
     exit, and no mesh-file round trip.
   - Deliverable: a short decision record in the implementation PR explaining the
     selected target/API and the rejected alternatives.
-- [ ] **A1.2: Add reproducible CMake dependency resolution.**
+- [x] **A1.2: Add reproducible CMake dependency resolution.**
   - Depends on: A1.1.
   - Add a pinned Tangle revision and support both a configured local source path
     (offline/development) and retrieval of that exact revision.
@@ -41,7 +41,7 @@ returns a validated `SolverMesh`, and is trustworthy enough to become the defaul
     Tangle was explicitly requested.
   - Checks: clean online configure, clean offline/local-source configure, and a
     diagnostic for an unavailable explicitly requested provider.
-- [ ] **A1.3: Install and document Tangle licensing.**
+- [x] **A1.3: Install and document Tangle licensing.**
   - Depends on: A1.2.
   - Include the pinned MIT license in source/binary packaging and identify Tangle
     in dependency documentation.
