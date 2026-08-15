@@ -51,6 +51,23 @@ this would be done as
 
 the binary files are found in the xfemm/cfemm/bin directory
 
+### Selecting a mesher for the standard tests
+
+The CMake test build uses Triangle by default. To run the complete standard test
+suite with the Tangle backend selected wherever xfemm constructs its default
+mesher, use a separate build directory:
+
+    cmake -S cfemm -B build-tangle -DXFEMM_TEST_MESHER_BACKEND=Tangle
+    cmake --build build-tangle
+    ctest --test-dir build-tangle --output-on-failure
+
+`XFEMM_TEST_MESHER_BACKEND` accepts only `Triangle` or `Tangle`. It controls the
+default used by the fmesher executable, femmcli meshing commands, and
+`AnalysisSession`, so the normal mesher/solver/post-processor tests exercise the
+selected path rather than a backend-specific subset. The fmesher command line can
+override the configured default for an individual run with
+`--mesher-backend=triangle` or `--mesher-backend=tangle`.
+
 
 ### Side-note: Compiling with an external triangle
 

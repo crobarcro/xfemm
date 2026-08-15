@@ -82,6 +82,7 @@ protected:
 public:
 
     enum loaderrors { F_FILE_OK, F_FILE_UNKNOWN_TYPE, F_FILE_NOT_OPENED, F_FILE_MALFORMED};
+    enum class Backend { Triangle, Tangle };
 
     explicit FMesher();
     explicit FMesher(std::string);
@@ -91,6 +92,7 @@ public:
     std::shared_ptr<femm::FemmProblem> problem;
     bool Verbose = true;
     bool writePolyFiles = false; ///< write .poly files when calling triangle
+    Backend backend = defaultBackend();
 
 	std::string BinDir;
 
@@ -106,6 +108,15 @@ public:
 public:
 
     static femm::FileType GetFileType(std::string PathName);
+    static constexpr Backend defaultBackend()
+    {
+#ifdef XFEMM_DEFAULT_MESHER_BACKEND_TANGLE
+        return Backend::Tangle;
+#else
+        return Backend::Triangle;
+#endif
+    }
+    static const char *backendName(Backend selected);
 
     /**
      * @brief Calculate length used to kludge fine meshing near input node points
