@@ -119,6 +119,18 @@ femm::FileType FMesher::GetFileType (string PathName)
 
 }
 
+const char *FMesher::backendName(Backend selected)
+{
+    switch (selected)
+    {
+    case Backend::Triangle:
+        return "Triangle";
+    case Backend::Tangle:
+        return "Tangle";
+    }
+    return "Unknown";
+}
+
 void FMesher::addFileStr (char *s)
 {
     probdescstrings.push_back (string (s));

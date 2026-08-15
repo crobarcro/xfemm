@@ -1,4 +1,5 @@
 #include "TriangleMesherBackend.h"
+#include "TangleMesherBackend.h"
 #include "SolverMeshFileWriter.h"
 #include "fmesher.h"
 #include "femmconstants.h"
@@ -27,17 +28,29 @@ bool SolverMeshFileWriter::write(const femm::mesh::SolverMesh &m,const femm::Fem
 
 namespace fmesher {
 int FMesher::DoNonPeriodicBCTriangulation(std::string path) {
-    TriangleMesherBackend backend; backend.WarnMessage=WarnMessage; backend.TriMessage=TriMessage;
-    backend.writePolyFiles=writePolyFiles; backend.compatibilityPath=path;
     femm::mesh::MeshingOptions options; options.verbose=Verbose;
-    auto result=backend.mesh(*problem,false,options);
+    femm::mesh::MeshResult result;
+    if (backend == Backend::Tangle) {
+        TangleMesherBackend selected;
+        result=selected.mesh(*problem,false,options);
+    } else {
+        TriangleMesherBackend selected; selected.WarnMessage=WarnMessage; selected.TriMessage=TriMessage;
+        selected.writePolyFiles=writePolyFiles; selected.compatibilityPath=path;
+        result=selected.mesh(*problem,false,options);
+    }
     return result.succeeded() && SolverMeshFileWriter::write(result.mesh,*problem,path,WarnMessage) ? 0 : -1;
 }
 int FMesher::DoPeriodicBCTriangulation(std::string path) {
-    TriangleMesherBackend backend; backend.WarnMessage=WarnMessage; backend.TriMessage=TriMessage;
-    backend.writePolyFiles=writePolyFiles; backend.compatibilityPath=path;
     femm::mesh::MeshingOptions options; options.verbose=Verbose;
-    auto result=backend.mesh(*problem,true,options);
+    femm::mesh::MeshResult result;
+    if (backend == Backend::Tangle) {
+        TangleMesherBackend selected;
+        result=selected.mesh(*problem,true,options);
+    } else {
+        TriangleMesherBackend selected; selected.WarnMessage=WarnMessage; selected.TriMessage=TriMessage;
+        selected.writePolyFiles=writePolyFiles; selected.compatibilityPath=path;
+        result=selected.mesh(*problem,true,options);
+    }
     return result.succeeded() && SolverMeshFileWriter::write(result.mesh,*problem,path,WarnMessage) ? 0 : -1;
 }
 }

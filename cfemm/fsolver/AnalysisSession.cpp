@@ -5,6 +5,7 @@
 #include "CCircuit.h"
 #include "CMaterialProp.h"
 #include "MesherBackend.h"
+#include "TangleMesherBackend.h"
 #include "TriangleMesherBackend.h"
 
 #include <cmath>
@@ -15,6 +16,15 @@ namespace femm {
 namespace {
 
 std::atomic<std::uint64_t> nextSessionId{1};
+
+std::shared_ptr<fmesher::MesherBackend> makeDefaultMesher()
+{
+#ifdef XFEMM_DEFAULT_MESHER_BACKEND_TANGLE
+    return std::make_shared<fmesher::TangleMesherBackend>();
+#else
+    return std::make_shared<fmesher::TriangleMesherBackend>();
+#endif
+}
 
 std::uint32_t bits(Dirty value) { return static_cast<std::uint32_t>(value); }
 bool has(Dirty value, Dirty flag) { return bits(value & flag) != 0; }
@@ -116,7 +126,7 @@ AirGapId ModelDefinition::airGap(const std::string &name) const
 
 AnalysisSession::AnalysisSession(ModelDefinition model, std::shared_ptr<AnalysisSolverBackend> backend)
     : m_model(std::move(model)), m_backend(std::move(backend)),
-      m_mesher(std::make_shared<fmesher::TriangleMesherBackend>()),
+      m_mesher(makeDefaultMesher()),
       m_sessionId(nextSessionId.fetch_add(1))
 {
     if (!m_backend)
