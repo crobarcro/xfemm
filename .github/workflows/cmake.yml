@@ -12,10 +12,15 @@ env:
 
 jobs:
   build:
+    name: CMake (${{ matrix.mesher-backend }})
     # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
     # You can convert this to a matrix build if you need cross-platform coverage.
     # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mesher-backend: [Triangle, Tangle]
 
     steps:
     - uses: actions/checkout@v3
@@ -25,7 +30,9 @@ jobs:
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       run: |
         cd cfemm
-        cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+        cmake -B ${{github.workspace}}/build \
+          -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} \
+          -DXFEMM_TEST_MESHER_BACKEND=${{matrix.mesher-backend}}
 
     - name: Build
       # Build your program with the given configuration
