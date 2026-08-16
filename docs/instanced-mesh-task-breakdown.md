@@ -49,7 +49,7 @@ returns a validated `SolverMesh`, and is trustworthy enough to become the defaul
 
 ### A2 — Convert real Tangle output
 
-- [ ] **A2.1: Add a pure Tangle-to-`SolverMesh` converter.**
+- [x] **A2.1: Add a pure Tangle-to-`SolverMesh` converter.**
   - Depends on: A1.2.
   - Convert nodes, triangle connectivity/region attributes, edges/markers, PBC
     pairs, and AGE definitions without accessing `FemmProblem` or the filesystem.
