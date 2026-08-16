@@ -26,12 +26,12 @@
 #include "femmcomplex.h"
 #include "femmconstants.h"
 #include "CElement.h"
-#include "spars.h"
+#include "linsolve/LinearSystemBackend.h"
 #include "fsolver.h"
 
 // #define NEWTON
 
-int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
+int FSolver::HarmonicAxisymmetric(femm::LinearSystemBackend<CComplex> &L,bool verbose)
 {
     int i,j,k,s,flag,ww,Iter=0;
     int pctr;
@@ -212,7 +212,7 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
             printf("Matrix Construction\n");
         pctr=0;
 
-        if (Iter>0) L.Wipe();
+        if (Iter>0) L.wipe();
 
         // build element matrices using the matrices derived in Allaire's book.
         for(i=0; i<NumEls; i++)
@@ -439,7 +439,7 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
                 {
                     k=labellist[El->lbl].InCircuit;
                     if(circproplist[k].Case==2)
-                        L.b[NumNodes+k]+=K/R;
+                        L.rhs()[NumNodes+k]+=K/R;
                 }
             }
 
@@ -451,8 +451,8 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
                 {
                     K=-2.*I*a*w*blockproplist[meshele[i].blk].Cduct*c;
                     for(j=0; j<3; j++)
-                        L.Put(L.Get(n[j],NumNodes+k)+K/3.,n[j],NumNodes+k);
-                    L.Put(L.Get(NumNodes+k,NumNodes+k)+K/R,NumNodes+k,NumNodes+k);
+                        L.put(L.get(n[j],NumNodes+k)+K/3.,n[j],NumNodes+k);
+                    L.put(L.get(NumNodes+k,NumNodes+k)+K/R,NumNodes+k,NumNodes+k);
                 }
             }
 
@@ -511,8 +511,8 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
                     v[2]=0;
                     for(j=0; j<3; j++)
                         for(ww=0; ww<3; ww++)
-                            v[j]+=(Mx[j][ww]+My[j][ww])*L.V[n[ww]];
-                    for(j=0,dv=0; j<3; j++) dv+=conj(L.V[n[j]])*v[j];
+                            v[j]+=(Mx[j][ww]+My[j][ww])*L.solution()[n[ww]];
+                    for(j=0,dv=0; j<3; j++) dv+=conj(L.solution()[n[j]])*v[j];
                     dv*=(10000.*c*c/vol);
                     B=sqrt(abs(dv));
 
@@ -527,7 +527,7 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
                         for(j=0; j<3; j++)
                         {
                             for(ww=0,v[j]=0; ww<3; ww++)
-                                v[j]+=(Mx[j][ww]+My[j][ww])*L.V[n[ww]];
+                                v[j]+=(Mx[j][ww]+My[j][ww])*L.solution()[n[ww]];
                         }
 
                         // Newton iteration
@@ -592,14 +592,14 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
                     if (ACSolver==1)
                     {
                         Me[j][k]+= (Mx[j][k]/(El->mu2) + My[j][k]/(El->mu1) + Mn[j][k]);
-                        be[j]+=(Mnh[j][k]+Mna[j][k]+Mn[j][k])*L.V[n[k]];
-                        be[j]+=Mns[j][k]*L.V[n[k]].Conj();
+                        be[j]+=(Mnh[j][k]+Mna[j][k]+Mn[j][k])*L.solution()[n[k]];
+                        be[j]+=Mns[j][k]*L.solution()[n[k]].Conj();
                     }
 //#else
                     else
                     {
                         Me[j][k]+= (Mx[j][k]/(El->mu2) + My[j][k]/(El->mu1) + Mxy[j][k] * (El->v12));
-                        be[j]+=Mn[j][k]*L.V[n[k]];
+                        be[j]+=Mn[j][k]*L.solution()[n[k]];
                     }
 //#endif
 
@@ -609,17 +609,17 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
             {
                 for (k=j; k<3; k++)
                 {
-                    L.Put(L.Get(n[j],n[k])+Me[j][k],n[j],n[k]);
+                    L.put(L.get(n[j],n[k])+Me[j][k],n[j],n[k]);
 //#ifdef NEWTON
                     if (ACSolver==1)
                     {
-                        if (Mnh[j][k]!=0) L.Put(L.Get(n[j],n[k],1) + Mnh[j][k],n[j],n[k],1);
-                        if (Mns[j][k]!=0) L.Put(L.Get(n[j],n[k],2) + Mns[j][k],n[j],n[k],2);
-                        if (Mna[j][k]!=0) L.Put(L.Get(n[j],n[k],3) + Mna[j][k],n[j],n[k],3);
+                        if (Mnh[j][k]!=0) L.put(L.get(n[j],n[k],1) + Mnh[j][k],n[j],n[k],1);
+                        if (Mns[j][k]!=0) L.put(L.get(n[j],n[k],2) + Mns[j][k],n[j],n[k],2);
+                        if (Mna[j][k]!=0) L.put(L.get(n[j],n[k],3) + Mna[j][k],n[j],n[k],3);
                     }
 //#endif
                 }
-                L.b[n[j]]+=be[j];
+                L.rhs()[n[j]]+=be[j];
             }
 
 ///////////////////////////////////////////////////
@@ -633,14 +633,14 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
                 r=meshnode[i].x;
                 K = (2.*r*0.01)*(nodeproplist[meshnode[i].BoundaryMarker].J.re +
                                  I*nodeproplist[meshnode[i].BoundaryMarker].J.im);
-                L.b[i]-=K;
+                L.rhs()[i]-=K;
             }
 
         // add in total current constraints for circuits;
         for(i=0; i<NumCircProps; i++)
             if (circproplist[i].Case==2)
             {
-                L.b[NumNodes+i]+=2.*0.01*(circproplist[i].Amps.re +
+                L.rhs()[NumNodes+i]+=2.*0.01*(circproplist[i].Amps.re +
                                           I*circproplist[i].Amps.im);
             }
 
@@ -649,7 +649,7 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
             if(meshnode[i].x<(units[LengthUnits]*1.e-06))
             {
                 K=0;
-                L.SetValue(i,K);
+                L.set_value(i,K);
             }
             else if(meshnode[i].BoundaryMarker >=0)
                 if((nodeproplist[meshnode[i].BoundaryMarker].J.re==0) &&
@@ -657,7 +657,7 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
                 {
                     K =  (nodeproplist[meshnode[i].BoundaryMarker].A.re
                           + I*nodeproplist[meshnode[i].BoundaryMarker].A.im) / c;
-                    L.SetValue(i,K);
+                    L.set_value(i,K);
                 }
 
         // apply fixed boundary conditions along segments;
@@ -681,7 +681,7 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
                             a=lineproplist[s].A0 + x*lineproplist[s].A1 +
                               y*lineproplist[s].A2;
                             K=(a/c)*exp(I*lineproplist[s].phi*DEG);
-                            L.SetValue(meshele[i].p[j],K);
+                            L.set_value(meshele[i].p[j],K);
 
                             // second point on the side;
                             x=meshnode[meshele[i].p[k]].x;
@@ -692,7 +692,7 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
                             a=lineproplist[s].A0 + x*lineproplist[s].A1 +
                               y*lineproplist[s].A2;
                             K=(a/c)*exp(I*lineproplist[s].phi*DEG);
-                            L.SetValue(meshele[i].p[k],K);
+                            L.set_value(meshele[i].p[k],K);
                         }
                         else
                         {
@@ -707,7 +707,7 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
                             a=lineproplist[s].A0 + r*lineproplist[s].A1 +
                               t*lineproplist[s].A2;
                             K=(a/c)*exp(I*lineproplist[s].phi*DEG);
-                            L.SetValue(meshele[i].p[j],K);
+                            L.set_value(meshele[i].p[j],K);
 
                             // second point on the side;
                             x=meshnode[meshele[i].p[k]].x;
@@ -720,7 +720,7 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
                             a=lineproplist[s].A0 + r*lineproplist[s].A1 +
                               t*lineproplist[s].A2;
                             K=(a/c)*exp(I*lineproplist[s].phi*DEG);
-                            L.SetValue(meshele[i].p[k],K);
+                            L.set_value(meshele[i].p[k],K);
                         }
 
                     }
@@ -731,32 +731,36 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
         // applied current or voltage that is known a priori
         // so that solver doesn't throw a "singular" flag
         for(j=0; j<NumCircProps; j++)
-            if (circproplist[j].Case<2)	L.Put(L.Get(0,0),NumNodes+j,NumNodes+j);
+            if (circproplist[j].Case<2)	L.put(L.get(0,0),NumNodes+j,NumNodes+j);
 
         for(k=0; k<NumPBCs; k++)
         {
-            if (pbclist[k].t==0) L.Periodicity(pbclist[k].x,pbclist[k].y);
-            if (pbclist[k].t==1) L.AntiPeriodicity(pbclist[k].x,pbclist[k].y);
+            if (pbclist[k].t==0) L.constrain_periodic(pbclist[k].x,pbclist[k].y,false);
+            if (pbclist[k].t==1) L.constrain_periodic(pbclist[k].x,pbclist[k].y,true);
         }
 
         // solve the problem;
-        for(j=0;j<NumNodes+NumCircProps;j++) V_old[j]=L.V[j];
+        for(j=0;j<NumNodes+NumCircProps;j++) V_old[j]=L.solution()[j];
 
-        if (L.bNewton)
+        femm::SolveOptions opts;
+        opts.warm_start = (Iter > 0);
+        opts.verbose = verbose;
+        opts.tolerance = L.precision();
+        if (L.newton())
         {
-            L.Precision=std::min(1.e-4,0.001*res);
-            if (L.Precision<Precision) L.Precision=Precision;
+            opts.tolerance=std::min(1.e-4,0.001*res);
+            if (opts.tolerance<Precision) opts.tolerance=Precision;
         }
 
-        if (L.PBCGSolveMod(Iter,verbose)==0) return 0;
+        if (L.solve(opts).converged==false) return 0;
 
         if (LinearFlag==false)
         {
 
             for(j=0,x=0,y=0; j<NumNodes; j++)
             {
-                x+=Re((L.V[j]-V_old[j])*conj(L.V[j]-V_old[j]));
-                y+=Re(L.V[j]*conj(L.V[j]));
+                x+=Re((L.solution()[j]-V_old[j])*conj(L.solution()[j]-V_old[j]));
+                y+=Re(L.solution()[j]*conj(L.solution()[j]));
             }
             if (y==0) LinearFlag=true;
             else
@@ -771,7 +775,7 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
                 if ((res>lastres) && (Relax>0.1)) Relax/=2.;
                 else Relax+= 0.1 * (1. - Relax);
 
-                for(j=0; j<NumNodes+NumCircProps; j++) L.V[j]=Relax*L.V[j]+(1.0-Relax)*V_old[j];
+                for(j=0; j<NumNodes+NumCircProps; j++) L.solution()[j]=Relax*L.solution()[j]+(1.0-Relax)*V_old[j];
             }
 
 
@@ -802,9 +806,9 @@ int FSolver::HarmonicAxisymmetric(CBigComplexLinProb &L,bool verbose)
 
 
     // convert answer back to webers
-    for (i=0; i<NumNodes; i++) L.b[i]=L.V[i]*c*2.*PI*meshnode[i].x*0.01;
+    for (i=0; i<NumNodes; i++) L.rhs()[i]=L.solution()[i]*c*2.*PI*meshnode[i].x*0.01;
     for (i=0; i<NumCircProps; i++)
-        L.b[NumNodes+i]=(I*w*c*0.01*L.V[NumNodes+i]);
+        L.rhs()[NumNodes+i]=(I*w*c*0.01*L.solution()[NumNodes+i]);
 
 
     // free up space allocated in this routine

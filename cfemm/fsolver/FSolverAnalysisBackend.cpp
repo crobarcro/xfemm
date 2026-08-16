@@ -5,6 +5,7 @@
 #include "CCircuit.h"
 #include "CMaterialProp.h"
 #include "CPointProp.h"
+#include "linsolve/backend_factory.h"
 
 #include <algorithm>
 #include <cmath>
@@ -163,10 +164,12 @@ TrialSolution FSolverAnalysisBackend::solve(const ModelDefinition &model,
     configure(model, parameters, prepared);
     if (parameters.frequency != 0)
         throw std::invalid_argument("FSolverAnalysisBackend currently returns real (zero-frequency) solutions only");
-    m_lastSystem.reset(new CBigLinProb);
-    CBigLinProb &system = *m_lastSystem;
-    system.Precision = m_solver->Precision;
-    if (!system.Create(m_solver->NumNodes, m_solver->BandWidth))
+    m_lastSystem = femm::create_backend<double>(femm::default_backend_kind());
+    if (!m_lastSystem)
+        throw std::runtime_error("FSolver could not create the linear system backend");
+    femm::LinearSystemBackend<double> &system = *m_lastSystem;
+    system.set_precision(m_solver->Precision);
+    if (!system.create(m_solver->NumNodes, m_solver->BandWidth))
         throw std::runtime_error("FSolver could not allocate the linear system");
     const bool solved = m_solver->ProblemType == PLANAR
                       ? m_solver->Static2D(system) : m_solver->StaticAxisymmetric(system);
@@ -178,7 +181,7 @@ TrialSolution FSolverAnalysisBackend::solve(const ModelDefinition &model,
     result.real.emplace();
     result.real->nodal.magneticVectorPotential.reserve(m_solver->NumNodes);
     for (int i = 0; i < m_solver->NumNodes; ++i)
-        result.real->nodal.magneticVectorPotential.push_back(system.b[i]);
+        result.real->nodal.magneticVectorPotential.push_back(system.rhs()[i]);
     result.real->nodal.x.reserve(m_solver->NumNodes);
     result.real->nodal.y.reserve(m_solver->NumNodes);
     for (const auto &node : m_solver->meshnode) {
@@ -221,7 +224,7 @@ const FSolver &FSolverAnalysisBackend::solvedSolver() const
     return *m_solver;
 }
 
-const CBigLinProb &FSolverAnalysisBackend::solvedSystem() const
+const femm::LinearSystemBackend<double> &FSolverAnalysisBackend::solvedSystem() const
 {
     if (!m_lastSystem) throw std::logic_error("there is no solved field; call solve first");
     return *m_lastSystem;

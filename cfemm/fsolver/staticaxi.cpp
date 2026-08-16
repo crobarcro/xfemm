@@ -25,7 +25,7 @@
 #include "fsolver.h"
 #include "lua.h"
 #include "LuaInstance.h"
-#include "spars.h"
+#include "linsolve/LinearSystemBackend.h"
 
 #include <cstdio>
 #include <malloc.h>
@@ -42,7 +42,7 @@
   #endif
 #endif
 
-int FSolver::StaticAxisymmetric(CBigLinProb &L)
+int FSolver::StaticAxisymmetric(femm::LinearSystemBackend<double> &L)
 {
     int i,j,k,s,w;
     double Me[3][3],Mx[3][3],My[3][3],Mxy[3][3],Mn[3][3];
@@ -151,7 +151,7 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
         printf("Matrix Construction\n");
 //        pctr=0;
 
-        if(Iter>0) L.Wipe();
+        if(Iter>0) L.wipe();
 
         for(i=0; i<NumEls; i++)
         {
@@ -514,8 +514,8 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
                     v[2]=0;
                     for(j=0; j<3; j++)
                         for(w=0; w<3; w++)
-                            v[j]+=(Mx[j][w]+My[j][w])*L.V[n[w]];
-                    for(j=0,dv=0; j<3; j++) dv+=L.V[n[j]]*v[j];
+                            v[j]+=(Mx[j][w]+My[j][w])*L.solution()[n[w]];
+                    for(j=0,dv=0; j<3; j++) dv+=L.solution()[n[j]]*v[j];
                     dv*=(10000.*c*c/vol);
                     B=sqrt(fabs(dv));
 
@@ -527,7 +527,7 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
                     for(j=0; j<3; j++)
                     {
                         for(w=0,v[j]=0; w<3; w++)
-                            v[j]+=(Mx[j][w]+My[j][w])*L.V[n[w]];
+                            v[j]+=(Mx[j][w]+My[j][w])*L.solution()[n[w]];
                     }
 
                     K=-200.*c*c*c*dv/vol;
@@ -546,8 +546,8 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
                     v[2]=0;
                     for(j=0; j<3; j++)
                         for(w=0; w<3; w++)
-                            v[j]+=(Mx[j][w]+My[j][w]/(t*t))*L.V[n[w]];
-                    for(j=0,dv=0; j<3; j++) dv+=L.V[n[j]]*v[j];
+                            v[j]+=(Mx[j][w]+My[j][w]/(t*t))*L.solution()[n[w]];
+                    for(j=0,dv=0; j<3; j++) dv+=L.solution()[n[j]]*v[j];
                     dv*=(10000.*c*c/vol);
                     B=sqrt(fabs(dv));
 
@@ -560,8 +560,8 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
                     {
                         for(w=0,v[j]=0,u[j]=0; w<3; w++)
                         {
-                            v[j]+=(My[j][w]/t+Mx[j][w])*L.V[n[w]];
-                            u[j]+=(My[j][w]/t + t*Mx[j][w])*L.V[n[w]];
+                            v[j]+=(My[j][w]/t+Mx[j][w])*L.solution()[n[w]];
+                            u[j]+=(My[j][w]/t + t*Mx[j][w])*L.solution()[n[w]];
                         }
                     }
                     K=-100.*c*c*c*dv/(vol);
@@ -579,8 +579,8 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
                     v[2]=0;
                     for(j=0; j<3; j++)
                         for(w=0; w<3; w++)
-                            v[j]+=(Mx[j][w]/(t*t)+My[j][w])*L.V[n[w]];
-                    for(j=0,dv=0; j<3; j++) dv+=L.V[n[j]]*v[j];
+                            v[j]+=(Mx[j][w]/(t*t)+My[j][w])*L.solution()[n[w]];
+                    for(j=0,dv=0; j<3; j++) dv+=L.solution()[n[j]]*v[j];
                     dv*=(10000.*c*c/vol);
                     B=sqrt(fabs(dv));
 
@@ -594,8 +594,8 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
                     {
                         for(w=0,v[j]=0,u[j]=0; w<3; w++)
                         {
-                            v[j]+=(Mx[j][w]/t + My[j][w])*L.V[n[w]];
-                            u[j]+=(Mx[j][w]/t + t*My[j][w])*L.V[n[w]];
+                            v[j]+=(Mx[j][w]/t + My[j][w])*L.solution()[n[w]];
+                            u[j]+=(Mx[j][w]/t + t*My[j][w])*L.solution()[n[w]];
                         }
                     }
                     K=-100.*c*c*c*dv/(vol);
@@ -621,14 +621,14 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
                 for(k=0; k<3; k++)
                 {
                     Me[j][k]+= (Mx[j][k]/Re(El->mu2) + My[j][k]/Re(El->mu1) + Mxy[j][k] * Re(El->v12) + Mn[j][k]);
-                    be[j]+=Mn[j][k]*L.V[n[k]];
+                    be[j]+=Mn[j][k]*L.solution()[n[k]];
                 }
 
             for (j=0; j<3; j++)
             {
                 for (k=j; k<3; k++)
-                    L.Put(L.Get(n[j],n[k])-Me[j][k],n[j],n[k]);
-                L.b[n[j]]-=be[j];
+                    L.put(L.get(n[j],n[k])-Me[j][k],n[j],n[k]);
+                L.rhs()[n[j]]-=be[j];
             }
         }
 
@@ -637,17 +637,17 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
             if(meshnode[i].BoundaryMarker>=0)
             {
                 r=meshnode[i].x;
-                L.b[i]+=(0.01*nodeproplist[meshnode[i].BoundaryMarker].J.re*2.*r);
+                L.rhs()[i]+=(0.01*nodeproplist[meshnode[i].BoundaryMarker].J.re*2.*r);
             }
 
         // apply fixed boundary conditions at points;
         for(i=0; i<NumNodes; i++)
         {
-            if(fabs(meshnode[i].x)<(units[LengthUnits]*1.e-06)) L.SetValue(i,0.);
+            if(fabs(meshnode[i].x)<(units[LengthUnits]*1.e-06)) L.set_value(i,0.);
             else if(meshnode[i].BoundaryMarker >=0)
                 if((nodeproplist[meshnode[i].BoundaryMarker].J.re==0) &&
                         (nodeproplist[meshnode[i].BoundaryMarker].J.im==0))
-                    L.SetValue(i,nodeproplist[meshnode[i].BoundaryMarker].A.re/c);
+                    L.set_value(i,nodeproplist[meshnode[i].BoundaryMarker].A.re/c);
         }
 
         // apply fixed boundary conditions along segments;
@@ -671,7 +671,7 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
                               y*lineproplist[s].A2;
                             // just take ``real'' component.
                             a*=cos(lineproplist[s].phi*DEG);
-                            if(x!=0) L.SetValue(meshele[i].p[j],a/c);
+                            if(x!=0) L.set_value(meshele[i].p[j],a/c);
 
                             // second point on the side;
                             x=meshnode[meshele[i].p[k]].x;
@@ -683,7 +683,7 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
                               y*lineproplist[s].A2;
                             // just take``real'' component.
                             a*=cos(lineproplist[s].phi*DEG);
-                            if (x!=0) L.SetValue(meshele[i].p[k],a/c);
+                            if (x!=0) L.set_value(meshele[i].p[k],a/c);
                         }
                         else
                         {
@@ -698,7 +698,7 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
                             a=lineproplist[s].A0 + r*lineproplist[s].A1 +
                               t*lineproplist[s].A2;
                             a*=cos(lineproplist[s].phi*DEG); // just take ``real'' component.
-                            if (x!=0) L.SetValue(meshele[i].p[j],a/c);
+                            if (x!=0) L.set_value(meshele[i].p[j],a/c);
 
                             // second point on the side;
                             x=meshnode[meshele[i].p[k]].x;
@@ -711,7 +711,7 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
                             a=lineproplist[s].A0 + r*lineproplist[s].A1 +
                               t*lineproplist[s].A2;
                             a*=cos(lineproplist[s].phi*DEG); // just take ``real'' component.
-                            if (x!=0) L.SetValue(meshele[i].p[k],a/c);
+                            if (x!=0) L.set_value(meshele[i].p[k],a/c);
                         }
 
                     }
@@ -720,21 +720,23 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
         // Apply any periodicity/antiperiodicity boundary conditions that we have
         for(k=0; k<NumPBCs; k++)
         {
-            if (pbclist[k].t==0) L.Periodicity(pbclist[k].x,pbclist[k].y);
-            if (pbclist[k].t==1) L.AntiPeriodicity(pbclist[k].x,pbclist[k].y);
+            if (pbclist[k].t==0) L.constrain_periodic(pbclist[k].x,pbclist[k].y,false);
+            if (pbclist[k].t==1) L.constrain_periodic(pbclist[k].x,pbclist[k].y,true);
         }
 
         // solve the problem;
-        for(j=0;j<NumNodes;j++) V_old[j]=L.V[j];
-        if (L.PCGSolve(Iter)==false) return false;
+        for(j=0;j<NumNodes;j++) V_old[j]=L.solution()[j];
+        femm::SolveOptions opts;
+        opts.warm_start = (Iter > 0);
+        if (L.solve(opts).converged==false) return false;
 
         if (LinearFlag==false)
         {
 
             for(j=0,x=0,y=0; j<NumNodes; j++)
             {
-                x+=(L.V[j]-V_old[j])*(L.V[j]-V_old[j]);
-                y+=(L.V[j]*L.V[j]);
+                x+=(L.solution()[j]-V_old[j])*(L.solution()[j]-V_old[j]);
+                y+=(L.solution()[j]*L.solution()[j]);
             }
 
             if (y==0) LinearFlag=true;
@@ -751,7 +753,7 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
                 if ((res>lastres) && (Relax>0.125)) Relax/=2.;
                 else Relax+= 0.1 * (1. - Relax);
 
-                for(j=0; j<NumNodes; j++) L.V[j]=Relax*L.V[j]+(1.0-Relax)*V_old[j];
+                for(j=0; j<NumNodes; j++) L.solution()[j]=Relax*L.solution()[j]+(1.0-Relax)*V_old[j];
             }
 
 
@@ -778,8 +780,8 @@ int FSolver::StaticAxisymmetric(CBigLinProb &L)
     // convert answer back to Webers for plotting purposes.
     for (i=0; i<NumNodes; i++)
     {
-        L.b[i]=L.V[i]*c;
-        L.b[i]*=(meshnode[i].x*0.01*2*PI);
+        L.rhs()[i]=L.solution()[i]*c;
+        L.rhs()[i]*=(meshnode[i].x*0.01*2*PI);
     }
 
     free(V_old);

@@ -64,7 +64,7 @@ function [objs, deps_rules] = sources2rules (sources, varargin)
     deps_rules_ind = 1;
     for objsind = 1:numel (sources)
         
-        [~,name,ext] = fileparts ( sources{objsind} );
+        [sourcedir,name,ext] = fileparts ( sources{objsind} );
         
         if any (strcmpi (ext, valid_source_suffix))
             
@@ -74,11 +74,11 @@ function [objs, deps_rules] = sources2rules (sources, varargin)
                 error ('Source file:\n%s\ndoes not exist.', sourcefile);
             end
             
-            objs = [objs, { fullfile(options.SourceDirectory, [name, '.${OBJ_EXT}']) } ];
+            objs = [objs, { fullfile(options.SourceDirectory, sourcedir, [name, '.${OBJ_EXT}']) } ];
             
             for hsuffixind = 1:numel (valid_header_suffix)
                 
-                header_file = fullfile (options.HeaderDirectory, [name, valid_header_suffix{hsuffixind}]);
+                header_file = fullfile (options.HeaderDirectory, sourcedir, [name, valid_header_suffix{hsuffixind}]);
                 
                 if exist (header_file, 'file')
 

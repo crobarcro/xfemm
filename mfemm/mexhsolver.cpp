@@ -5,7 +5,7 @@
 #include <string.h>
 #include "hsolver.h"
 /* #include "complex.h" */
-#include "spars.h"
+#include "linsolve/backend_factory.h"
 
 #include "mex.h"
 
@@ -178,12 +178,13 @@ int nrhs, const mxArray *prhs[])
               SolveObj.NumNodes,SolveObj.NumEls,
               SolveObj.Precision);
 
-    CBigLinProb L;
+    std::unique_ptr<femm::LinearSystemBackend<double>> L =
+        femm::create_backend<double>(femm::default_backend_kind());
 
-    L.Precision = SolveObj.Precision;
+    L->set_precision(SolveObj.Precision);
 
     // initialize the problem, allocating the space required to solve it.
-    if (L.Create(SolveObj.NumNodes+SolveObj.NumCircProps,SolveObj.BandWidth) == false)
+    if (!L->create(SolveObj.NumNodes+SolveObj.NumCircProps,SolveObj.BandWidth))
     {
         mexPrintf("couldn't allocate enough space for matrices\n");
         plhs[0] = mxCreateDoubleScalar(4.0);
@@ -192,7 +193,7 @@ int nrhs, const mxArray *prhs[])
 
     // Create element matrices and solve the problem;
 
-    if (SolveObj.AnalyzeProblem(L)==false)
+    if (SolveObj.AnalyzeProblem(*L)==false)
     {
         mexPrintf("Couldn't solve the problem\n");
         plhs[0] = mxCreateDoubleScalar(5.0);
@@ -201,7 +202,7 @@ int nrhs, const mxArray *prhs[])
     mexPrintf("Static 2-D problem solved\n");
     
 
-    if (SolveObj.WriteResults(L) == false)
+    if (SolveObj.WriteResults(*L) == false)
     {
         mexPrintf("couldn't write results to disk\n");
         plhs[0] = mxCreateDoubleScalar(6.0);

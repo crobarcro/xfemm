@@ -31,7 +31,7 @@ public:
 
     /** Native solved state used to construct an in-memory post-processor view. */
     const FSolver &solvedSolver() const;
-    const CBigLinProb &solvedSystem() const;
+    const femm::LinearSystemBackend<double> &solvedSystem() const;
 
     std::size_t topologyImportCount() const { return m_topologyImports; }
     std::size_t orderingCount() const { return m_orderings; }
@@ -47,7 +47,7 @@ private:
                    const PreparedAnalysis &);
     void positionAirGaps(const PreparedAnalysis &);
     std::unique_ptr<FSolver> m_solver;
-    std::unique_ptr<CBigLinProb> m_lastSystem;
+    std::unique_ptr<femm::LinearSystemBackend<double>> m_lastSystem;
     std::shared_ptr<const mesh::SolverMesh> m_mesh;
     std::uint64_t m_topologyIdentity = 0;
     std::size_t m_topologyImports = 0;
