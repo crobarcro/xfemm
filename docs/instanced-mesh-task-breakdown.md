@@ -56,7 +56,7 @@ returns a validated `SolverMesh`, and is trustworthy enough to become the defaul
   - Validate signed/unsigned and zero-/one-based conversions at the boundary.
   - Checks: focused unit tests for ordinary, periodic-only, and AGE-bearing
     synthetic Tangle meshes, including invalid indices.
-- [ ] **A2.2: Execute Tangle from `TangleMesherBackend`.**
+- [x] **A2.2: Execute Tangle from `TangleMesherBackend`.**
   - Depends on: A2.1 and the required upstream in-memory input API from A1.1.
   - Remove the current call to `TriangleMesherBackend` and invoke the real engine.
   - Map Tangle status values to `MeshStatus` and preserve actionable diagnostics.

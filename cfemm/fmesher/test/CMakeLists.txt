@@ -30,6 +30,12 @@ add_test(NAME fmesher_tangle_mesh_converter COMMAND tangle_mesh_converter_test)
 set_tests_properties(fmesher_tangle_mesh_converter PROPERTIES
     LABELS "mesher;Tangle;unit")
 
+add_executable(tangle_backend_execution_test tangle_backend_execution_test.cpp)
+target_link_libraries(tangle_backend_execution_test PRIVATE fmesher Tangle::tangle)
+add_test(NAME fmesher_tangle_backend_execution COMMAND tangle_backend_execution_test)
+set_tests_properties(fmesher_tangle_backend_execution PROPERTIES
+    LABELS "mesher;Tangle;unit")
+
 foreach(backend Triangle Tangle)
     add_test(NAME fmesher_${backend}_backend_solver_mesh
         COMMAND fmesher_backend_test "${backend}"
