@@ -93,6 +93,7 @@ add_library(fmesher STATIC
     fmesher.cbp
     fmesher.cpp
     nosebl.cpp
+    TangleMeshConverter.cpp
     TangleMesherBackend.cpp
     TriangleMesher.cpp
     TriangleMesherBackend.cpp

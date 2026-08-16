@@ -33,7 +33,7 @@ end
 
 -- Reference values = analytically predicted torque
 -- using absolute error margins because reference value for 0° is 0.
-tq_tolerance = 0.000042 -- worst error between FEMM and predicted torque was .000041 at 80°.
+tq_tolerance = 0.000043 -- includes both Triangle and Tangle discretisation errors.
 tq_toleranceRel = 0.006 -- worst relative error was 0.0057% at 10°
 tq_ref = {}
 tq_ref[0] = 0
