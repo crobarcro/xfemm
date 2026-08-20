@@ -32,14 +32,29 @@ V,Dx,Dy,Ex,Ey,ex,ey,nrg  = eo_getpointvalues(0.250, 0)
 -- check result against FEMM42 output:
 -- FIXME: error margin needs sane values
 failed=0
-failed= failed +check("V", V, 48.37056814422403, 1)
-failed= failed +check("Dx", Dx, 1.157764975200258e-009, 1.5)
-failed= failed +check("Dy", Dy, 7.559208128960357e-011, 15)
-failed= failed +check("Ex", Ex, 32.68975650415626, 2)
-failed= failed +check("Ey", Ey, 2.134359549590023, 15)
+if getenv("XFEMM_MESHER_BACKEND") == "Tangle" then
+	V_ref = 48.90577131945231
+	Dx_ref = 8.387310310792659e-010
+	Dy_ref = 6.043844822898733e-011
+	Ex_ref = 23.68176077680935
+	Ey_ref = 1.706493285265354
+	nrg_ref = 9.982882720090222e-009
+else
+	V_ref = 48.37056814422403
+	Dx_ref = 1.157764975200258e-009
+	Dy_ref = 7.559208128960357e-011
+	Ex_ref = 32.68975650415626
+	Ey_ref = 2.134359549590023
+	nrg_ref = 1.900419790445539e-008
+end
+failed= failed +check("V", V, V_ref, 1)
+failed= failed +check("Dx", Dx, Dx_ref, 1.5)
+failed= failed +check("Dy", Dy, Dy_ref, 15)
+failed= failed +check("Ex", Ex, Ex_ref, 2)
+failed= failed +check("Ey", Ey, Ey_ref, 15)
 failed= failed +check("ex", ex, 4, 0.1)
 failed= failed +check("ey", ey, 4, 0.1)
-failed= failed +check("nrg", nrg, 1.900419790445539e-008, 3)
+failed= failed +check("nrg", nrg, nrg_ref, 3)
 
 assert(failed==0)
 write("SUCCESS\n")

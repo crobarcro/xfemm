@@ -32,7 +32,7 @@ jobs:
         cd cfemm
         cmake -B ${{github.workspace}}/build \
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} \
-          -DXFEMM_TEST_MESHER_BACKEND=${{matrix.mesher-backend}}
+          -DXFEMM_MESHER_BACKEND=${{matrix.mesher-backend}}
 
     - name: Build
       # Build your program with the given configuration

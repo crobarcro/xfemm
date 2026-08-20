@@ -17,13 +17,13 @@ set(TANGLE_SOURCE_DIR "" CACHE PATH
     "Path to a dcm3c/tangle source checkout (required by TANGLE_PROVIDER=local).")
 set(XFEMM_TANGLE_REVISION a808c624ec0584569e43593662f54890b602c6af CACHE STRING
     "Pinned dcm3c/tangle revision used by xfemm.")
-set(XFEMM_TEST_MESHER_BACKEND Triangle CACHE STRING
-    "Default mesher backend used by the standard test build (Triangle or Tangle).")
-set_property(CACHE XFEMM_TEST_MESHER_BACKEND PROPERTY STRINGS Triangle Tangle)
-string(TOLOWER "${XFEMM_TEST_MESHER_BACKEND}" _xfemm_test_mesher_backend)
-if(NOT _xfemm_test_mesher_backend MATCHES "^(triangle|tangle)$")
+set(XFEMM_MESHER_BACKEND Triangle CACHE STRING
+    "Default xfemm mesher backend (Triangle or Tangle).")
+set_property(CACHE XFEMM_MESHER_BACKEND PROPERTY STRINGS Triangle Tangle)
+string(TOLOWER "${XFEMM_MESHER_BACKEND}" _xfemm_mesher_backend)
+if(NOT _xfemm_mesher_backend MATCHES "^(triangle|tangle)$")
     message(FATAL_ERROR
-        "Invalid XFEMM_TEST_MESHER_BACKEND='${XFEMM_TEST_MESHER_BACKEND}'; expected Triangle or Tangle")
+        "Invalid XFEMM_MESHER_BACKEND='${XFEMM_MESHER_BACKEND}'; expected Triangle or Tangle")
 endif()
 
 if(NOT TANGLE_PROVIDER MATCHES "^(auto|local|fetch)$")
@@ -93,6 +93,7 @@ add_library(fmesher STATIC
     fmesher.cbp
     fmesher.cpp
     nosebl.cpp
+    TangleMeshConverter.cpp
     TangleMesherBackend.cpp
     TriangleMesher.cpp
     TriangleMesherBackend.cpp
@@ -100,10 +101,10 @@ add_library(fmesher STATIC
     )
 target_link_libraries(fmesher PUBLIC femm PRIVATE Triangle::triangle-api Tangle::tangle)
 target_include_directories(fmesher PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}> $<INSTALL_INTERFACE:include>)
-if(_xfemm_test_mesher_backend STREQUAL "tangle")
-    target_compile_definitions(fmesher PUBLIC XFEMM_DEFAULT_MESHER_BACKEND_TANGLE)
+if(_xfemm_mesher_backend STREQUAL "tangle")
+    target_compile_definitions(fmesher PUBLIC XFEMM_MESHER_BACKEND_TANGLE)
 endif()
-message(STATUS "Standard tests use the ${XFEMM_TEST_MESHER_BACKEND} mesher backend")
+message(STATUS "Default xfemm mesher backend: ${XFEMM_MESHER_BACKEND}")
 
 add_executable(fmesher-bin
     main.cpp

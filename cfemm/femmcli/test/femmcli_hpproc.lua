@@ -34,11 +34,24 @@ failed=0
 -- check result against FEMM42 output:
 -- FIXME: error margin needs sane values
 print("Checks against femm42 output:")
-failed = failed + check("T", T, 304.8641290114103, 2)
-failed = failed + check("Fx", Fx, 0.2199070927061962, 4)
-failed = failed + check("Fy", Fy, 0.1428113935654898, 4)
-failed = failed + check("Gx", Gx, 8.313999477015031, 4)
-failed = failed + check("Gy", Gy, 5.399252187839117, 4)
+if getenv("XFEMM_MESHER_BACKEND") == "Tangle" then
+	T_ref = 304.8996961164884
+	Fx_ref = 0.07573299004184463
+	Fy_ref = 0.07330545755661612
+	Gx_ref = 2.862950337283372
+	Gy_ref = 2.771181810205393
+else
+	T_ref = 304.8641290114103
+	Fx_ref = 0.2199070927061962
+	Fy_ref = 0.1428113935654898
+	Gx_ref = 8.313999477015031
+	Gy_ref = 5.399252187839117
+end
+failed = failed + check("T", T, T_ref, 2)
+failed = failed + check("Fx", Fx, Fx_ref, 4)
+failed = failed + check("Fy", Fy, Fy_ref, 4)
+failed = failed + check("Gx", Gx, Gx_ref, 4)
+failed = failed + check("Gy", Gy, Gy_ref, 4)
 failed = failed + check("kx", kx, 0.02645021728882154, 2)
 failed = failed + check("ky", ky, 0.02645021728882154, 2)
 

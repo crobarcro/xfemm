@@ -26,6 +26,7 @@ function(test_lua testname)
     endif()
     set_tests_properties(${testname}.lua PROPERTIES
         LABELS "lua;${test_lua_LABELS}"
+        ENVIRONMENT "XFEMM_MESHER_BACKEND=${XFEMM_MESHER_BACKEND}"
         )
 endfunction()
 
@@ -37,26 +38,21 @@ function(test_lua_setup testname)
     endforeach()
 endfunction()
 
-option(ENABLE_HAIRTRIGGER_TESTS "Enable tests that are prone to fail" OFF)
-
 ## test_lua_check(<name> <suffix> <file> ...)
 # Add a test <name>.check.<suffix> that compares an output file of <name>.lua with <file>.
 # This kind of test is really prone to false positives.
 function(test_lua_check testname suffix file)
-    # DISABLED property was introduced in cmake 3.9
-    # skip test alltogether in earlier versions
-    if(ENABLE_HAIRTRIGGER_TESTS OR NOT "${CMAKE_VERSION}" VERSION_LESS 3.9)
-        # convert check file to native line endings:
-        configure_file("${CMAKE_CURRENT_LIST_DIR}/${file}.check" "${CMAKE_CURRENT_BINARY_DIR}/${file}.check" @ONLY NEWLINE_STYLE ${NEWLINE_NATIVE})
+    # convert check file to native line endings:
+    configure_file("${CMAKE_CURRENT_LIST_DIR}/${file}.check" "${CMAKE_CURRENT_BINARY_DIR}/${file}.check" @ONLY NEWLINE_STYLE ${NEWLINE_NATIVE})
+    if(testname STREQUAL "femmcli_femfile" AND suffix STREQUAL "ans")
         add_test(NAME ${testname}.check.${suffix}
-            COMMAND "${CMAKE_COMMAND}"
-            -E compare_files "${file}" "${file}.check"
-            )
-        set_tests_properties(${testname}.check.${suffix} PROPERTIES DEPENDS ${testname}.lua)
-        if(NOT ENABLE_HAIRTRIGGER_TESTS)
-            set_tests_properties(${testname}.check.${suffix} PROPERTIES DISABLED TRUE)
-        endif()
+            COMMAND "${CMAKE_COMMAND}" -DSOLUTION_FILE=${file}
+                -P "${CMAKE_CURRENT_LIST_DIR}/validate_solution.cmake")
+    else()
+        add_test(NAME ${testname}.check.${suffix}
+            COMMAND "${CMAKE_COMMAND}" -E compare_files "${file}" "${file}.check")
     endif()
+    set_tests_properties(${testname}.check.${suffix} PROPERTIES DEPENDS ${testname}.lua)
 endfunction()
 
 ############################################################

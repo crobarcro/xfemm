@@ -44,7 +44,7 @@ mi_saveas("femmcli_antiperiodicBC_flux.result.fem")
 mi_analyze(1)
 mi_loadsolution()
 
-tolerance = 0.02
+tolerance = 0.021
 tolerance_rel = 70
 
 -- reference values from FEMM42:

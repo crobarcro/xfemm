@@ -110,7 +110,7 @@ public:
     static femm::FileType GetFileType(std::string PathName);
     static constexpr Backend defaultBackend()
     {
-#ifdef XFEMM_DEFAULT_MESHER_BACKEND_TANGLE
+#ifdef XFEMM_MESHER_BACKEND_TANGLE
         return Backend::Tangle;
 #else
         return Backend::Triangle;
