@@ -26,7 +26,7 @@ function(test_lua testname)
     endif()
     set_tests_properties(${testname}.lua PROPERTIES
         LABELS "lua;${test_lua_LABELS}"
-        ENVIRONMENT "XFEMM_TEST_MESHER_BACKEND=${XFEMM_TEST_MESHER_BACKEND}"
+        ENVIRONMENT "XFEMM_MESHER_BACKEND=${XFEMM_MESHER_BACKEND}"
         )
 endfunction()
 

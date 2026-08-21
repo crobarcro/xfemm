@@ -19,7 +19,7 @@ std::atomic<std::uint64_t> nextSessionId{1};
 
 std::shared_ptr<fmesher::MesherBackend> makeDefaultMesher()
 {
-#ifdef XFEMM_DEFAULT_MESHER_BACKEND_TANGLE
+#ifdef XFEMM_MESHER_BACKEND_TANGLE
     return std::make_shared<fmesher::TangleMesherBackend>();
 #else
     return std::make_shared<fmesher::TriangleMesherBackend>();

@@ -17,8 +17,8 @@ test_fmesher(split_seg_err_test.fem)
 add_test(NAME fmesher_selected_backend
     COMMAND fmesher-bin --version)
 set_tests_properties(fmesher_selected_backend PROPERTIES
-    PASS_REGULAR_EXPRESSION "default mesher backend ${XFEMM_TEST_MESHER_BACKEND}"
-    LABELS "mesher;${XFEMM_TEST_MESHER_BACKEND}")
+    PASS_REGULAR_EXPRESSION "default mesher backend ${XFEMM_MESHER_BACKEND}"
+    LABELS "mesher;${XFEMM_MESHER_BACKEND}")
 # vi:expandtab:tabstop=4 shiftwidth=4:
 
 add_executable(fmesher_backend_test backend_test.cpp)
