@@ -32,7 +32,7 @@ V,Dx,Dy,Ex,Ey,ex,ey,nrg  = eo_getpointvalues(0.250, 0)
 -- check result against FEMM42 output:
 -- FIXME: error margin needs sane values
 failed=0
-if getenv("XFEMM_TEST_MESHER_BACKEND") == "Tangle" then
+if getenv("XFEMM_MESHER_BACKEND") == "Tangle" then
 	V_ref = 48.90577131945231
 	Dx_ref = 8.387310310792659e-010
 	Dy_ref = 6.043844822898733e-011

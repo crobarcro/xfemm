@@ -33,7 +33,7 @@ A,B1,B2,Sig,E,H1,H2,Je,Js,Mu1,Mu2,Pe,Ph = mo_getpointvalues(0.250, 0)
 -- check result against FEMM42 output:
 -- FIXME: error margin needs sane values
 failed=0
-if getenv("XFEMM_TEST_MESHER_BACKEND") == "Tangle" then
+if getenv("XFEMM_MESHER_BACKEND") == "Tangle" then
 	A_ref = 1.240205148710215e-014
 	B1_ref = -1.050120917482506e-013
 	B2_ref = 2.635532930443618e-014

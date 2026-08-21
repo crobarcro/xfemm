@@ -34,7 +34,7 @@ failed=0
 -- check result against FEMM42 output:
 -- FIXME: error margin needs sane values
 print("Checks against femm42 output:")
-if getenv("XFEMM_TEST_MESHER_BACKEND") == "Tangle" then
+if getenv("XFEMM_MESHER_BACKEND") == "Tangle" then
 	T_ref = 304.8996961164884
 	Fx_ref = 0.07573299004184463
 	Fy_ref = 0.07330545755661612
