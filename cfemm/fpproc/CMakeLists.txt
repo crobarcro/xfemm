@@ -34,3 +34,14 @@ install(
     COMPONENT "cli (debug)"
     CONFIGURATIONS "Debug")
 # vi:expandtab:tabstop=4 shiftwidth=4:
+
+add_executable(a3_2_mesher_differential_test
+    test/a3_2_mesher_differential_test.cpp)
+target_link_libraries(a3_2_mesher_differential_test PRIVATE fpproc)
+add_test(NAME a3_2_mesher_differential
+    COMMAND a3_2_mesher_differential_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/a3_2_nonperiodic.fem
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/a3_2_periodic.fem
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/a3_2_antiperiodic.fem)
+set_tests_properties(a3_2_mesher_differential PROPERTIES
+    LABELS "magnetics;mesher;solver;postprocessor;Triangle;Tangle;differential")

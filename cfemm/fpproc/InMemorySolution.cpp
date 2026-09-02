@@ -34,6 +34,9 @@ bool FPProc::OpenDocument(const femm::FemmProblem &problem, const FSolver &solve
     nodeproplist = solver.nodeproplist;
     lineproplist = solver.lineproplist;
     blockproplist.clear();
+    // CMMaterialProp's legacy copy constructor does not preserve the transient
+    // MuMax flag. Avoid vector-growth copies after each explicitly prepared item.
+    blockproplist.reserve(solver.blockproplist.size());
     for (const auto &source : solver.blockproplist) {
         blockproplist.push_back(static_cast<const femm::CMMaterialProp &>(source));
         auto &item = blockproplist.back();
