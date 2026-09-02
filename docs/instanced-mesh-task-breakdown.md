@@ -76,7 +76,7 @@ returns a validated `SolverMesh`, and is trustworthy enough to become the defaul
   - Check finite coordinates, valid connectivity, positive element area,
     boundary-edge ownership, PBC indices/types, and every AGE node reference.
   - Reuse it for both Tangle and Triangle tests.
-- [ ] **A3.2: Add ordinary and periodic differential fixtures.**
+- [x] **A3.2: Add ordinary and periodic differential fixtures.**
   - Depends on: A2.2 and A3.1.
   - Run both engines on checked-in non-periodic, periodic, and antiperiodic FEMM
     problems. Do not require identical node/element ordering or triangulation.
