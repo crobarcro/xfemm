@@ -97,8 +97,6 @@ SolverMeshValidationResult validateSolverMesh(const SolverMesh &mesh)
             add(result, SolverMeshValidationCategory::InvalidPeriodicNode, i, 0, "first");
         if (!validNode(constraint.second, mesh.nodes.size()))
             add(result, SolverMeshValidationCategory::InvalidPeriodicNode, i, 1, "second");
-        if (validNode(constraint.first, mesh.nodes.size()) && constraint.first == constraint.second)
-            add(result, SolverMeshValidationCategory::SelfPeriodicConstraint, i, 0, "constraint");
         if (!validPeriodicity(constraint.periodicity))
             add(result, SolverMeshValidationCategory::InvalidPeriodicity, i, 0, "constraint");
     }
@@ -117,8 +115,12 @@ SolverMeshValidationResult validateSolverMesh(const SolverMesh &mesh)
         if (gap.totalArcElements == 0 || gap.totalArcLengthDegrees <= 0.0 ||
             gap.innerRadius <= 0.0 || gap.outerRadius <= gap.innerRadius)
             add(result, SolverMeshValidationCategory::InvalidAirGapGeometry, i, 0, context);
-        if (gap.innerRing.empty() != gap.outerRing.empty() ||
-            (!gap.innerRing.empty() && gap.innerRing.size() != gap.outerRing.size()))
+        const bool ringsPresent = !gap.innerRing.empty() && !gap.outerRing.empty();
+        if (gap.quadraturePoints.empty() ||
+            gap.quadraturePoints.size() - 1 != gap.totalArcElements ||
+            gap.innerRing.empty() != gap.outerRing.empty() ||
+            (ringsPresent && (gap.innerRing.size() != gap.outerRing.size() ||
+                              gap.innerRing.size() < gap.totalArcElements)))
             add(result, SolverMeshValidationCategory::InvalidAirGapStructure, i, 0, context);
 
         for (std::size_t q = 0; q < gap.quadraturePoints.size(); ++q) {

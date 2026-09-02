@@ -20,7 +20,6 @@ enum class SolverMeshValidationCategory {
     SelfEdge,
     EdgeNotOwnedByElement,
     InvalidPeriodicNode,
-    SelfPeriodicConstraint,
     InvalidPeriodicity,
     NonFiniteAirGapValue,
     InvalidAirGapGeometry,

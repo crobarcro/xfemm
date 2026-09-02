@@ -28,6 +28,7 @@ SolverMesh ageMesh()
     gap.innerRadius = 0.5;
     gap.outerRadius = 1.0;
     gap.quadraturePoints.push_back({{{0, 1, 1, 2}}, {{0.5, 0.5, 0.5, 0.5}}});
+    gap.quadraturePoints.push_back({{{1, 2, 2, 0}}, {{0.5, 0.5, 0.5, 0.5}}});
     gap.innerRing = {{0, 0.0, 1.0}, {1, 1.0, 1.0}};
     gap.outerRing = {{1, 0.0, 1.0}, {2, 1.0, 1.0}};
     gap.nodeIndices = {0, 1, 1, 2};
@@ -40,6 +41,17 @@ bool has(const SolverMesh &mesh, SolverMeshValidationCategory category)
     const auto result = femm::mesh::validateSolverMesh(mesh);
     for (const auto &diagnostic : result.diagnostics)
         if (diagnostic.category == category)
+            return true;
+    return false;
+}
+
+bool hasDiagnostic(const SolverMesh &mesh, SolverMeshValidationCategory category,
+                   std::size_t objectIndex, std::size_t localIndex, const std::string &context)
+{
+    const auto result = femm::mesh::validateSolverMesh(mesh);
+    for (const auto &diagnostic : result.diagnostics)
+        if (diagnostic.category == category && diagnostic.objectIndex == objectIndex &&
+            diagnostic.localIndex == localIndex && diagnostic.context == context)
             return true;
     return false;
 }
@@ -64,15 +76,30 @@ int main()
     mesh.periodicConstraints.push_back({0, 1, SolverMesh::Periodicity::Antiperiodic});
     if (!femm::mesh::validateSolverMesh(mesh).valid() || !mesh.airGaps.empty())
         return fail("ordinary periodic mesh without AGE was rejected");
+    mesh.periodicConstraints = {
+        {0, 0, SolverMesh::Periodicity::Periodic},
+        {1, 1, SolverMesh::Periodicity::Antiperiodic}
+    };
+    if (!femm::mesh::validateSolverMesh(mesh).valid())
+        return fail("valid periodic and antiperiodic self-pairs were rejected");
     if (!femm::mesh::validateSolverMesh(ageMesh()).valid())
         return fail("synthetic AGE mesh was rejected");
+    mesh = ageMesh();
+    mesh.airGaps[0].innerRing.clear();
+    mesh.airGaps[0].outerRing.clear();
+    if (!femm::mesh::validateSolverMesh(mesh).valid())
+        return fail("valid legacy-compatible AGE without reusable rings was rejected");
 
     mesh = ordinaryMesh(); mesh.nodes[0].x = std::numeric_limits<double>::quiet_NaN();
     EXPECT_CATEGORY(mesh, NonFiniteNodeCoordinate);
+    if (!hasDiagnostic(mesh, SolverMeshValidationCategory::NonFiniteNodeCoordinate, 0, 0, "x"))
+        return fail("node diagnostic did not identify its coordinate");
     mesh = ordinaryMesh(); mesh.nodes[0].y = std::numeric_limits<double>::infinity();
     EXPECT_CATEGORY(mesh, NonFiniteNodeCoordinate);
     mesh = ordinaryMesh(); mesh.elements[0].nodes[2] = 99;
     EXPECT_CATEGORY(mesh, InvalidElementNode);
+    if (!hasDiagnostic(mesh, SolverMeshValidationCategory::InvalidElementNode, 0, 2, "element node"))
+        return fail("element diagnostic did not identify its local node");
     mesh = ordinaryMesh(); mesh.elements[0].nodes[2] = 1;
     EXPECT_CATEGORY(mesh, RepeatedElementNode);
     mesh = ordinaryMesh(); mesh.nodes[2] = {2.0, 0.0, 0};
@@ -91,8 +118,6 @@ int main()
     EXPECT_CATEGORY(mesh, EdgeNotOwnedByElement);
     mesh = ordinaryMesh(); mesh.periodicConstraints.push_back({0, 99, SolverMesh::Periodicity::Periodic});
     EXPECT_CATEGORY(mesh, InvalidPeriodicNode);
-    mesh = ordinaryMesh(); mesh.periodicConstraints.push_back({0, 0, SolverMesh::Periodicity::Periodic});
-    EXPECT_CATEGORY(mesh, SelfPeriodicConstraint);
     mesh = ordinaryMesh(); mesh.periodicConstraints.push_back({0, 1, static_cast<SolverMesh::Periodicity>(99)});
     EXPECT_CATEGORY(mesh, InvalidPeriodicity);
 
@@ -102,12 +127,25 @@ int main()
     EXPECT_CATEGORY(mesh, InvalidAirGapGeometry);
     mesh = ageMesh(); mesh.airGaps[0].outerRing.pop_back();
     EXPECT_CATEGORY(mesh, InvalidAirGapStructure);
+    mesh = ageMesh(); mesh.airGaps[0].quadraturePoints.pop_back();
+    EXPECT_CATEGORY(mesh, InvalidAirGapStructure);
+    mesh = ageMesh(); mesh.airGaps[0].quadraturePoints.push_back(mesh.airGaps[0].quadraturePoints.back());
+    EXPECT_CATEGORY(mesh, InvalidAirGapStructure);
+    mesh = ageMesh(); mesh.airGaps[0].totalArcElements = 3;
+    mesh.airGaps[0].quadraturePoints.resize(4, mesh.airGaps[0].quadraturePoints.back());
+    EXPECT_CATEGORY(mesh, InvalidAirGapStructure);
     mesh = ageMesh(); mesh.airGaps[0].quadraturePoints[0].nodes[2] = 99;
     EXPECT_CATEGORY(mesh, InvalidAirGapQuadratureNode);
+    if (!hasDiagnostic(mesh, SolverMeshValidationCategory::InvalidAirGapQuadratureNode,
+                       0, 2, "synthetic gap"))
+        return fail("AGE diagnostic did not identify its gap and quadrature node");
     mesh = ageMesh(); mesh.airGaps[0].quadraturePoints[0].weights[1] = std::numeric_limits<double>::infinity();
     EXPECT_CATEGORY(mesh, NonFiniteAirGapQuadratureWeight);
     mesh = ageMesh(); mesh.airGaps[0].innerRing[0].node = 99;
     EXPECT_CATEGORY(mesh, InvalidAirGapRingNode);
+    if (!hasDiagnostic(mesh, SolverMeshValidationCategory::InvalidAirGapRingNode,
+                       0, 0, "synthetic gap/innerRing"))
+        return fail("AGE ring diagnostic did not identify its ring");
     mesh = ageMesh(); mesh.airGaps[0].outerRing[0].elementPosition = std::numeric_limits<double>::quiet_NaN();
     EXPECT_CATEGORY(mesh, NonFiniteAirGapRingValue);
     mesh = ageMesh(); mesh.airGaps[0].innerRing[0].weight = std::numeric_limits<double>::infinity();

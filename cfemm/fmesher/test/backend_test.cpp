@@ -3,9 +3,9 @@
 #include "TriangleMesherBackend.h"
 #include "fmesher.h"
 #include "FemmReader.h"
+#include "mesh/SolverMeshValidator.h"
 
 #include <chrono>
-#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
@@ -19,47 +19,6 @@ bool parseProblem(const char *path, fmesher::FMesher &facade)
     facade.problem->filetype = femm::FileType::MagneticsFile;
     femm::MagneticsReader reader(facade.problem, std::cerr);
     return reader.parse(path) == femm::F_FILE_OK;
-}
-
-bool validNodeIndex(femm::mesh::MeshIndex index, const femm::mesh::SolverMesh &mesh)
-{
-    return index < mesh.nodes.size();
-}
-
-bool validGeometry(const femm::mesh::SolverMesh &mesh)
-{
-    if (mesh.nodes.empty() || mesh.elements.empty() || mesh.edges.empty()) return false;
-    for (const auto &node : mesh.nodes)
-        if (!std::isfinite(node.x) || !std::isfinite(node.y)) return false;
-    for (const auto &element : mesh.elements)
-        for (const auto node : element.nodes)
-            if (!validNodeIndex(node, mesh)) return false;
-    for (const auto &edge : mesh.edges)
-        if (!validNodeIndex(edge.first, mesh) || !validNodeIndex(edge.second, mesh)) return false;
-    return true;
-}
-
-bool validPeriodicTopology(const femm::mesh::SolverMesh &mesh)
-{
-    for (const auto &constraint : mesh.periodicConstraints)
-        if (!validNodeIndex(constraint.first, mesh) || !validNodeIndex(constraint.second, mesh))
-            return false;
-    for (const auto &airGap : mesh.airGaps) {
-        if (airGap.totalArcElements == 0 || airGap.quadraturePoints.empty()
-                || airGap.nodeIndices.empty() || airGap.innerRing.empty()
-                || airGap.outerRing.empty()
-                || airGap.innerRing.size() != airGap.outerRing.size()) return false;
-        for (const auto node : airGap.nodeIndices)
-            if (!validNodeIndex(node, mesh)) return false;
-        for (const auto &point : airGap.quadraturePoints)
-            for (const auto node : point.nodes)
-                if (!validNodeIndex(node, mesh)) return false;
-        for (const auto &point : airGap.innerRing)
-            if (!validNodeIndex(point.node, mesh)) return false;
-        for (const auto &point : airGap.outerRing)
-            if (!validNodeIndex(point.node, mesh)) return false;
-    }
-    return true;
 }
 
 int fail(const std::string &message)
@@ -105,18 +64,25 @@ int main(int argc, char **argv)
     std::filesystem::current_path(originalDirectory);
     std::filesystem::remove_all(scratchDirectory);
 
-    if (!result.succeeded() || !validGeometry(result.mesh))
+    if (!result.succeeded() || result.mesh.nodes.empty() || result.mesh.elements.empty()
+            || result.mesh.edges.empty() || !femm::mesh::validateSolverMesh(result.mesh).valid())
         return fail("Non-periodic backend result was incomplete");
     if (!result.mesh.periodicConstraints.empty() || !result.mesh.airGaps.empty())
         return fail("Non-periodic backend result contained periodic topology");
-    if (!periodicResult.succeeded() || !validGeometry(periodicResult.mesh)
+    if (!periodicResult.succeeded() || periodicResult.mesh.nodes.empty()
+            || periodicResult.mesh.elements.empty() || periodicResult.mesh.edges.empty()
             || periodicResult.mesh.periodicConstraints.empty()
             || !periodicResult.mesh.airGaps.empty()
-            || !validPeriodicTopology(periodicResult.mesh))
+            || !femm::mesh::validateSolverMesh(periodicResult.mesh).valid())
         return fail("Ordinary periodic backend result was incomplete");
-    if (!ageResult.succeeded() || !validGeometry(ageResult.mesh)
-            || ageResult.mesh.airGaps.empty() || !validPeriodicTopology(ageResult.mesh))
+    if (!ageResult.succeeded() || ageResult.mesh.nodes.empty()
+            || ageResult.mesh.elements.empty() || ageResult.mesh.edges.empty()
+            || ageResult.mesh.airGaps.empty()
+            || !femm::mesh::validateSolverMesh(ageResult.mesh).valid())
         return fail("AGE backend result was incomplete");
+    for (const auto &airGap : ageResult.mesh.airGaps)
+        if (airGap.nodeIndices.empty() || airGap.innerRing.empty() || airGap.outerRing.empty())
+            return fail("AGE backend result omitted expected reusable topology");
     if (createdFile) return fail(backendName + "MesherBackend created a file");
 
     femm::mesh::SolverMesh::Node markerProbe;
