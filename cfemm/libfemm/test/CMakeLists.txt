@@ -9,3 +9,9 @@ target_link_libraries(material_curve_test PRIVATE femm)
 
 add_test(NAME material_curve COMMAND material_curve_test)
 set_tests_properties(material_curve PROPERTIES LABELS "libfemm;unit")
+
+add_executable(solver_mesh_validator_test solver_mesh_validator_test.cpp)
+target_link_libraries(solver_mesh_validator_test PRIVATE femm)
+
+add_test(NAME solver_mesh_validator COMMAND solver_mesh_validator_test)
+set_tests_properties(solver_mesh_validator PROPERTIES LABELS "libfemm;mesh;unit")

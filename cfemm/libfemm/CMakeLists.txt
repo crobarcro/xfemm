@@ -72,6 +72,7 @@ add_library(femm
     spars.cpp
     stringTools.cpp
     linsolve/backend_factory.cpp
+    mesh/SolverMeshValidator.cpp
     )
 if(XFEMM_USE_PETSc)
     target_sources(femm PRIVATE linsolve/PetscLinearSystemBackend.cpp)

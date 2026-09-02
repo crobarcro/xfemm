@@ -71,7 +71,7 @@ returns a validated `SolverMesh`, and is trustworthy enough to become the defaul
 
 ### A3 — Establish differential confidence
 
-- [ ] **A3.1: Build a backend-neutral mesh invariant checker.**
+- [x] **A3.1: Build a backend-neutral mesh invariant checker.**
   - Depends on: A2.1.
   - Check finite coordinates, valid connectivity, positive element area,
     boundary-edge ownership, PBC indices/types, and every AGE node reference.
