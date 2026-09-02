@@ -9,7 +9,7 @@
 [ACSolver]    =  0
 [PrevSoln]    = ""
 [PrevType]    =  0
-[Comment]     =  "A3.2 synthetic linear magnetostatic differential fixture"
+[Comment]     =  "A3.2 asymmetric off-centre current-region differential fixture"
 [PointProps]  =  0
 [BdryProps]   = 2
   <BeginBdry>
@@ -44,9 +44,28 @@
     <innerangle> = 0
     <outerangle> = 0
   <EndBdry>
-[BlockProps]  = 1
+[BlockProps]  = 2
   <BeginBlock>
-    <BlockName> = "Current region"
+    <BlockName> = "Air"
+    <Mu_x> = 1
+    <Mu_y> = 1
+    <H_c> = 0
+    <H_cAngle> = 0
+    <J_re> = 0
+    <J_im> = 0
+    <Sigma> = 0
+    <d_lam> = 0
+    <Phi_h> = 0
+    <Phi_hx> = 0
+    <Phi_hy> = 0
+    <LamType> = 0
+    <LamFill> = 1
+    <NStrands> = 0
+    <WireD> = 0
+    <BHPoints> = 0
+  <EndBlock>
+  <BeginBlock>
+    <BlockName> = "Off-centre current region"
     <Mu_x> = 1
     <Mu_y> = 1
     <H_c> = 0
@@ -65,17 +84,26 @@
     <BHPoints> = 0
   <EndBlock>
 [CircuitProps]  = 0
-[NumPoints] = 4
+[NumPoints] = 8
 -1 -1 0 0
 1 -1 0 0
 1 1 0 0
 -1 1 0 0
-[NumSegments] = 4
+0.05 -0.45 0 0
+0.50 -0.45 0 0
+0.50 -0.05 0 0
+0.05 -0.05 0 0
+[NumSegments] = 8
 0 1 -1 2 0 0
 1 2 -1 1 0 0
 2 3 -1 2 0 0
 3 0 -1 1 0 0
+4 5 -1 0 0 0
+5 6 -1 0 0 0
+6 7 -1 0 0 0
+7 4 -1 0 0 0
 [NumArcSegments] = 0
 [NumHoles] = 0
-[NumBlockLabels] = 1
-0 0 1 0.08 0 0 0 1 0
+[NumBlockLabels] = 2
+-0.55 0.35 1 0.07 0 0 0 1 0
+0.275 -0.25 2 0.045 0 0 0 1 0
