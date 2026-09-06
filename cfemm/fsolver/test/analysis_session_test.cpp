@@ -66,6 +66,44 @@ public:
     bool lastPeriodic = false;
 };
 
+class HoleRegionMesher final : public fmesher::MesherBackend {
+public:
+    femm::mesh::MeshResult mesh(femm::FemmProblem &, bool,
+                                const femm::mesh::MeshingOptions &) override
+    {
+        femm::mesh::MeshResult result;
+        result.status = femm::mesh::MeshStatus::Success;
+        // Region attribute one denotes the first non-hole label even though a
+        // hole precedes it in FemmProblem::labellist.
+        result.mesh.nodes = {{0, 0, 2}, {1, 0, 0}, {0, 1, 0}};
+        result.mesh.elements.push_back({{{0, 1, 2}}, 1});
+        result.mesh.edges = {{0, 1, 0}, {1, 2, 0}, {2, 0, 0}};
+        return result;
+    }
+};
+
+std::unique_ptr<femm::FemmProblem> makeHoleRegionProblem()
+{
+    auto problem = std::make_unique<femm::FemmProblem>(femm::FileType::MagneticsFile);
+    auto point = std::make_unique<femm::CMPointProp>();
+    point->PointName = "fixed";
+    point->A = 0;
+    problem->nodeproplist.push_back(std::move(point));
+    auto material = std::make_unique<femm::CMMaterialProp>();
+    material->BlockName = "air";
+    material->mu_x = material->mu_y = 1;
+    problem->blockproplist.push_back(std::move(material));
+    auto hole = std::make_unique<femm::CMBlockLabel>();
+    hole->BlockType = -1;
+    hole->BlockTypeName = "<No Mesh>";
+    problem->labellist.push_back(std::move(hole));
+    auto region = std::make_unique<femm::CMBlockLabel>();
+    region->BlockType = 0;
+    region->BlockTypeName = "air";
+    problem->labellist.push_back(std::move(region));
+    return problem;
+}
+
 std::unique_ptr<femm::FemmProblem> makeProblem()
 {
     auto problem = std::make_unique<femm::FemmProblem>(femm::FileType::MagneticsFile);
@@ -83,10 +121,14 @@ std::unique_ptr<femm::FemmProblem> makeProblem()
     problem->circproplist.push_back(std::move(circuit));
 
     auto first = std::make_unique<femm::CMBlockLabel>();
+    first->BlockType = 0;
+    first->BlockTypeName = "steel";
     first->InCircuit = 0;
     first->Turns = 10;
     problem->labellist.push_back(std::move(first));
     auto second = std::make_unique<femm::CMBlockLabel>();
+    second->BlockType = 0;
+    second->BlockTypeName = "steel";
     second->InCircuit = 0;
     second->Turns = -5;
     problem->labellist.push_back(std::move(second));
@@ -104,6 +146,21 @@ std::unique_ptr<femm::FemmProblem> makeProblem()
 
 int main()
 {
+    {
+        auto solver = std::make_shared<femm::FSolverAnalysisBackend>();
+        auto mesher = std::make_shared<HoleRegionMesher>();
+        femm::AnalysisSession holeSession(femm::ModelDefinition(makeHoleRegionProblem()),
+                                          mesher, solver);
+        holeSession.solve();
+        const auto &imported = solver->solvedSolver();
+        assert(imported.labellist.size() == 1);
+        assert(imported.labellist.front().BlockType == 0);
+        assert(imported.labellist.front().BlockTypeName == "air");
+        assert(imported.meshele.size() == 1);
+        assert(imported.meshele.front().lbl == 0);
+        assert(imported.meshele.front().blk == 0);
+    }
+
     auto backend = std::make_shared<RecordingBackend>();
     auto mesher = std::make_shared<RecordingMesher>();
     femm::AnalysisSession session(femm::ModelDefinition(makeProblem()), mesher, backend);

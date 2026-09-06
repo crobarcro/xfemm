@@ -38,7 +38,10 @@ struct SolverMesh {
     struct Element {
         /** Zero-based indices into SolverMesh::nodes; InvalidMeshIndex means unset. */
         std::array<MeshIndex, 3> nodes{{InvalidMeshIndex, InvalidMeshIndex, InvalidMeshIndex}};
-        /** Raw Triangle region attribute (normally one-based block-label id). */
+        /**
+         * One-based material-region id, numbered sequentially over non-hole
+         * block labels. Hole labels do not consume a region id.
+         */
         std::int32_t regionAttribute = 0;
     };
 

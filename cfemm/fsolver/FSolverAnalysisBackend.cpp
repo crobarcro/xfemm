@@ -60,8 +60,14 @@ void FSolverAnalysisBackend::configure(const ModelDefinition &model,
         m_solver->blockproplist.push_back(std::move(solverMaterial));
     }
     m_solver->labellist.clear();
-    for (const auto &item : problem.labellist)
-        m_solver->labellist.push_back(magneticCopy<CMBlockLabel>(item, "block label"));
+    // Mesher region attributes are sequential over material-bearing labels;
+    // FEMM hole labels do not consume a region number. Mirror that convention
+    // in the solver-side label list so regionAttribute - 1 remains valid.
+    for (const auto &item : problem.labellist) {
+        auto label = magneticCopy<CMBlockLabel>(item, "block label");
+        if (!label.isHole())
+            m_solver->labellist.push_back(std::move(label));
+    }
     m_solver->circproplist.clear();
     for (std::size_t i = 0; i < problem.circproplist.size(); ++i) {
         auto circuit = magneticCopy<CMCircuit>(problem.circproplist[i], "circuit");
@@ -84,6 +90,9 @@ void FSolverAnalysisBackend::positionAirGaps(const PreparedAnalysis &prepared)
     for (const auto &entry : prepared.airGapPositions)
         for (auto &gap : m_solver->agelist) {
             if (gap.BdryName != m_solver->lineproplist[entry.first.value].BdryName) continue;
+            if (gap.InnerAngle == entry.second.innerAngle &&
+                gap.OuterAngle == entry.second.outerAngle)
+                continue;
             if (gap.innerRingTopology.empty() || gap.outerRingTopology.empty()) {
                 gap.InnerAngle = entry.second.innerAngle;
                 gap.OuterAngle = entry.second.outerAngle;
@@ -136,8 +145,10 @@ void FSolverAnalysisBackend::synchronize(const ModelDefinition &model,
         throw std::invalid_argument("FSolver backend requires a mesh");
     configure(model, parameters, prepared);
     if (topologyIdentity != m_topologyIdentity) {
-        if (m_solver->LoadMesh(*mesh) != NOERROR)
-            throw std::runtime_error("FSolver could not import the session mesh");
+        const auto meshError = m_solver->LoadMesh(*mesh);
+        if (meshError != NOERROR)
+            throw std::runtime_error("FSolver could not import the session mesh (error " +
+                                     std::to_string(meshError) + ")");
         std::vector<std::pair<std::size_t, std::size_t>> connectivity;
         connectivity.reserve(mesh->edges.size());
         for (const auto &edge : mesh->edges)
