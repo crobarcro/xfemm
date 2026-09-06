@@ -110,10 +110,33 @@ void validateGap(const Mesh &mesh, const std::string &backend)
         fail(backend, gap.boundaryName, "expected periodic AGE metadata");
     validateRing(mesh, gap, gap.innerRing, gap.innerRadius, backend, "inner");
     validateRing(mesh, gap, gap.outerRing, gap.outerRadius, backend, "outer");
+
+    // The AGE replaces the ordinary finite-element annulus. Check centroids
+    // comfortably away from either ring so boundary roundoff is irrelevant.
+    const double annulusTolerance = 2e-10;
+    for (std::size_t i = 0; i < mesh.elements.size(); ++i) {
+        const auto &element = mesh.elements[i];
+        double x = 0.0, y = 0.0;
+        for (const auto node : element.nodes) {
+            x += mesh.nodes[node].x;
+            y += mesh.nodes[node].y;
+        }
+        const double radius = std::hypot(x / 3.0 - gap.centerX, y / 3.0 - gap.centerY);
+        if (radius > gap.innerRadius + annulusTolerance &&
+            radius < gap.outerRadius - annulusTolerance)
+            fail(backend, gap.boundaryName, "ordinary element " + std::to_string(i) +
+                 " occupies the AGE annulus");
+    }
     if (gap.innerRing.size() != gap.outerRing.size())
         fail(backend, gap.boundaryName, "inner and outer full-ring cardinalities differ");
     if (gap.quadraturePoints.size() != gap.totalArcElements + 1)
         fail(backend, gap.boundaryName, "quadrature cardinality is not arc elements + 1");
+    const auto ringContains = [](const std::vector<Mesh::AirGapRingPoint> &ring,
+                                 femm::mesh::MeshIndex node, double weight) {
+        return std::any_of(ring.begin(), ring.end(), [node, weight](const auto &point) {
+            return point.node == node && std::abs(point.weight - weight) <= 1e-12;
+        });
+    };
     for (std::size_t q = 0; q < gap.quadraturePoints.size(); ++q) {
         const auto &point = gap.quadraturePoints[q];
         for (std::size_t i = 0; i < 4; ++i) {
@@ -126,6 +149,18 @@ void validateGap(const Mesh &mesh, const std::string &backend)
         }
         if (point.weights[0] != point.weights[2] || point.weights[1] != point.weights[3])
             fail(backend, gap.boundaryName, "inner/outer quadrature signs disagree");
+        for (std::size_t i = 0; i < 4; ++i) {
+            const bool inner = i < 2;
+            const auto &ring = inner ? gap.innerRing : gap.outerRing;
+            const double expectedRadius = inner ? gap.innerRadius : gap.outerRadius;
+            if (!ringContains(ring, point.nodes[i], point.weights[i]))
+                fail(backend, gap.boundaryName, "quadrature node/sign is absent from its " +
+                     std::string(inner ? "inner" : "outer") + " ring");
+            const auto &node = mesh.nodes[point.nodes[i]];
+            const double radius = std::hypot(node.x-gap.centerX, node.y-gap.centerY);
+            if (std::abs(radius-expectedRadius) > 2e-10)
+                fail(backend, gap.boundaryName, "quadrature node is off its physical ring");
+        }
     }
 }
 
@@ -152,7 +187,9 @@ Run sweep(const std::string &path, const std::string &backend)
     validateGap(*mesh, backend);
     const auto canonicalGap = onlyGap(*mesh, backend);
     const auto topologyIdentity = session->meshTopologyIdentity();
-    const std::vector<double> angles{0.0, 10.0, 30.0, 70.0};
+    // 3.75 degrees is exactly one element for this 96-element full ring; it
+    // directly exercises the zero/full-ring endpoint convention.
+    const std::vector<double> angles{0.0, 3.75, 10.0, 30.0, 70.0};
     std::vector<Observation> observations;
     for (double angle : angles) {
         if (angle != 0.0)
@@ -188,6 +225,26 @@ Run sweep(const std::string &path, const std::string &backend)
               << ") center=(" << canonicalGap.centerX << ',' << canonicalGap.centerY
               << ") coupling-regenerations=" << solver->couplingRegenerationCount() << '\n';
     return {backend, std::move(session), std::move(solver), mesh, std::move(observations)};
+}
+
+void compareAnalyticalTorque(const Run &run)
+{
+    // This benchmark is normalized so its analytical torque is sin(angle).
+    // Retain the established Lua benchmark's 0.02 absolute allowance while
+    // requiring finite values at every session-positioned angle.
+    constexpr double tolerance = 0.02;
+    const double pi = std::acos(-1.0);
+    for (const auto &observation : run.observations) {
+        const double expected = std::sin(observation.angle * pi / 180.0);
+        const double difference = std::abs(observation.torque - expected);
+        std::cout << run.backend << " AGE angle=" << observation.angle
+                  << " analytical torque: value=" << observation.torque
+                  << " expected=" << expected << " abs-difference=" << difference
+                  << " tolerance=" << tolerance << '\n';
+        if (!std::isfinite(observation.torque) || !std::isfinite(difference) ||
+            difference > tolerance)
+            throw std::runtime_error(run.backend + " analytical AGE torque comparison failed");
+    }
 }
 
 void compareValue(const char *quantity, double angle, double triangle, double tangle,
@@ -249,6 +306,8 @@ int main(int argc, char **argv)
         auto triangle = sweep(argv[1], "Triangle");
         auto tangle = sweep(argv[1], "Tangle");
         compareStructure(triangle, tangle);
+        compareAnalyticalTorque(triangle);
+        compareAnalyticalTorque(tangle);
         for (std::size_t i = 0; i < triangle.observations.size(); ++i) {
             const auto &a = triangle.observations[i];
             const auto &b = tangle.observations[i];

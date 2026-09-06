@@ -51,7 +51,7 @@ add_executable(a3_3_age_differential_test
 target_link_libraries(a3_3_age_differential_test PRIVATE fpproc)
 add_test(NAME a3_3_age_differential
     COMMAND a3_3_age_differential_test
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/a3_3_age_torque.fem
+        ${CMAKE_CURRENT_SOURCE_DIR}/../femmcli/test/femmcli_antiperiodicBC_AGE_TorqueBenchmark.fem
         ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/a3_2_periodic.fem)
 set_tests_properties(a3_3_age_differential PROPERTIES
     LABELS "magnetics;airgap;mesher;solver;postprocessor;Triangle;Tangle;differential")

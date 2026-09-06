@@ -60,8 +60,14 @@ void FSolverAnalysisBackend::configure(const ModelDefinition &model,
         m_solver->blockproplist.push_back(std::move(solverMaterial));
     }
     m_solver->labellist.clear();
-    for (const auto &item : problem.labellist)
-        m_solver->labellist.push_back(magneticCopy<CMBlockLabel>(item, "block label"));
+    // Mesher region attributes are sequential over material-bearing labels;
+    // FEMM hole labels do not consume a region number. Mirror that convention
+    // in the solver-side label list so regionAttribute - 1 remains valid.
+    for (const auto &item : problem.labellist) {
+        auto label = magneticCopy<CMBlockLabel>(item, "block label");
+        if (!label.isHole())
+            m_solver->labellist.push_back(std::move(label));
+    }
     m_solver->circproplist.clear();
     for (std::size_t i = 0; i < problem.circproplist.size(); ++i) {
         auto circuit = magneticCopy<CMCircuit>(problem.circproplist[i], "circuit");
@@ -95,16 +101,9 @@ void FSolverAnalysisBackend::positionAirGaps(const PreparedAnalysis &prepared)
             const double step = gap.totalArcLength / gap.totalArcElements;
             auto positioned = [step](const std::vector<CQuadPoint> &topology, double angle) {
                 auto ring = topology;
-                // Legacy Triangle AGE rings use the closed interval (0, N],
-                // whereas Tangle rings use [0, N). Preserve the source ring's
-                // endpoint convention when a point lands exactly on 360 degrees;
-                // mapping Triangle's N to zero rotates its coupling by one node.
-                const bool zeroBased = std::any_of(topology.begin(), topology.end(),
-                    [](const CQuadPoint &point) { return std::abs(point.w0) <= 1e-12; });
                 for (auto &point : ring) {
                     point.w0 = std::fmod(point.w0 * step + angle, 360.0);
                     if (point.w0 < 0) point.w0 += 360.0;
-                    if (!zeroBased && std::abs(point.w0) <= 1e-12) point.w0 = 360.0;
                     point.w0 /= step;
                 }
                 std::stable_sort(ring.begin(), ring.end(), [](const CQuadPoint &a,
@@ -146,8 +145,10 @@ void FSolverAnalysisBackend::synchronize(const ModelDefinition &model,
         throw std::invalid_argument("FSolver backend requires a mesh");
     configure(model, parameters, prepared);
     if (topologyIdentity != m_topologyIdentity) {
-        if (m_solver->LoadMesh(*mesh) != NOERROR)
-            throw std::runtime_error("FSolver could not import the session mesh");
+        const auto meshError = m_solver->LoadMesh(*mesh);
+        if (meshError != NOERROR)
+            throw std::runtime_error("FSolver could not import the session mesh (error " +
+                                     std::to_string(meshError) + ")");
         std::vector<std::pair<std::size_t, std::size_t>> connectivity;
         connectivity.reserve(mesh->edges.size());
         for (const auto &edge : mesh->edges)
