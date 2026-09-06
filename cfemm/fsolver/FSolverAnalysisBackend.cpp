@@ -84,6 +84,9 @@ void FSolverAnalysisBackend::positionAirGaps(const PreparedAnalysis &prepared)
     for (const auto &entry : prepared.airGapPositions)
         for (auto &gap : m_solver->agelist) {
             if (gap.BdryName != m_solver->lineproplist[entry.first.value].BdryName) continue;
+            if (gap.InnerAngle == entry.second.innerAngle &&
+                gap.OuterAngle == entry.second.outerAngle)
+                continue;
             if (gap.innerRingTopology.empty() || gap.outerRingTopology.empty()) {
                 gap.InnerAngle = entry.second.innerAngle;
                 gap.OuterAngle = entry.second.outerAngle;
@@ -92,9 +95,16 @@ void FSolverAnalysisBackend::positionAirGaps(const PreparedAnalysis &prepared)
             const double step = gap.totalArcLength / gap.totalArcElements;
             auto positioned = [step](const std::vector<CQuadPoint> &topology, double angle) {
                 auto ring = topology;
+                // Legacy Triangle AGE rings use the closed interval (0, N],
+                // whereas Tangle rings use [0, N). Preserve the source ring's
+                // endpoint convention when a point lands exactly on 360 degrees;
+                // mapping Triangle's N to zero rotates its coupling by one node.
+                const bool zeroBased = std::any_of(topology.begin(), topology.end(),
+                    [](const CQuadPoint &point) { return std::abs(point.w0) <= 1e-12; });
                 for (auto &point : ring) {
                     point.w0 = std::fmod(point.w0 * step + angle, 360.0);
                     if (point.w0 < 0) point.w0 += 360.0;
+                    if (!zeroBased && std::abs(point.w0) <= 1e-12) point.w0 = 360.0;
                     point.w0 /= step;
                 }
                 std::stable_sort(ring.begin(), ring.end(), [](const CQuadPoint &a,

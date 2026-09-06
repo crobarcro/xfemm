@@ -82,7 +82,7 @@ returns a validated `SolverMesh`, and is trustworthy enough to become the defaul
     problems. Do not require identical node/element ordering or triangulation.
   - Compare exact invariants where applicable and solver fields/energies within
     fixture-specific tolerances.
-- [ ] **A3.3: Add AGE differential fixtures.**
+- [x] **A3.3: Add AGE differential fixtures.**
   - Depends on: A3.2.
   - Compare AGE ring sizes, radii, centers, periodicity, valid quadrature, and a
     small angle sweep through the existing solver/session path.
