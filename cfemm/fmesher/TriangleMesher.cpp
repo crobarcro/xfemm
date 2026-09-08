@@ -13,6 +13,13 @@
 #include <fstream>
 #include <iomanip>
 #include <stdexcept>
+#ifndef SNPRINTF
+#ifdef _WIN32
+#define SNPRINTF _snprintf
+#else
+#define SNPRINTF std::snprintf
+#endif
+#endif
 
 #ifndef REAL
 #define REAL double
