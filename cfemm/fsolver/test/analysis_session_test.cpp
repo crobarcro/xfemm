@@ -255,4 +255,27 @@ int main()
     assert(concrete->rightHandSideAssemblyCount() <= evaluations);
     assert(concrete->meshFileWriteCount() == 0);
     assert(concrete->meshFileReadCount() == 0);
+
+    const auto &solved = concrete->solvedSolver();
+    assert(solved.NumCircProps == 3);
+    assert(solved.labellist[0].InCircuit == 1);
+    assert(solved.labellist[1].InCircuit == 2);
+    assert(solved.circproplist[1].Amps == CComplex(110, 0));
+    assert(solved.circproplist[2].Amps == CComplex(-55, 0));
+
+    auto parallelProblem = makeProblem();
+    dynamic_cast<femm::CMCircuit *>(parallelProblem->circproplist[0].get())->CircType = 0;
+    auto parallelBackend = std::make_shared<femm::FSolverAnalysisBackend>();
+    auto parallelMesher = std::make_shared<RecordingMesher>();
+    femm::AnalysisSession parallelSession(femm::ModelDefinition(std::move(parallelProblem)),
+                                          parallelMesher, parallelBackend);
+    parallelSession.setCircuitVoltage(parallelSession.model().circuit("phase-a"),
+                                      CComplex(5, 0));
+    bool parallelVoltageRejected = false;
+    try {
+        parallelSession.solve();
+    } catch (const std::invalid_argument &) {
+        parallelVoltageRejected = true;
+    }
+    assert(parallelVoltageRejected);
 }

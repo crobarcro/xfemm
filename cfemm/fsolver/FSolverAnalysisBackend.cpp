@@ -63,19 +63,30 @@ void FSolverAnalysisBackend::configure(const ModelDefinition &model,
     // Mesher region attributes are sequential over material-bearing labels;
     // FEMM hole labels do not consume a region number. Mirror that convention
     // in the solver-side label list so regionAttribute - 1 remains valid.
-    for (const auto &item : problem.labellist) {
-        auto label = magneticCopy<CMBlockLabel>(item, "block label");
-        if (!label.isHole())
+    // rawToSolverLabel is a byproduct of this same pass (not a separate,
+    // independently-maintained index): PreparedCircuit::labelIndex (below)
+    // indexes the unfiltered problem.labellist, holes included, so it needs
+    // this translation to address m_solver->labellist correctly. -1 marks a
+    // raw index that was a hole and has no solver-side counterpart.
+    std::vector<int> rawToSolverLabel(problem.labellist.size(), -1);
+    for (std::size_t rawIdx = 0; rawIdx < problem.labellist.size(); ++rawIdx) {
+        auto label = magneticCopy<CMBlockLabel>(problem.labellist[rawIdx], "block label");
+        if (!label.isHole()) {
+            rawToSolverLabel[rawIdx] = static_cast<int>(m_solver->labellist.size());
             m_solver->labellist.push_back(std::move(label));
+        }
     }
     m_solver->circproplist.clear();
     for (std::size_t i = 0; i < problem.circproplist.size(); ++i) {
         auto circuit = magneticCopy<CMCircuit>(problem.circproplist[i], "circuit");
         const auto constraint = parameters.circuitConstraints.at(CircuitId{i});
+        if (constraint.kind != CircuitConstraintKind::PrescribedCurrent)
+            throw std::invalid_argument(
+                "FSolverAnalysisBackend currently supports prescribed-current "
+                "circuit constraints only");
         circuit.Amps = constraint.value;
-        circuit.Case = constraint.kind == CircuitConstraintKind::PrescribedCurrent ? 0 : 2;
-        circuit.dVolts = constraint.kind == CircuitConstraintKind::PrescribedVoltage
-                       ? constraint.value : CComplex();
+        circuit.Case = 0;
+        circuit.dVolts = CComplex();
         m_solver->circproplist.push_back(circuit);
     }
     m_solver->NumPointProps = static_cast<int>(m_solver->nodeproplist.size());
@@ -83,6 +94,44 @@ void FSolverAnalysisBackend::configure(const ModelDefinition &model,
     m_solver->NumBlockProps = static_cast<int>(m_solver->blockproplist.size());
     m_solver->NumBlockLabels = static_cast<int>(m_solver->labellist.size());
     m_solver->NumCircProps = m_solver->NumCircPropsOrig = static_cast<int>(m_solver->circproplist.size());
+
+    // Expand "series" circuits (CircType==1) into one sub-circuit per member
+    // block label, each carrying Amps*signedTurns, then relabel every
+    // circuit as CircType==0 ("parallel"). Static2D only derives a
+    // prescribed-current drive (J from Amps) on the CircType==0 path;
+    // without this expansion a series circuit falls through to the
+    // dVolts-driven branch with dVolts left at zero, silently solving a
+    // zero-excitation problem. Mirrors the classic solver's preprocessing in
+    // fsolver.cpp (circuit serial handling), but driven by prepared.circuits
+    // (AnalysisSession::rebuildCircuits()) rather than re-scanning labellist:
+    // that structure already enumerates exactly the circuit-bearing labels
+    // with their signed turns -- only the index translation above
+    // (rawToSolverLabel) was missing to consume it correctly here.
+    {
+        const int numOrigCirc = m_solver->NumCircProps;
+        m_solver->circproplist.resize(numOrigCirc + m_solver->NumBlockLabels);
+        for (int k = 0; k < numOrigCirc; ++k)
+            m_solver->circproplist[k].OrigCirc = -1;
+
+        for (const auto &entry : prepared.circuits) {
+            const int ic = static_cast<int>(entry.source.value);
+            if (m_solver->circproplist[ic].CircType != 1)
+                continue;
+            const int solverLabelIdx = rawToSolverLabel[entry.labelIndex];
+            if (solverLabelIdx < 0)
+                continue; // A hole label cannot carry a mesh region or current; nothing to drive.
+            auto ncirc = m_solver->circproplist[ic];
+            ncirc.OrigCirc = ic;
+            ncirc.Amps.im *= entry.signedTurns;
+            ncirc.Amps.re *= entry.signedTurns;
+            m_solver->circproplist[m_solver->NumCircProps] = ncirc;
+            m_solver->labellist[solverLabelIdx].InCircuit = m_solver->NumCircProps;
+            ++m_solver->NumCircProps;
+        }
+        for (int k = 0; k < m_solver->NumCircProps; ++k)
+            if (m_solver->circproplist[k].CircType == 1)
+                m_solver->circproplist[k].CircType = 0;
+    }
 }
 
 void FSolverAnalysisBackend::positionAirGaps(const PreparedAnalysis &prepared)
@@ -200,7 +249,11 @@ TrialSolution FSolverAnalysisBackend::solve(const ModelDefinition &model,
         result.real->nodal.x.push_back(node.x / 100.0);
         result.real->nodal.y.push_back(node.y / 100.0);
     }
-    for (std::size_t i = 0; i < m_solver->circproplist.size(); ++i) {
+    // Report only the original, user-visible circuits: configure() may have
+    // appended internal per-label sub-circuits past NumCircPropsOrig to
+    // expand series circuits (see configure()), and those have no entry in
+    // circuitConstraints.
+    for (std::size_t i = 0; i < static_cast<std::size_t>(m_solver->NumCircPropsOrig); ++i) {
         const auto &constraint = parameters.circuitConstraints.at(CircuitId{i});
         CComplex current = constraint.kind == CircuitConstraintKind::PrescribedCurrent
                          ? constraint.value : m_solver->circproplist[i].Amps;
