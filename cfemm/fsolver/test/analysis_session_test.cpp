@@ -8,6 +8,7 @@
 #include "MesherBackend.h"
 
 #include <cassert>
+#include <cmath>
 #include <memory>
 #include <stdexcept>
 
@@ -57,7 +58,12 @@ public:
         lastPeriodic = periodic;
         femm::mesh::MeshResult result;
         result.status = femm::mesh::MeshStatus::Success;
-        result.mesh.nodes = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}};
+        // Marker two selects the first point property (SolverMesh.h: a node
+        // marker m maps to point property m - 2). Pinning one node to A = 0
+        // makes the single-element patch well posed; without a Dirichlet
+        // constraint the stiffness matrix is singular and a nonzero
+        // excitation drives the solution to infinity.
+        result.mesh.nodes = {{0, 0, 2}, {1, 0, 0}, {0, 1, 0}};
         result.mesh.elements.push_back({{{0, 1, 2}}, 1});
         result.mesh.edges = {{0, 1, 0}, {1, 2, 0}, {2, 0, 0}};
         return result;
@@ -107,6 +113,13 @@ std::unique_ptr<femm::FemmProblem> makeHoleRegionProblem()
 std::unique_ptr<femm::FemmProblem> makeProblem()
 {
     auto problem = std::make_unique<femm::FemmProblem>(femm::FileType::MagneticsFile);
+
+    // RecordingMesher tags one node with this property so that the mesh
+    // carries a Dirichlet constraint.
+    auto point = std::make_unique<femm::CMPointProp>();
+    point->PointName = "fixed";
+    point->A = 0;
+    problem->nodeproplist.push_back(std::move(point));
 
     auto material = std::make_unique<femm::CMMaterialProp>();
     material->BlockName = "steel";
@@ -235,13 +248,14 @@ int main()
     assert(concrete->topologyImportCount() == 1);
     assert(concrete->orderingCount() == 1);
     constexpr int evaluations = 3;
+    femm::TrialSolution lastTrial;
     for (int step = 0; step < evaluations; ++step) {
         concreteSession.setCircuitCurrent(concreteSession.model().circuit("phase-a"),
                                           CComplex(9 + step, 0));
         concreteSession.setAirGapAngle(concreteSession.model().airGap("rotor-gap"),
                                        4 + step, 5);
         concreteSession.setTime(0.01 * step);
-        concreteSession.solve();
+        lastTrial = concreteSession.solve();
     }
     assert(concreteMesher->calls == 1);
     assert(concreteSession.meshGenerationCount() == 1);
@@ -262,6 +276,13 @@ int main()
     assert(solved.labellist[1].InCircuit == 2);
     assert(solved.circproplist[1].Amps == CComplex(110, 0));
     assert(solved.circproplist[2].Amps == CComplex(-55, 0));
+    // The expanded excitation must produce a finite field. A singular,
+    // unconstrained patch would still be reported as solved by the legacy
+    // conjugate-gradient backend while returning infinities, and would make
+    // the PETSc backend report a divergence instead.
+    assert(lastTrial.real);
+    for (double a : lastTrial.real->nodal.magneticVectorPotential)
+        assert(std::isfinite(a));
 
     auto parallelProblem = makeProblem();
     dynamic_cast<femm::CMCircuit *>(parallelProblem->circproplist[0].get())->CircType = 0;
