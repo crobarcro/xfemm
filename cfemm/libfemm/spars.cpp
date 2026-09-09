@@ -22,6 +22,7 @@
 #include "femmcomplex.h"
 #include "spars.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -235,7 +236,7 @@ void CBigLinProb::MultPC(const double *X, double *Y)
     }
 }
 
-bool CBigLinProb::PCGSolve(int flag)
+bool CBigLinProb::PCGSolve(int flag, int maxIterations)
 {
     int i;
     double res,res_o,res_new;
@@ -270,7 +271,14 @@ bool CBigLinProb::PCGSolve(int flag)
     for(i=0; i<n; i++) P[i]=Z[i];
     res=Dot(Z,R);
 
+    // Conjugate gradients converge in at most n steps in exact arithmetic,
+    // so n is a ceiling that never rejects a solve the theory says should
+    // have finished; the floor keeps small problems from being cut short by
+    // rounding. Without any ceiling a stalled iteration spins forever.
+    const int iterationLimit = (maxIterations > 0) ? maxIterations : std::max(1000, n);
+
     // do iteration;
+    int iter = 0;
     do
     {
         // step i)
@@ -298,6 +306,17 @@ bool CBigLinProb::PCGSolve(int flag)
 
         // have we converged yet?
         er=sqrt(res/res_o);
+
+        // A breakdown -- a singular or indefinite operator, or a zero pAp --
+        // surfaces as a non-finite residual ratio. The loop condition alone
+        // would treat that as convergence, because NaN > Precision is false,
+        // and the caller would receive an infinite solution reported as good.
+        if (!std::isfinite(er))
+        {
+            fprintf(stderr, "conjugate gradient breakdown after %i iterations\n",
+                    iter + 1);
+            return false;
+        }
 //        prg2=(int) (20.*log10(er)/(log10(Precision)));
 //        if(prg2>prg1)
 //        {
@@ -310,7 +329,16 @@ bool CBigLinProb::PCGSolve(int flag)
 //        }
 
     }
-    while(er>Precision);
+    while(er>Precision && ++iter<iterationLimit);
+
+    if (er>Precision)
+    {
+        fprintf(stderr,
+                "conjugate gradient failed to converge in %i iterations "
+                "(residual ratio %g, requested %g)\n",
+                iterationLimit, er, Precision);
+        return false;
+    }
 
     return true;
 }
