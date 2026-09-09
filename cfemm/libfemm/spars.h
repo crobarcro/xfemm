@@ -65,7 +65,13 @@ public:
     void Put(double v, int p, int q);
     // use to create/set entries in the matrix
     double Get(int p, int q);
-    bool PCGSolve(int flag);	// flag==true if guess for V present;
+    /** Preconditioned conjugate gradients.
+     *  @param flag non-zero if a starting guess for V is present.
+     *  @param maxIterations iteration ceiling; 0 selects the default.
+     *  @return false if the iteration broke down, or ran out of
+     *          iterations without reaching Precision.
+     */
+    bool PCGSolve(int flag, int maxIterations = 0);
     void MultPC(const double *X, double *Y);
     void AddTo(double v, int p, int q);
     void MultA(double *X, double *Y);

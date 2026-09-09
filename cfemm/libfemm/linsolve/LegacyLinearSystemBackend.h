@@ -86,7 +86,8 @@ public:
             m_system.Precision = options.tolerance;
         SolveReport report;
         report.solver = "legacy-pcg";
-        report.converged = m_system.PCGSolve(options.warm_start ? 1 : 0);
+        report.converged = m_system.PCGSolve(options.warm_start ? 1 : 0,
+                                            options.max_iterations);
         return report;
     }
 
