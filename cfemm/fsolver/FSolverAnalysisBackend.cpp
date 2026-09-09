@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <string>
 
 namespace femm {
 namespace {
@@ -188,10 +189,14 @@ void FSolverAnalysisBackend::synchronize(const ModelDefinition &model,
                                          const SolveParameters &parameters,
                                          const PreparedAnalysis &prepared,
                                          std::shared_ptr<const mesh::SolverMesh> mesh,
-                                         std::uint64_t topologyIdentity, Dirty)
+                                         std::uint64_t topologyIdentity, Dirty rebuilt)
 {
     if (!mesh)
         throw std::invalid_argument("FSolver backend requires a mesh");
+    if ((rebuilt & Dirty::PreparedMaterials) != Dirty::None) {
+        m_haveConvergedSolution = false;
+        m_seedSolution.clear();
+    }
     configure(model, parameters, prepared);
     if (topologyIdentity != m_topologyIdentity) {
         const auto meshError = m_solver->LoadMesh(*mesh);
@@ -216,25 +221,45 @@ TrialSolution FSolverAnalysisBackend::solve(const ModelDefinition &model,
                                             const SolveParameters &parameters,
                                             const PreparedAnalysis &prepared)
 {
-    // Static2D/StaticAxisymmetric currently assemble both parts of a fresh
-    // linear system on every evaluation.  Keep the two counters separate so
-    // future dirty-flag based reuse can be introduced without changing the API.
+    // Seed a fresh linear system from the previous converged nodal field.
     ++m_operatorAssemblies;
     ++m_rightHandSideAssemblies;
     configure(model, parameters, prepared);
     if (parameters.frequency != 0)
         throw std::invalid_argument("FSolverAnalysisBackend currently returns real (zero-frequency) solutions only");
+    const bool incrementalRequested = !model.problem().previousSolutionFile.empty() &&
+                                       model.problem().PrevType != 0;
+    const bool canWarmStart = m_haveConvergedSolution &&
+                               m_solutionTopologyIdentity == m_topologyIdentity &&
+                               static_cast<int>(m_seedSolution.size()) == m_solver->NumNodes &&
+                               !incrementalRequested;
     m_lastSystem = femm::create_backend<double>(femm::default_backend_kind());
     if (!m_lastSystem)
         throw std::runtime_error("FSolver could not create the linear system backend");
-    femm::LinearSystemBackend<double> &system = *m_lastSystem;
-    system.set_precision(m_solver->Precision);
-    if (!system.create(m_solver->NumNodes, m_solver->BandWidth))
+    m_lastSystem->set_precision(m_solver->Precision);
+    if (!m_lastSystem->create(m_solver->NumNodes, m_solver->BandWidth))
         throw std::runtime_error("FSolver could not allocate the linear system");
-    const bool solved = m_solver->ProblemType == PLANAR
-                      ? m_solver->Static2D(system) : m_solver->StaticAxisymmetric(system);
+    femm::LinearSystemBackend<double> &system = *m_lastSystem;
+    if (canWarmStart) {
+        auto &solution = system.solution();
+        for (std::size_t j = 0; j < m_seedSolution.size(); ++j)
+            solution[j] = m_seedSolution[j];
+    }
+    m_solver->WarmStartSeeded = canWarmStart && (m_solver->ProblemType == PLANAR);
+    const int solveStatus = m_solver->ProblemType == PLANAR
+                           ? m_solver->Static2D(system) : m_solver->StaticAxisymmetric(system);
+    const bool solved = (solveStatus == 1);
+    m_solver->WarmStartSeeded = false;
+    m_haveConvergedSolution = solved;
+    m_solutionTopologyIdentity = m_topologyIdentity;
+    if (solved && m_solver->ProblemType == PLANAR) {
+        m_seedSolution.assign(system.solution().begin(), system.solution().end());
+    } else {
+        m_seedSolution.clear();
+    }
     if (!solved)
-        throw std::runtime_error("FSolver failed to solve the analysis");
+        throw std::runtime_error("FSolver failed to solve the analysis (status " +
+                                 std::to_string(solveStatus) + ")");
     ++m_solves;
 
     TrialSolution result;

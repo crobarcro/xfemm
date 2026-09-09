@@ -604,35 +604,42 @@ int FSolver::Static2D(femm::LinearSystemBackend<double> &L)
             {
                 k = meshele[i].blk;
 
-                if (blockproplist[k].LamType==0)
+                if (!WarmStartSeeded)
                 {
-                    t = blockproplist[k].LamFill;
-                    meshele[i].mu1 = blockproplist[k].mu_x*t + (1.-t);
-                    meshele[i].mu2 = blockproplist[k].mu_y*t + (1.-t);
-                }
-                if (blockproplist[k].LamType==1)
-                {
-                    t = blockproplist[k].LamFill;
-                    mu = blockproplist[k].mu_x;
-                    meshele[i].mu1 = mu*t + (1.-t);
-                    meshele[i].mu2 = mu/(t + mu*(1.-t));
-                }
-                if (blockproplist[k].LamType==2)
-                {
-                    t = blockproplist[k].LamFill;
-                    mu = blockproplist[k].mu_y;
-                    meshele[i].mu2 = mu*t + (1.-t);
-                    meshele[i].mu1 = mu/(t + mu*(1.-t));
-                }
-                if (blockproplist[k].LamType>2)
-                {
-                    meshele[i].mu1 = 1;
-                    meshele[i].mu2 = 1;
+                    if (blockproplist[k].LamType==0)
+                    {
+                        t = blockproplist[k].LamFill;
+                        meshele[i].mu1 = blockproplist[k].mu_x*t + (1.-t);
+                        meshele[i].mu2 = blockproplist[k].mu_y*t + (1.-t);
+                    }
+                    if (blockproplist[k].LamType==1)
+                    {
+                        t = blockproplist[k].LamFill;
+                        mu = blockproplist[k].mu_x;
+                        meshele[i].mu1 = mu*t + (1.-t);
+                        meshele[i].mu2 = mu/(t + mu*(1.-t));
+                    }
+                    if (blockproplist[k].LamType==2)
+                    {
+                        t = blockproplist[k].LamFill;
+                        mu = blockproplist[k].mu_y;
+                        meshele[i].mu2 = mu*t + (1.-t);
+                        meshele[i].mu1 = mu/(t + mu*(1.-t));
+                    }
+                    if (blockproplist[k].LamType>2)
+                    {
+                        meshele[i].mu1 = 1;
+                        meshele[i].mu2 = 1;
+                    }
                 }
 
                 if (blockproplist[k].BHpoints != 0)
                 {
-                    if (bIncremental == MS_LEGACY_FALSE)
+                    if (WarmStartSeeded)
+                    {
+                        LinearFlag = false;
+                    }
+                    else if (bIncremental == MS_LEGACY_FALSE)
                     {
                         // There's no previous solution.  This is a standard nonlinear problem
                         LinearFlag = false;
@@ -946,7 +953,7 @@ int FSolver::Static2D(femm::LinearSystemBackend<double> &L)
         }
 
         femm::SolveOptions opts;
-        opts.warm_start = (Iter > 0);
+        opts.warm_start = (Iter > 0) || WarmStartSeeded;
         if (L.solve(opts).converged==false)
         {
             return false;
@@ -1007,7 +1014,7 @@ int FSolver::Static2D(femm::LinearSystemBackend<double> &L)
         // nonlinear iteration has to have a looser tolerance
         // than the linear solver--otherwise, things can't ever
         // converge.  Arbitrarily choose 100*tolerance.
-        if((res<100.*Precision) && (Iter>0))
+        if((res<100.*Precision) && (Iter>0 || WarmStartSeeded))
         {
             LinearFlag = true;
         }

@@ -94,6 +94,8 @@ public:
     bool LoadPBCFromSolution(FILE* fp);
     bool LoadAGEsFromSolution(FILE* fp);
     bool LoadProblemFile();
+    /** True when solution() contains a converged planar Newton seed. */
+    bool WarmStartSeeded = false;
     int Static2D(femm::LinearSystemBackend<double> &L);
     /**
      * @brief WriteStatic2D
