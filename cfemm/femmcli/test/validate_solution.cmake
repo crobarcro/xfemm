@@ -5,7 +5,10 @@ file(SIZE "${SOLUTION_FILE}" _solution_size)
 if(_solution_size LESS 100)
     message(FATAL_ERROR "Solution file is unexpectedly small: ${_solution_size} bytes")
 endif()
-file(STRINGS "${SOLUTION_FILE}" _solution_marker REGEX "^\[Solution\]$")
+# Match the literal brackets with character classes rather than backslash
+# escapes: CMake 4 no longer forwards \[ from a quoted argument to the regex
+# engine, which silently degraded this pattern into a character class.
+file(STRINGS "${SOLUTION_FILE}" _solution_marker REGEX "^[[]Solution[]]$")
 if(NOT _solution_marker)
     message(FATAL_ERROR "Solution file has no [Solution] section")
 endif()
