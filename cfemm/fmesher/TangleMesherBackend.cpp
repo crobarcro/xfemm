@@ -5,12 +5,14 @@
 
 #include "CArcSegment.h"
 #include "CBoundaryProp.h"
+#include "CMaterialProp.h"
 #include "CSegment.h"
 #include "FemmProblem.h"
 #include "femmconstants.h"
 
 #include <tangle_mesh.h>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <set>
@@ -142,6 +144,132 @@ void applyConstraintPolicy(femm::mesh::MeshResult &result,
                  "Tangle", 0});
 }
 
+void templateDiagnostic(std::vector<femm::mesh::MeshDiagnostic> &diagnostics,
+                        const std::string &message)
+{
+    diagnostics.push_back(
+        {femm::mesh::MeshDiagnosticSeverity::Error, message, "Tangle", 0});
+}
+
+bool rotationalChainsMatch(const femm::mesh::SolverMesh &mesh,
+                           const std::vector<femm::mesh::MeshIndex> &from,
+                           const std::vector<femm::mesh::MeshIndex> &to,
+                           double centerX, double centerY, double angleDegrees)
+{
+    using namespace femm::mesh;
+    if (from.empty() || from.size() != to.size())
+        return false;
+    const RigidTransform2D transform =
+        RigidTransform2D::rotationAbout(centerX, centerY, angleDegrees);
+    for (std::size_t i = 0; i < from.size(); ++i) {
+        if (from[i] >= mesh.nodes.size() || to[i] >= mesh.nodes.size())
+            return false;
+        double x = 0.0, y = 0.0;
+        transform.applyPoint(mesh.nodes[from[i]].x, mesh.nodes[from[i]].y, x, y);
+        const auto &target = mesh.nodes[to[i]];
+        if (std::abs(x - target.x) > InstancedMeshWeldToleranceMetres ||
+            std::abs(y - target.y) > InstancedMeshWeldToleranceMetres)
+            return false;
+    }
+    return true;
+}
+
+struct TemplateBuild {
+    bool ok = false;
+    femm::mesh::InstancedMesh instanced;
+    std::vector<femm::mesh::MeshDiagnostic> diagnostics;
+};
+
+TemplateBuild buildRotationalTemplate(const femm::FemmProblem &problem,
+                                      const femm::mesh::MeshResult &tile,
+                                      const femm::mesh::TemplateRequest &request)
+{
+    using namespace femm::mesh;
+    TemplateBuild build;
+    const auto fail = [&](const std::string &message) {
+        templateDiagnostic(build.diagnostics, message);
+        return build;
+    };
+
+    if (!std::isfinite(request.centerXMetres) || !std::isfinite(request.centerYMetres))
+        return fail("rotational template centre must be finite");
+    if (request.instanceCount < 2)
+        return fail("a rotational template requires at least two instances");
+    if (!std::isfinite(request.totalAngleDegrees) ||
+        std::abs(request.totalAngleDegrees - 360.0) > 1e-9)
+        return fail("a closed rotational template must cover 360 degrees");
+    const double angleStep =
+        request.totalAngleDegrees / static_cast<double>(request.instanceCount);
+    if (!(angleStep > 0.0) || angleStep >= 360.0)
+        return fail("rotational template instances overlap");
+    if (!tile.mesh.airGaps.empty())
+        return fail("an AGE inside a rotational template is not supported");
+    if (tile.boundaryMatches.size() != 1)
+        return fail("a rotational template requires exactly one matched seam pair");
+    for (const auto &property : problem.blockproplist) {
+        const auto *material = dynamic_cast<const femm::CMMaterialProp *>(property.get());
+        if (material && material->mu_x != material->mu_y)
+            return fail("anisotropic materials are not supported in a rotational template");
+    }
+
+    const auto &match = tile.boundaryMatches.front();
+    if (match.firstNodes.empty() || match.firstNodes.size() != match.secondNodes.size())
+        return fail("matched template seams have incompatible node counts");
+    if (!request.seamBoundaryProperties.empty() &&
+        std::find(request.seamBoundaryProperties.begin(),
+                  request.seamBoundaryProperties.end(),
+                  match.boundaryProperty) == request.seamBoundaryProperties.end())
+        return fail("requested seam boundary property is not the matched template seam");
+
+    MeshTemplate meshTemplate;
+    meshTemplate.localMesh = tile.mesh;
+    meshTemplate.localMesh.periodicConstraints.clear();
+    meshTemplate.localMesh.airGaps.clear();
+    meshTemplate.seams.push_back({"first", match.firstNodes});
+    meshTemplate.seams.push_back({"second", match.secondNodes});
+
+    // The leading seam is the one a positive step rotation maps onto the other.
+    std::size_t leadSeam = 0;
+    std::size_t trailSeam = 1;
+    if (!rotationalChainsMatch(tile.mesh, match.firstNodes, match.secondNodes,
+                               request.centerXMetres, request.centerYMetres, angleStep)) {
+        if (rotationalChainsMatch(tile.mesh, match.secondNodes, match.firstNodes,
+                                  request.centerXMetres, request.centerYMetres, angleStep)) {
+            leadSeam = 1;
+            trailSeam = 0;
+        } else {
+            return fail("matched template seams are not related by the declared rotation");
+        }
+    }
+
+    build.instanced.templates.push_back(std::move(meshTemplate));
+    for (std::size_t k = 0; k < request.instanceCount; ++k) {
+        MeshInstance instance;
+        instance.templateIndex = 0;
+        instance.transform = RigidTransform2D::rotationAbout(
+            request.centerXMetres, request.centerYMetres,
+            static_cast<double>(k) * angleStep);
+        instance.seamConnections.push_back(
+            {trailSeam, (k + 1) % request.instanceCount, leadSeam,
+             SeamOrientation::Forward});
+        build.instanced.instances.push_back(std::move(instance));
+    }
+    build.ok = true;
+    return build;
+}
+
+std::vector<femm::mesh::MeshDiagnostic> materializationDiagnostics(
+    const std::vector<femm::mesh::MaterializationDiagnostic> &diagnostics)
+{
+    std::vector<femm::mesh::MeshDiagnostic> converted;
+    converted.reserve(diagnostics.size());
+    for (const auto &diagnostic : diagnostics)
+        converted.push_back({femm::mesh::MeshDiagnosticSeverity::Error,
+                             diagnostic.message, "Tangle",
+                             static_cast<int>(diagnostic.category)});
+    return converted;
+}
+
 } // namespace
 
 TangleMesherBackend::TangleMesherBackend(Engine engine)
@@ -166,7 +294,24 @@ femm::mesh::MeshResult TangleMesherBackend::mesh(
                        "Tangle requires a FemmProblem loaded from a FEMM file",
                        TANGLE_ERR_NO_FILE);
 
-    const auto matchValidation = validateBoundaryMatches(problem, request);
+    const bool instancing = !request.templates.empty();
+    if (instancing && request.templates.size() > 1) {
+        result.status = femm::mesh::MeshStatus::Unsupported;
+        result.diagnostics.push_back(
+            {femm::mesh::MeshDiagnosticSeverity::Error,
+             "only one rotational template is supported", "Tangle", 0});
+        return result;
+    }
+
+    // A template tile is meshed with matched seams as topology only; the tile's
+    // own periodic declarations are not field constraints.
+    femm::mesh::MeshingRequest tileRequest = request;
+    if (instancing) {
+        tileRequest.createPeriodicFieldConstraints = false;
+        tileRequest.templates.clear();
+    }
+
+    const auto matchValidation = validateBoundaryMatches(problem, tileRequest);
     if (!matchValidation.valid()) {
         result.status = femm::mesh::MeshStatus::InvalidInput;
         result.diagnostics = matchValidation.diagnostics;
@@ -175,7 +320,7 @@ femm::mesh::MeshResult TangleMesherBackend::mesh(
 
     ::Mesh tangleMesh;
     const int engineStatus =
-        engine_(problem.getTitle(), translateOptions(request.options), tangleMesh);
+        engine_(problem.getTitle(), translateOptions(tileRequest.options), tangleMesh);
     if (engineStatus != TANGLE_OK)
         return failure(statusFor(engineStatus), statusMessage(engineStatus), engineStatus);
 
@@ -184,7 +329,26 @@ femm::mesh::MeshResult TangleMesherBackend::mesh(
     if (!converted.succeeded())
         return converted;
 
-    applyConstraintPolicy(converted, problem, request);
+    if (!instancing) {
+        applyConstraintPolicy(converted, problem, request);
+        return converted;
+    }
+
+    auto build = buildRotationalTemplate(problem, converted, request.templates.front());
+    if (!build.ok) {
+        converted.status = femm::mesh::MeshStatus::InvalidInput;
+        converted.diagnostics = std::move(build.diagnostics);
+        return converted;
+    }
+    auto materialized = build.instanced.materialize();
+    if (!materialized.succeeded()) {
+        converted.status = femm::mesh::MeshStatus::InvalidInput;
+        converted.diagnostics = materializationDiagnostics(materialized.diagnostics);
+        return converted;
+    }
+    converted.mesh = std::move(materialized.mesh);
+    converted.instancing = std::move(materialized.provenance);
+    converted.boundaryMatches.clear();
     return converted;
 }
 

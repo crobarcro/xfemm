@@ -55,3 +55,13 @@ add_test(NAME a3_3_age_differential
         ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/a3_2_periodic.fem)
 set_tests_properties(a3_3_age_differential PROPERTIES
     LABELS "magnetics;airgap;mesher;solver;postprocessor;Triangle;Tangle;differential")
+
+add_executable(d_instanced_ring_test test/d_instanced_ring_test.cpp)
+target_link_libraries(d_instanced_ring_test PRIVATE fpproc Tangle::tangle)
+add_test(NAME d_instanced_ring
+    COMMAND d_instanced_ring_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/d_ring_tile.fem
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/d_ring_control.fem
+        8)
+set_tests_properties(d_instanced_ring PROPERTIES
+    LABELS "magnetics;instanced;mesher;solver;postprocessor;Tangle;differential")

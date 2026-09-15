@@ -184,28 +184,33 @@ PBC/AGE data.
 Milestone result: xfemm meshes one selected tile with Tangle, repeats it, and
 solves the materialized mesh through the unchanged `FSolver`.
 
-- [ ] **D1: Define `TemplateRequest`.**
+- [x] **D1: Define `TemplateRequest`.**
   - Depends on: B4 and C1.
   - Identify source geometry, center of rotation, instance transforms, named seam
     chains, and supported region policy. Validate complete rotational coverage.
-- [ ] **D2: Extract one tile PSLG for Tangle.**
+  - Note: the initial implementation treats the loaded problem as the tile, so
+    "source geometry" is the problem's own PSLG. Selecting a tile out of a larger
+    model is deferred until an upstream in-memory PSLG API exists (decision 0003).
+- [x] **D2: Extract one tile PSLG for Tangle.**
   - Depends on: D1.
   - Preserve source markers, block-region attributes, holes, mesh controls, units,
     and stable mappings back to source entities.
   - Checks: isolated tile PSLG matches expected geometry and region seeds.
-- [ ] **D3: Capture Tangle seam nodes and construct `MeshTemplate`.**
+  - Note: satisfied by handing the loaded problem's PSLG to Tangle unchanged;
+    per-entity source mappings await the in-memory PSLG API.
+- [x] **D3: Capture Tangle seam nodes and construct `MeshTemplate`.**
   - Depends on: D2 and B4.
   - Convert ordered boundary matches into template seams and prove Tangle is called
     exactly once per template.
-- [ ] **D4: Materialize through `MeshResult`.**
+- [x] **D4: Materialize through `MeshResult`.**
   - Depends on: D3 and C6.
   - Construct instances, weld declared neighbor seams, materialize, and return the
     ordinary mesh plus additive provenance without breaking existing consumers.
-- [ ] **D5: Add input diagnostics.**
+- [x] **D5: Add input diagnostics.**
   - Depends on: D4.
   - Cover incomplete rotations, overlap, seam mismatch, conflicting markers,
     anisotropic materials, reflections, and AGE topology inside a template.
-- [ ] **D6: Solve a repeated-ring control.**
+- [x] **D6: Solve a repeated-ring control.**
   - Depends on: D4 and D5.
   - Check exact topology invariants and compare sampled field, energy, and force
     values with a conventionally generated full ring at documented tolerances.

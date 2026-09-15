@@ -15,10 +15,10 @@ void diagnostic(femm::mesh::MeshResult &r, const std::string &s, int code) {
 }
 femm::mesh::MeshResult TriangleMesherBackend::mesh(femm::FemmProblem &problem,const femm::mesh::MeshingRequest &request){
  femm::mesh::MeshResult result;
- if(!request.boundaryMatches.empty()){
+ if(!request.boundaryMatches.empty()||!request.templates.empty()){
   result.status=femm::mesh::MeshStatus::Unsupported;
   result.diagnostics.push_back({femm::mesh::MeshDiagnosticSeverity::Error,
-    "The Triangle backend cannot produce topology-only boundary matches; select the Tangle backend",
+    "The Triangle backend cannot produce topology-only boundary matches or rotational templates; select the Tangle backend",
     "Triangle",0});
   return result;
  }

@@ -231,10 +231,10 @@ bool testWelding()
         REQUIRE(result.succeeded());
         REQUIRE(result.mesh.nodes.size() == 6);
         REQUIRE(result.mesh.elements.size() == 2);
-        REQUIRE(result.nodeMap[0][0] != result.nodeMap[1][0]);
-        REQUIRE(result.nodeProvenance.size() == 6);
-        REQUIRE(result.elementProvenance.size() == 2);
-        REQUIRE(result.elementProvenance[1].instanceIndex == 1);
+        REQUIRE(result.provenance.nodeMap[0][0] != result.provenance.nodeMap[1][0]);
+        REQUIRE(result.provenance.nodeProvenance.size() == 6);
+        REQUIRE(result.provenance.elementProvenance.size() == 2);
+        REQUIRE(result.provenance.elementProvenance[1].instanceIndex == 1);
     }
 
     {
@@ -252,8 +252,8 @@ bool testWelding()
         REQUIRE(result.succeeded());
         REQUIRE(result.mesh.nodes.size() == 4);
         REQUIRE(result.mesh.elements.size() == 2);
-        REQUIRE(result.nodeMap[0][0] == result.nodeMap[1][1]);
-        REQUIRE(result.nodeMap[0][1] == result.nodeMap[1][0]);
+        REQUIRE(result.provenance.nodeMap[0][0] == result.provenance.nodeMap[1][1]);
+        REQUIRE(result.provenance.nodeMap[0][1] == result.provenance.nodeMap[1][0]);
     }
 
     {
@@ -290,8 +290,8 @@ bool testClosedRing()
         REQUIRE(twiceArea > 0.0);
     }
     REQUIRE(validateSolverMesh(result.mesh).valid());
-    REQUIRE(result.nodeProvenance.size() == result.mesh.nodes.size());
-    REQUIRE(result.elementProvenance.size() == result.mesh.elements.size());
+    REQUIRE(result.provenance.nodeProvenance.size() == result.mesh.nodes.size());
+    REQUIRE(result.provenance.elementProvenance.size() == result.mesh.elements.size());
     return true;
 }
 
@@ -386,17 +386,17 @@ bool testPeriodicAndAgeRemap()
     REQUIRE(result.mesh.periodicConstraints.size() == 2);
     REQUIRE(result.mesh.airGaps.size() == 2);
     for (std::size_t i = 0; i < 2; ++i) {
-        REQUIRE(result.mesh.periodicConstraints[i].first == result.nodeMap[i][0]);
-        REQUIRE(result.mesh.periodicConstraints[i].second == result.nodeMap[i][2]);
+        REQUIRE(result.mesh.periodicConstraints[i].first == result.provenance.nodeMap[i][0]);
+        REQUIRE(result.mesh.periodicConstraints[i].second == result.provenance.nodeMap[i][2]);
         REQUIRE(result.mesh.periodicConstraints[i].periodicity ==
                 SolverMesh::Periodicity::Antiperiodic);
         const auto &mapped = result.mesh.airGaps[i];
-        REQUIRE(mapped.innerRing[0].node == result.nodeMap[i][0]);
-        REQUIRE(mapped.outerRing[0].node == result.nodeMap[i][1]);
-        REQUIRE(mapped.nodeIndices[0] == result.nodeMap[i][0]);
-        REQUIRE(mapped.nodeIndices[1] == result.nodeMap[i][1]);
-        REQUIRE(mapped.quadraturePoints[0].nodes[0] == result.nodeMap[i][0]);
-        REQUIRE(mapped.quadraturePoints[0].nodes[2] == result.nodeMap[i][1]);
+        REQUIRE(mapped.innerRing[0].node == result.provenance.nodeMap[i][0]);
+        REQUIRE(mapped.outerRing[0].node == result.provenance.nodeMap[i][1]);
+        REQUIRE(mapped.nodeIndices[0] == result.provenance.nodeMap[i][0]);
+        REQUIRE(mapped.nodeIndices[1] == result.provenance.nodeMap[i][1]);
+        REQUIRE(mapped.quadraturePoints[0].nodes[0] == result.provenance.nodeMap[i][0]);
+        REQUIRE(mapped.quadraturePoints[0].nodes[2] == result.provenance.nodeMap[i][1]);
         REQUIRE(std::abs(mapped.centerX - (0.5 + 10.0 * static_cast<double>(i))) < 1e-12);
         REQUIRE(mapped.periodicity == SolverMesh::Periodicity::Periodic);
     }

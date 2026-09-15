@@ -219,6 +219,19 @@ void RigidTransform2D::applyDirection(double x, double y, double &outX, double &
     outY = sine * x + cosine * y;
 }
 
+RigidTransform2D RigidTransform2D::rotationAbout(double centerXMetres, double centerYMetres,
+                                                 double angleDegrees)
+{
+    RigidTransform2D transform;
+    transform.rotationDegrees = angleDegrees;
+    const double radians = angleDegrees * Pi / 180.0;
+    const double cosine = std::cos(radians);
+    const double sine = std::sin(radians);
+    transform.translationXMetres = centerXMetres - (cosine * centerXMetres - sine * centerYMetres);
+    transform.translationYMetres = centerYMetres - (sine * centerXMetres + cosine * centerYMetres);
+    return transform;
+}
+
 std::vector<MaterializationDiagnostic> InstancedMesh::validate() const
 {
     std::vector<MaterializationDiagnostic> diagnostics;
@@ -432,11 +445,11 @@ MaterializationResult InstancedMesh::materialize() const
 
     // Assign deterministic global node indices: first encounter wins.
     std::vector<MeshIndex> rootToGlobal(totalNodes, InvalidMeshIndex);
-    result.nodeMap.resize(instances.size());
+    result.provenance.nodeMap.resize(instances.size());
     for (std::size_t i = 0; i < instances.size(); ++i) {
         const auto &instance = instances[i];
         const auto &localMesh = templates[instance.templateIndex].localMesh;
-        result.nodeMap[i].resize(localMesh.nodes.size(), InvalidMeshIndex);
+        result.provenance.nodeMap[i].resize(localMesh.nodes.size(), InvalidMeshIndex);
         for (MeshIndex n = 0; n < localMesh.nodes.size(); ++n) {
             const std::size_t root = welds.find(instanceBase[i] + n);
             if (rootToGlobal[root] == InvalidMeshIndex) {
@@ -451,19 +464,19 @@ MaterializationResult InstancedMesh::materialize() const
                 instance.transform.applyPoint(node.x, node.y, x, y);
                 rootToGlobal[root] = result.mesh.nodes.size();
                 result.mesh.nodes.push_back({x, y, node.boundaryMarker});
-                result.nodeProvenance.push_back(
+                result.provenance.nodeProvenance.push_back(
                     {instance.templateIndex, i, n});
             }
-            result.nodeMap[i][n] = rootToGlobal[root];
+            result.provenance.nodeMap[i][n] = rootToGlobal[root];
         }
     }
 
     // Materialise elements, rejecting degenerate or reversed triangles.
-    result.elementMap.resize(instances.size());
+    result.provenance.elementMap.resize(instances.size());
     for (std::size_t i = 0; i < instances.size(); ++i) {
         const auto &instance = instances[i];
         const auto &localMesh = templates[instance.templateIndex].localMesh;
-        result.elementMap[i].resize(localMesh.elements.size(), InvalidMeshIndex);
+        result.provenance.elementMap[i].resize(localMesh.elements.size(), InvalidMeshIndex);
         for (MeshIndex e = 0; e < localMesh.elements.size(); ++e) {
             const auto &element = localMesh.elements[e];
             std::array<MeshIndex, 3> global{};
@@ -476,7 +489,7 @@ MaterializationResult InstancedMesh::materialize() const
                     valid = false;
                     continue;
                 }
-                global[k] = result.nodeMap[i][element.nodes[k]];
+                global[k] = result.provenance.nodeMap[i][element.nodes[k]];
             }
             if (!valid)
                 continue;
@@ -497,9 +510,9 @@ MaterializationResult InstancedMesh::materialize() const
                               "materialised element has reversed orientation");
                 continue;
             }
-            result.elementMap[i][e] = result.mesh.elements.size();
+            result.provenance.elementMap[i][e] = result.mesh.elements.size();
             result.mesh.elements.push_back({global, element.regionAttribute});
-            result.elementProvenance.push_back({instance.templateIndex, i, e});
+            result.provenance.elementProvenance.push_back({instance.templateIndex, i, e});
         }
     }
 
@@ -516,8 +529,8 @@ MaterializationResult InstancedMesh::materialize() const
                               "edge references an invalid local node");
                 continue;
             }
-            const auto key = edgeKey(result.nodeMap[i][edge.first],
-                                     result.nodeMap[i][edge.second]);
+            const auto key = edgeKey(result.provenance.nodeMap[i][edge.first],
+                                     result.provenance.nodeMap[i][edge.second]);
             const auto existing = edgeMarkers.find(key);
             if (existing == edgeMarkers.end()) {
                 edgeMarkers.emplace(key, edge.boundaryMarker);
@@ -544,8 +557,8 @@ MaterializationResult InstancedMesh::materialize() const
                               "periodic constraint references an invalid local node");
                 continue;
             }
-            const MeshIndex first = result.nodeMap[i][constraint.first];
-            const MeshIndex second = result.nodeMap[i][constraint.second];
+            const MeshIndex first = result.provenance.nodeMap[i][constraint.first];
+            const MeshIndex second = result.provenance.nodeMap[i][constraint.second];
             const int type =
                 constraint.periodicity == SolverMesh::Periodicity::Antiperiodic ? 1 : 0;
             if (seenConstraints.insert({std::min(first, second), std::max(first, second), type})
@@ -591,7 +604,7 @@ MaterializationResult InstancedMesh::materialize() const
                     structureValid = false;
                     return InvalidMeshIndex;
                 }
-                return result.nodeMap[i][node];
+                return result.provenance.nodeMap[i][node];
             };
 
             mapped.nodeIndices.reserve(gap.nodeIndices.size());

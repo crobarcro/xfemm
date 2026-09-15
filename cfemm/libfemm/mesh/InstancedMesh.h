@@ -28,6 +28,9 @@ struct RigidTransform2D {
     void applyPoint(double x, double y, double &outX, double &outY) const;
     /** Transform a direction: rotate only. */
     void applyDirection(double x, double y, double &outX, double &outY) const;
+    /** Build a transform that rotates about a declared centre. */
+    static RigidTransform2D rotationAbout(double centerXMetres, double centerYMetres,
+                                          double angleDegrees);
 };
 
 /**
@@ -115,12 +118,8 @@ struct ElementProvenance {
     MeshIndex localElement = InvalidMeshIndex;
 };
 
-/**
- * A materialised SolverMesh plus the maps needed to translate between local and
- * global indices. The mesh is only meaningful when succeeded() is true.
- */
-struct MaterializationResult {
-    SolverMesh mesh;
+/** Local-to-global maps exposed alongside a materialised mesh. */
+struct InstancingProvenance {
     /** [instance][local node] -> global node. */
     std::vector<std::vector<MeshIndex>> nodeMap;
     /** [instance][local element] -> global element. */
@@ -129,6 +128,15 @@ struct MaterializationResult {
     std::vector<NodeProvenance> nodeProvenance;
     /** [global element] -> template/instance/local element. */
     std::vector<ElementProvenance> elementProvenance;
+};
+
+/**
+ * A materialised SolverMesh plus the maps needed to translate between local and
+ * global indices. The mesh is only meaningful when succeeded() is true.
+ */
+struct MaterializationResult {
+    SolverMesh mesh;
+    InstancingProvenance provenance;
     std::vector<MaterializationDiagnostic> diagnostics;
 
     bool succeeded() const { return diagnostics.empty(); }

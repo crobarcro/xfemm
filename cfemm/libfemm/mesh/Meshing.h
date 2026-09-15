@@ -1,8 +1,10 @@
 #ifndef FEMM_MESH_MESHING_H
 #define FEMM_MESH_MESHING_H
 
+#include "InstancedMesh.h"
 #include "SolverMesh.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -75,6 +77,30 @@ struct BoundaryMatch {
     SolverMesh::Periodicity periodicity = SolverMesh::Periodicity::Periodic;
 };
 
+/**
+ * Mesh one rotational tile once and repeat it around a centre.
+ *
+ * The initial implementation treats the loaded problem as the tile: its
+ * matched periodic boundaries are used as topology-only seams, so no temporary
+ * problem file or upstream in-memory PSLG API is required. Selecting a tile
+ * out of a larger model is deferred until that API exists.
+ */
+struct TemplateRequest {
+    /** Centre of rotation in metres. */
+    double centerXMetres = 0.0;
+    double centerYMetres = 0.0;
+    /** Number of rotational instances; must be at least two. */
+    std::size_t instanceCount = 1;
+    /** Total angle covered by all instances; a closed ring requires 360. */
+    double totalAngleDegrees = 360.0;
+    /**
+     * Boundary properties whose matched chains become the template seams.
+     * Empty selects every match the mesher reports (which must be exactly one
+     * pair for a rotational tile).
+     */
+    std::vector<std::size_t> seamBoundaryProperties;
+};
+
 /** Backend-neutral description of one meshing operation. */
 struct MeshingRequest {
     MeshingOptions options;
@@ -87,6 +113,8 @@ struct MeshingRequest {
      */
     bool createPeriodicFieldConstraints = false;
     std::vector<BoundaryMatch> boundaryMatches;
+    /** At most one rotational template is supported initially. */
+    std::vector<TemplateRequest> templates;
 };
 
 /** Direction of the second matched chain relative to the first. */
@@ -112,6 +140,11 @@ struct MeshResult {
     SolverMesh mesh;
     /** Ordered seam correspondences; additive and independent of SolverMesh. */
     std::vector<MeshBoundaryMatch> boundaryMatches;
+    /**
+     * Local-to-global provenance when the mesh was produced by materialising a
+     * template. Additive: consumers that do not instance ignore it.
+     */
+    std::optional<InstancingProvenance> instancing;
     std::vector<MeshDiagnostic> diagnostics;
 
     bool succeeded() const

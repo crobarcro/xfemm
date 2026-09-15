@@ -53,6 +53,15 @@ add_test(NAME fmesher_boundary_match
 set_tests_properties(fmesher_boundary_match PROPERTIES
     LABELS "mesher;Tangle;Triangle;unit")
 
+add_executable(template_request_test template_request_test.cpp)
+target_link_libraries(template_request_test PRIVATE fmesher)
+add_test(NAME fmesher_template_request
+    COMMAND template_request_test
+        ${CMAKE_CURRENT_LIST_DIR}/../../fpproc/test/fixtures/d_ring_tile.fem
+        ${CMAKE_CURRENT_LIST_DIR}/../../femmcli/test/femmcli_antiperiodicBC_AGE_TorqueBenchmark.fem)
+set_tests_properties(fmesher_template_request PROPERTIES
+    LABELS "mesher;Tangle;Triangle;instanced;unit")
+
 foreach(backend Triangle Tangle)
     add_test(NAME fmesher_${backend}_backend_solver_mesh
         COMMAND fmesher_backend_test "${backend}"
