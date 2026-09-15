@@ -1,5 +1,7 @@
 #include "fpproc.h"
 
+#include "CBlockLabel.h"
+#include "CCircuit.h"
 #include "fsolver.h"
 #include "linsolve/LinearSystemBackend.h"
 
@@ -30,7 +32,24 @@ bool FPProc::OpenDocument(const femm::FemmProblem &problem, const FSolver &solve
     for (const auto &item : problem.nodelist) nodelist.push_back(*item);
     for (const auto &item : problem.linelist) linelist.push_back(*item);
     for (const auto &item : problem.arclist) arclist.push_back(*item);
-    blocklist = solver.labellist;
+
+    // The solver expands each "series" circuit into one sub-circuit per block
+    // label and relabels the labels to point at those sub-circuits. The legacy
+    // .ans post-processing path instead exposes the original problem definition,
+    // so GetFluxLinkage/GetVoltageDrop can sum a series circuit over its labels.
+    // Mirror that by using the problem's block labels and circuits, then drive
+    // each label from the solver's expanded sub-circuit. A reshaped label list
+    // (an instanced session) has no original counterpart, so keep the solver's
+    // view there.
+    blocklist.clear();
+    for (const auto &item : problem.labellist) {
+        const auto *label = dynamic_cast<const femm::CMBlockLabel *>(item.get());
+        if (label && !label->isHole())
+            blocklist.push_back(*label);
+    }
+    const bool useProblemDefinition = blocklist.size() == solver.labellist.size();
+    if (!useProblemDefinition)
+        blocklist = solver.labellist;
     nodeproplist = solver.nodeproplist;
     lineproplist = solver.lineproplist;
     blockproplist.clear();
@@ -49,7 +68,16 @@ bool FPProc::OpenDocument(const femm::FemmProblem &problem, const FSolver &solve
         if (item.BHpoints > 0 && item.slope.size() < static_cast<std::size_t>(item.BHpoints))
             throw std::runtime_error("could not prepare nonlinear material slopes");
     }
-    circproplist = solver.circproplist;
+    if (useProblemDefinition) {
+        circproplist.clear();
+        for (const auto &item : problem.circproplist) {
+            const auto *circuit = dynamic_cast<const femm::CMCircuit *>(item.get());
+            if (circuit)
+                circproplist.push_back(*circuit);
+        }
+    } else {
+        circproplist = solver.circproplist;
+    }
 
     const double centimetresPerSourceUnit[] = {2.54, 0.1, 1., 100., 0.00254, 1.e-04};
     const double coordinateScale = centimetresPerSourceUnit[LengthUnits];
@@ -78,16 +106,19 @@ bool FPProc::OpenDocument(const femm::FemmProblem &problem, const FSolver &solve
     pmeshelem = &meshelem;
 
     for (std::size_t i = 0; i < blocklist.size(); ++i) {
-        const int circuit = blocklist[i].InCircuit;
-        if (circuit < 0) {
+        // The solver's expanded sub-circuit carries the drive (Case/J/dVolts).
+        const int driven = useProblemDefinition ? solver.labellist[i].InCircuit
+                                                : blocklist[i].InCircuit;
+        if (driven < 0 ||
+            static_cast<std::size_t>(driven) >= solver.circproplist.size()) {
             blocklist[i].Case = 1;
             blocklist[i].J = 0.;
-        } else if (circproplist[circuit].Case == 0) {
+        } else if (solver.circproplist[driven].Case == 0) {
             blocklist[i].Case = 0;
-            blocklist[i].dVolts = circproplist[circuit].dVolts;
+            blocklist[i].dVolts = solver.circproplist[driven].dVolts;
         } else {
             blocklist[i].Case = 1;
-            blocklist[i].J = circproplist[circuit].J;
+            blocklist[i].J = solver.circproplist[driven].J;
         }
     }
 

@@ -56,6 +56,12 @@ add_test(NAME a3_3_age_differential
 set_tests_properties(a3_3_age_differential PROPERTIES
     LABELS "magnetics;airgap;mesher;solver;postprocessor;Triangle;Tangle;differential")
 
+add_executable(inmemory_circuit_test test/inmemory_circuit_test.cpp)
+target_link_libraries(inmemory_circuit_test PRIVATE fpproc)
+add_test(NAME fpproc_inmemory_circuit COMMAND inmemory_circuit_test)
+set_tests_properties(fpproc_inmemory_circuit PROPERTIES
+    LABELS "magnetics;postprocessor;unit")
+
 add_executable(d_instanced_ring_test test/d_instanced_ring_test.cpp)
 target_link_libraries(d_instanced_ring_test PRIVATE fpproc Tangle::tangle)
 add_test(NAME d_instanced_ring
