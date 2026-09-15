@@ -206,6 +206,9 @@ public:
     std::uint64_t meshTopologyIdentity() const { return m_meshTopologyIdentity; }
     std::size_t meshGenerationCount() const { return m_meshGenerations; }
 
+    /** Name of the selected mesher backend, for diagnostics and tests. */
+    const char *mesherBackendName() const;
+
     /** Select a mesher. The currently owned mesh is discarded. */
     void setMesher(std::shared_ptr<fmesher::MesherBackend> mesher);
     /** Change controls used for the next mesh. */

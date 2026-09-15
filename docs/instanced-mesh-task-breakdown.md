@@ -62,7 +62,7 @@ returns a validated `SolverMesh`, and is trustworthy enough to become the defaul
   - Map Tangle status values to `MeshStatus` and preserve actionable diagnostics.
   - Checks: an injected engine counter proves Tangle executed once; a scratch
     directory remains empty; diagnostics name `Tangle` only when Tangle ran.
-- [ ] **A2.3: Exercise backend options.**
+- [x] **A2.3: Exercise backend options.**
   - Depends on: A2.2.
   - Map all supported `MeshingOptions` explicitly. Reject or diagnose unsupported
     options rather than ignoring them.
@@ -87,7 +87,7 @@ returns a validated `SolverMesh`, and is trustworthy enough to become the defaul
   - Compare AGE ring sizes, radii, centers, periodicity, valid quadrature, and a
     small angle sweep through the existing solver/session path.
   - Include a periodic `.pbc` fixture with zero AGE records to prevent conflation.
-- [ ] **A3.4: Make Tangle the default backend.**
+- [x] **A3.4: Make Tangle the default backend.**
   - Depends on: A2.3, A3.2, and A3.3.
   - Change `AnalysisSession` default construction to `TangleMesherBackend` while
     preserving explicit Triangle injection.
@@ -103,28 +103,28 @@ through the in-memory backend API.
 Milestone result: callers can ask Tangle for matching ordered boundary chains
 without implicitly imposing periodic or antiperiodic field constraints.
 
-- [ ] **B1: Add `MeshingRequest` and compatibility adapter.**
+- [x] **B1: Add `MeshingRequest` and compatibility adapter.**
   - Depends on: A3.4.
   - Add request options, boundary matches, and an explicit “emit field constraint”
     choice. Keep the old `(problem, periodic, options)` entry point as an adapter.
   - Checks: old and new calls produce equivalent `SolverMesh` results.
-- [ ] **B2: Specify stable geometry references.**
+- [x] **B2: Specify stable geometry references.**
   - Depends on: B1.
   - Select stable identifiers for matched source segments/arcs and reject stale,
     mixed line/arc, duplicated, or missing references before invoking Tangle.
   - Checks: geometry mutation and invalid-reference cases produce diagnostics.
-- [ ] **B3: Expose Tangle topology-only paired refinement.**
+- [x] **B3: Expose Tangle topology-only paired refinement.**
   - Depends on: B1 and B2; expected upstream Tangle change.
   - Synchronize splitting and return ordered chain correspondence independently
     of PBC output semantics.
   - Checks: straight and arc chains, forward and reverse order, refinement caused
     from either side, and unequal-chain rejection.
-- [ ] **B4: Convert matches to backend-neutral seam data.**
+- [x] **B4: Convert matches to backend-neutral seam data.**
   - Depends on: B3.
   - Return ordered node references and orientation without adding them to
     `SolverMesh::periodicConstraints` unless explicitly requested.
   - Checks: the same matched geometry once with and once without field constraints.
-- [ ] **B5: Characterize Triangle compatibility.**
+- [x] **B5: Characterize Triangle compatibility.**
   - Depends on: B4.
   - Keep legacy Triangle periodic behavior intact. If topology-only matching is
     unsupported there, return a clear capability diagnostic rather than emulating

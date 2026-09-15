@@ -19,11 +19,9 @@ std::atomic<std::uint64_t> nextSessionId{1};
 
 std::shared_ptr<fmesher::MesherBackend> makeDefaultMesher()
 {
-#ifdef XFEMM_MESHER_BACKEND_TANGLE
+    // Tangle is the tested production default for sessions. Triangle remains
+    // available through explicit injection for compatibility and baselines.
     return std::make_shared<fmesher::TangleMesherBackend>();
-#else
-    return std::make_shared<fmesher::TriangleMesherBackend>();
-#endif
 }
 
 std::uint32_t bits(Dirty value) { return static_cast<std::uint32_t>(value); }
@@ -153,6 +151,11 @@ AnalysisSession::AnalysisSession(ModelDefinition model,
     : AnalysisSession(std::move(model), std::move(backend))
 {
     setMesher(std::move(mesher));
+}
+
+const char *AnalysisSession::mesherBackendName() const
+{
+    return m_mesher ? m_mesher->name() : "none";
 }
 
 void AnalysisSession::setMesher(std::shared_ptr<fmesher::MesherBackend> mesher)

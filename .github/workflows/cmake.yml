@@ -9,6 +9,11 @@ on:
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
+  # Tangle is temporarily pinned to the fork that carries the library options
+  # and boundary-match API. Revert both values to dcm3c/tangle and the merged
+  # upstream commit once those changes are upstreamed.
+  XFEMM_TANGLE_REPOSITORY: https://github.com/crobarcro/tangle.git
+  XFEMM_TANGLE_REVISION: 0aa619f0466edc3aad41b399d57195d3c585ea41
 
 jobs:
   build:
@@ -32,7 +37,17 @@ jobs:
         cd cfemm
         cmake -B ${{github.workspace}}/build \
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} \
-          -DXFEMM_MESHER_BACKEND=${{matrix.mesher-backend}}
+          -DXFEMM_MESHER_BACKEND=${{matrix.mesher-backend}} \
+          -DXFEMM_TANGLE_REPOSITORY=${{env.XFEMM_TANGLE_REPOSITORY}} \
+          -DXFEMM_TANGLE_REVISION=${{env.XFEMM_TANGLE_REVISION}}
+
+    - name: Verify the pinned Tangle revision
+      run: |
+        fetched=$(git -C "${{github.workspace}}/build/_deps/tangle_upstream-src" rev-parse HEAD)
+        if [ "$fetched" != "${{env.XFEMM_TANGLE_REVISION}}" ]; then
+          echo "Fetched Tangle $fetched, expected ${{env.XFEMM_TANGLE_REVISION}}"
+          exit 1
+        fi
 
     - name: Build
       # Build your program with the given configuration
@@ -56,6 +71,8 @@ jobs:
         cmake -B ${{github.workspace}}/build
         -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
         -DXFEMM_USE_PETSc=ON
+        -DXFEMM_TANGLE_REPOSITORY=${{env.XFEMM_TANGLE_REPOSITORY}}
+        -DXFEMM_TANGLE_REVISION=${{env.XFEMM_TANGLE_REVISION}}
         cfemm
     - name: Build
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} -j2
