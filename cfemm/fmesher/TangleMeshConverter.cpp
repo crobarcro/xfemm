@@ -14,6 +14,8 @@
 namespace fmesher {
 namespace {
 
+using femm::mesh::BoundaryMatchOrientation;
+using femm::mesh::MeshBoundaryMatch;
 using femm::mesh::MeshDiagnosticSeverity;
 using femm::mesh::MeshIndex;
 using femm::mesh::MeshResult;
@@ -68,6 +70,34 @@ struct RingPoint {
     double absoluteElementPosition = 0.0;
     double sign = 1.0;
 };
+
+// FEMM boundary properties are encoded on Tangle segments as
+// -(boundaryPropertyIndex + 2), the same convention SolverMesh documents.
+bool boundaryPropertyIndex(int marker, std::size_t &index)
+{
+    if (marker > -2)
+        return false;
+    index = static_cast<std::size_t>(-marker - 2);
+    return true;
+}
+
+// Report whether the second chain runs in the same geometric direction as the
+// first under the returned one-to-one correspondence. This is informational:
+// the correspondence itself is what seam welding consumes.
+BoundaryMatchOrientation matchOrientation(const SolverMesh &mesh,
+                                          const MeshBoundaryMatch &match)
+{
+    if (match.firstNodes.size() < 2 || match.secondNodes.size() < 2)
+        return BoundaryMatchOrientation::Forward;
+    const auto &firstStart = mesh.nodes[match.firstNodes.front()];
+    const auto &firstEnd = mesh.nodes[match.firstNodes.back()];
+    const auto &secondStart = mesh.nodes[match.secondNodes.front()];
+    const auto &secondEnd = mesh.nodes[match.secondNodes.back()];
+    const double dot = (firstEnd.x - firstStart.x) * (secondEnd.x - secondStart.x) +
+                       (firstEnd.y - firstStart.y) * (secondEnd.y - secondStart.y);
+    return dot >= 0.0 ? BoundaryMatchOrientation::Forward
+                      : BoundaryMatchOrientation::Reverse;
+}
 
 bool buildAirGap(const ::Mesh &source, const AGEDef &definition,
                  double lengthScaleToMetres, SolverMesh::AirGap &target,
@@ -279,6 +309,32 @@ MeshResult convertTangleMesh(const ::Mesh &source, double lengthScaleToMetres)
         if (!buildAirGap(source, definition, lengthScaleToMetres, airGap, error))
             return failure(error);
         result.mesh.airGaps.push_back(std::move(airGap));
+    }
+
+    result.boundaryMatches.reserve(source.boundary_matches.size());
+    for (const auto &match : source.boundary_matches) {
+        if (match.nodes_a.size() != match.nodes_b.size())
+            return failure("Tangle boundary match chains have different lengths");
+        MeshBoundaryMatch converted;
+        if (!boundaryPropertyIndex(match.marker_a, converted.boundaryProperty))
+            return failure("Tangle boundary match has an invalid boundary marker");
+        if (match.type != 0 && match.type != 1)
+            return failure("Tangle boundary match has an invalid periodicity type");
+        converted.periodicity = periodicity(match.type);
+        converted.firstNodes.reserve(match.nodes_a.size());
+        for (int node : match.nodes_a) {
+            if (!validIndex(node, source.vertices.size()))
+                return failure("Tangle boundary match references an invalid node");
+            converted.firstNodes.push_back(static_cast<MeshIndex>(node));
+        }
+        converted.secondNodes.reserve(match.nodes_b.size());
+        for (int node : match.nodes_b) {
+            if (!validIndex(node, source.vertices.size()))
+                return failure("Tangle boundary match references an invalid node");
+            converted.secondNodes.push_back(static_cast<MeshIndex>(node));
+        }
+        converted.orientation = matchOrientation(result.mesh, converted);
+        result.boundaryMatches.push_back(std::move(converted));
     }
 
     result.status = MeshStatus::Success;

@@ -15,8 +15,12 @@ set(TANGLE_PROVIDER auto CACHE STRING
 set_property(CACHE TANGLE_PROVIDER PROPERTY STRINGS auto local fetch)
 set(TANGLE_SOURCE_DIR "" CACHE PATH
     "Path to a dcm3c/tangle source checkout (required by TANGLE_PROVIDER=local).")
-set(XFEMM_TANGLE_REVISION a808c624ec0584569e43593662f54890b602c6af CACHE STRING
-    "Pinned dcm3c/tangle revision used by xfemm.")
+set(XFEMM_TANGLE_REPOSITORY https://github.com/crobarcro/tangle.git CACHE STRING
+    "Tangle repository used by xfemm. Temporarily the development fork that
+     carries the library options and boundary-match API; revert to
+     https://github.com/dcm3c/tangle.git once those changes are upstreamed.")
+set(XFEMM_TANGLE_REVISION 0aa619f0466edc3aad41b399d57195d3c585ea41 CACHE STRING
+    "Pinned Tangle revision used by xfemm.")
 set(XFEMM_MESHER_BACKEND Triangle CACHE STRING
     "Default xfemm mesher backend (Triangle or Tangle).")
 set_property(CACHE XFEMM_MESHER_BACKEND PROPERTY STRINGS Triangle Tangle)
@@ -43,7 +47,7 @@ elseif(TANGLE_PROVIDER STREQUAL "auto" AND TANGLE_SOURCE_DIR)
 else()
     include(FetchContent)
     FetchContent_Declare(tangle_upstream
-        GIT_REPOSITORY https://github.com/dcm3c/tangle.git
+        GIT_REPOSITORY ${XFEMM_TANGLE_REPOSITORY}
         GIT_TAG ${XFEMM_TANGLE_REVISION}
         GIT_SHALLOW FALSE
         GIT_PROGRESS TRUE
@@ -90,6 +94,7 @@ else()
 endif()
 
 add_library(fmesher STATIC
+    BoundaryMatchValidator.cpp
     fmesher.cbp
     fmesher.cpp
     nosebl.cpp

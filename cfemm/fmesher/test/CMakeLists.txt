@@ -36,6 +36,23 @@ add_test(NAME fmesher_tangle_backend_execution COMMAND tangle_backend_execution_
 set_tests_properties(fmesher_tangle_backend_execution PROPERTIES
     LABELS "mesher;Tangle;unit")
 
+add_executable(tangle_backend_options_test tangle_backend_options_test.cpp)
+target_link_libraries(tangle_backend_options_test PRIVATE fmesher)
+add_test(NAME fmesher_tangle_backend_options
+    COMMAND tangle_backend_options_test
+        ${CMAKE_CURRENT_LIST_DIR}/../../fpproc/test/fixtures/a3_2_nonperiodic.fem)
+set_tests_properties(fmesher_tangle_backend_options PROPERTIES
+    LABELS "mesher;Tangle;unit")
+
+add_executable(boundary_match_test boundary_match_test.cpp)
+target_link_libraries(boundary_match_test PRIVATE fmesher)
+add_test(NAME fmesher_boundary_match
+    COMMAND boundary_match_test
+        ${CMAKE_CURRENT_LIST_DIR}/../../fpproc/test/fixtures/a3_2_periodic.fem
+        ${CMAKE_CURRENT_LIST_DIR}/../../fpproc/test/fixtures/a3_2_antiperiodic.fem)
+set_tests_properties(fmesher_boundary_match PROPERTIES
+    LABELS "mesher;Tangle;Triangle;unit")
+
 foreach(backend Triangle Tangle)
     add_test(NAME fmesher_${backend}_backend_solver_mesh
         COMMAND fmesher_backend_test "${backend}"
