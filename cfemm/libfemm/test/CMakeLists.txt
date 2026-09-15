@@ -15,3 +15,17 @@ target_link_libraries(solver_mesh_validator_test PRIVATE femm)
 
 add_test(NAME solver_mesh_validator COMMAND solver_mesh_validator_test)
 set_tests_properties(solver_mesh_validator PROPERTIES LABELS "libfemm;mesh;unit")
+
+add_executable(instanced_mesh_test instanced_mesh_test.cpp)
+target_link_libraries(instanced_mesh_test PRIVATE femm)
+
+add_test(NAME instanced_mesh_materializer COMMAND instanced_mesh_test)
+set_tests_properties(instanced_mesh_materializer PROPERTIES
+    LABELS "libfemm;mesh;instanced;unit")
+
+add_executable(instanced_mesh_hash_test instanced_mesh_hash_test.cpp)
+target_link_libraries(instanced_mesh_hash_test PRIVATE femm)
+
+add_test(NAME instanced_mesh_hashing COMMAND instanced_mesh_hash_test)
+set_tests_properties(instanced_mesh_hashing PROPERTIES
+    LABELS "libfemm;mesh;instanced;unit")

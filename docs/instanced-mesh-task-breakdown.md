@@ -139,38 +139,38 @@ the expected typed node pairs.
 Milestone result: hand-authored templates can be expanded deterministically into
 an ordinary solver-compatible mesh without invoking a mesher.
 
-- [ ] **C1: Add transform and template value types.**
+- [x] **C1: Add transform and template value types.**
   - Depends on: none; merge after B1 to avoid competing mesh API changes.
   - Add `RigidTransform2D`, `TemplateSeam`, `MeshTemplate`, `SeamConnection`,
     `MeshInstance`, and `InstancedMesh` under `cfemm/libfemm/mesh`.
   - Initially reject reflections and non-finite transforms.
-- [ ] **C2: Validate template-local topology.**
+- [x] **C2: Validate template-local topology.**
   - Depends on: C1.
   - Validate local node/edge/element indices, unique seam nodes, ordered connected
     chains, transform orientation, and compatible seam cardinality.
   - Checks: one failure test per invariant with stable diagnostic categories.
-- [ ] **C3: Build deterministic node provenance and seam welding.**
+- [x] **C3: Build deterministic node provenance and seam welding.**
   - Depends on: C2.
   - Map `(template, instance, local node)` to global nodes. Weld only declared
     seam pairs; use transformed coordinates only to validate a declaration.
   - Checks: translated pair, reversed seam, closed annular ring, and close but
     undeclared nodes that must remain distinct.
-- [ ] **C4: Materialize elements and edges.**
+- [x] **C4: Materialize elements and edges.**
   - Depends on: C3.
   - Remap connectivity, reject degenerate/reversed elements, canonicalize duplicate
     internal seam edges, and define marker-conflict behavior.
   - Checks: exact counts and positive signed areas for repeated wedges.
-- [ ] **C5: Remap periodic and AGE topology.**
+- [x] **C5: Remap periodic and AGE topology.**
   - Depends on: C3.
   - Remap PBC pairs, AGE rings, quadrature nodes, and AGE node-index lists through
     the checked provenance table while preserving periodicity and weights.
   - Checks: synthetic PBC-only and AGE templates plus invalid local references.
-- [ ] **C6: Add reverse provenance and deterministic hashing.**
+- [x] **C6: Add reverse provenance and deterministic hashing.**
   - Depends on: C4 and C5.
   - Provide global-to-template/instance maps and stable topology/layout identities.
   - Checks: repeat runs hash identically; transform or seam changes alter the
     appropriate identity; physics-only metadata does not alter topology identity.
-- [ ] **C7: Add sanitizer test configuration.**
+- [x] **C7: Add sanitizer test configuration.**
   - Depends on: C2–C6.
   - Run the materializer unit suite with address and undefined-behavior sanitizers
     on a supported CI platform.

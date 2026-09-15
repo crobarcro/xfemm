@@ -59,6 +59,27 @@ jobs:
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest -C ${{env.BUILD_TYPE}}
 
+  sanitizers:
+    name: Address/UB sanitizers
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Configure CMake
+      run: |
+        cmake -B ${{github.workspace}}/build \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DXFEMM_ENABLE_SANITIZERS=ON \
+          -DXFEMM_TANGLE_REPOSITORY=${{env.XFEMM_TANGLE_REPOSITORY}} \
+          -DXFEMM_TANGLE_REVISION=${{env.XFEMM_TANGLE_REVISION}} \
+          cfemm
+    - name: Build the materializer unit tests
+      run: >
+        cmake --build ${{github.workspace}}/build
+        --target instanced_mesh_test instanced_mesh_hash_test -j2
+    - name: Run the materializer unit tests under sanitizers
+      working-directory: ${{github.workspace}}/build
+      run: ctest -R "instanced_mesh" --output-on-failure
+
   petsc:
     name: PETSc linear solver backend
     runs-on: ubuntu-latest
