@@ -264,6 +264,19 @@ observable through C++ and MATLAB.
 Milestone result: independent stator and rotor templates reproduce the existing
 RNFoundry-derived machine results while reusing mesh topology across positions.
 
+**Status: partially started, blocked.** See
+`mfemm/testing/radial_machine/FIXTURE_PROVENANCE.md`. The RNFoundry revision was
+rechecked and deliberately updated to `f4d42805` and the checked-in fixtures
+were regenerated, which fixes the conventional `redraw` comparison. Two
+blockers remain:
+
+1. The `sliding` case still produces non-finite circuit flux linkage through
+   `xfemm.femmsession`, with both meshers and with the AGE angle unchanged. This
+   must be resolved before F2–F5 can be completed.
+2. F3 needs a multi-template AGE-coupling extension: the current instancing
+   path supports one rotational template and remaps each template's own AGE,
+   but does not couple stator and rotor templates through the air-gap rings.
+
 - [ ] **F1: Freeze generator provenance and tolerances.**
   - Depends on: E5.
   - Record the RNFoundry commit, design/options, xfemm commit, generated files,
