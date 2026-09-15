@@ -10,6 +10,7 @@
 #include "TriangleMesherBackend.h"
 #include "postproc/fpproc_interface.h"
 
+#include <cmath>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -74,6 +75,65 @@ public:
     }
 
     void mesh() { m_session->ensureMesh(); }
+
+    /** Mesh the loaded problem as one tile and repeat it rotationally. */
+    void instanceRotational(double centerX, double centerY, double instanceCount,
+                            double totalAngle)
+    {
+        if (instanceCount < 1 || instanceCount != std::floor(instanceCount))
+            throw std::invalid_argument("instance count must be a positive integer");
+        femm::mesh::MeshingRequest request;
+        femm::mesh::TemplateRequest tmpl;
+        tmpl.centerXMetres = centerX;
+        tmpl.centerYMetres = centerY;
+        tmpl.instanceCount = static_cast<std::size_t>(instanceCount);
+        tmpl.totalAngleDegrees = totalAngle;
+        request.templates.push_back(tmpl);
+        fmesher::TangleMesherBackend backend;
+        // The backend only reads the problem; the const_cast preserves the
+        // read-only contract of the session model.
+        auto result = backend.mesh(
+            const_cast<femm::FemmProblem &>(m_session->model().problem()), request);
+        if (!result.succeeded() || !result.instancedTemplates)
+            throw std::runtime_error("could not build rotational instances");
+        m_session->setInstancedMesh(std::move(*result.instancedTemplates));
+    }
+
+    mxArray *instanceInfo() const
+    {
+        const char *fields[] = {"templateTopologyIdentity", "instanceLayoutIdentity",
+                                "meshTopologyIdentity", "materializationCount",
+                                "instanceCount"};
+        mxArray *out = mxCreateStructMatrix(1, 1, 5, fields);
+        mxSetField(out, 0, "templateTopologyIdentity",
+                   mxCreateDoubleScalar(static_cast<double>(m_session->templateTopologyIdentity())));
+        mxSetField(out, 0, "instanceLayoutIdentity",
+                   mxCreateDoubleScalar(static_cast<double>(m_session->instanceLayoutIdentity())));
+        mxSetField(out, 0, "meshTopologyIdentity",
+                   mxCreateDoubleScalar(static_cast<double>(m_session->meshTopologyIdentity())));
+        mxSetField(out, 0, "materializationCount",
+                   mxCreateDoubleScalar(static_cast<double>(m_session->materializationCount())));
+        const auto &instanced = m_session->instancedMesh();
+        mxSetField(out, 0, "instanceCount",
+                   mxCreateDoubleScalar(instanced ? static_cast<double>(instanced->instances.size())
+                                                  : 0.0));
+        return out;
+    }
+
+    void instanceOverride(double instance, double sourceLabel, double circuit,
+                          double magRotation, double currentScale)
+    {
+        femm::mesh::InstanceRegionOverride override;
+        override.sourceBlockLabel = static_cast<std::size_t>(sourceLabel);
+        if (circuit >= 0)
+            override.circuit = static_cast<std::size_t>(circuit);
+        if (!std::isnan(magRotation))
+            override.magnetisationRotationDegrees = magRotation;
+        if (!std::isnan(currentScale))
+            override.currentScale = currentScale;
+        m_session->addInstanceRegionOverride(static_cast<std::size_t>(instance), override);
+    }
+
     femm::AnalysisSession &session() { return *m_session; }
     const femm::AnalysisSession &session() const { return *m_session; }
     const femm::FSolverAnalysisBackend &solver() const { return *m_solver; }
@@ -239,6 +299,14 @@ try {
         else if (kind == "coupled") session.setCircuitCoupled(id);
         else throw std::invalid_argument("constraint must be current, voltage, open, or coupled");
     } else if (command == "age") session.setAirGapAngle(session.model().airGap(stringValue(prhs[2], "AGE name")), scalarValue(prhs[3], "inner angle"), scalarValue(prhs[4], "outer angle"));
+    else if (command == "instance") gateway->instanceRotational(
+        scalarValue(prhs[2], "centerX"), scalarValue(prhs[3], "centerY"),
+        scalarValue(prhs[4], "instanceCount"), scalarValue(prhs[5], "totalAngle"));
+    else if (command == "instanceinfo") plhs[0] = gateway->instanceInfo();
+    else if (command == "instanceoverride") gateway->instanceOverride(
+        scalarValue(prhs[2], "instance"), scalarValue(prhs[3], "sourceLabel"),
+        scalarValue(prhs[4], "circuit"), scalarValue(prhs[5], "magRotation"),
+        scalarValue(prhs[6], "currentScale"));
     else if (command == "solve") { gateway->solve(); if (nlhs) plhs[0] = solveStatusStruct(*gateway); }
     else if (command == "result") plhs[0] = trialStruct(gateway->trial());
     else if (command == "export") gateway->writeSolution(stringValue(prhs[2], "solution path"));

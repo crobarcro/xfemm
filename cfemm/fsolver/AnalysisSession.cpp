@@ -183,6 +183,8 @@ void AnalysisSession::setMeshingOptions(const mesh::MeshingOptions &options)
 
 std::shared_ptr<const mesh::SolverMesh> AnalysisSession::ensureMesh()
 {
+    if (m_instanced)
+        return ensureInstancedMesh();
     if (m_mesh && !has(m_dirty, Dirty::Mesh))
         return m_mesh;
     if (!m_mesher)
@@ -205,6 +207,226 @@ std::shared_ptr<const mesh::SolverMesh> AnalysisSession::ensureMesh()
     ++m_meshTopologyIdentity;
     m_dirty = static_cast<Dirty>(bits(m_dirty) & ~bits(Dirty::Mesh));
     return m_mesh;
+}
+
+void AnalysisSession::setInstancedMesh(mesh::InstancedMesh instanced)
+{
+    m_instanced = std::move(instanced);
+    m_canonicalMesh.reset();
+    m_instancingProvenance = {};
+    m_templateTopologyIdentity = 0;
+    m_instanceLayoutIdentity = 0;
+    m_mesh.reset();
+    m_meshDiagnostics.clear();
+    invalidate(Dirty::Mesh | Dirty::PreparedCircuits | Dirty::Operator | Dirty::RightHandSide);
+}
+
+void AnalysisSession::clearInstancedMesh()
+{
+    if (!m_instanced)
+        return;
+    m_instanced.reset();
+    m_canonicalMesh.reset();
+    m_instancingProvenance = {};
+    m_templateTopologyIdentity = 0;
+    m_instanceLayoutIdentity = 0;
+    m_mesh.reset();
+    m_meshDiagnostics.clear();
+    invalidate(Dirty::Mesh | Dirty::PreparedCircuits | Dirty::Operator | Dirty::RightHandSide);
+}
+
+void AnalysisSession::setInstanceTransform(std::size_t instance,
+                                           const mesh::RigidTransform2D &transform)
+{
+    if (!m_instanced || instance >= m_instanced->instances.size())
+        throw std::out_of_range("invalid instance index");
+    if (!transform.isFinite())
+        throw std::invalid_argument("instance transform must be finite");
+    m_instanced->instances[instance].transform = transform;
+    m_mesh.reset();
+    invalidate(Dirty::Mesh | Dirty::Operator | Dirty::RightHandSide);
+}
+
+void AnalysisSession::setInstanceRegionOverrides(
+    std::size_t instance, std::vector<mesh::InstanceRegionOverride> overrides)
+{
+    if (!m_instanced || instance >= m_instanced->instances.size())
+        throw std::out_of_range("invalid instance index");
+    for (const auto &override : overrides) {
+        if (override.magnetisationRotationDegrees &&
+            !std::isfinite(*override.magnetisationRotationDegrees))
+            throw std::invalid_argument("magnetisation rotation must be finite");
+        if (override.currentScale && !std::isfinite(*override.currentScale))
+            throw std::invalid_argument("current scale must be finite");
+        if (override.circuit)
+            requireCircuit(CircuitId{*override.circuit});
+    }
+    m_instanced->instances[instance].regionOverrides = std::move(overrides);
+    // Overrides are physics only: the topology and solver mesh are unchanged.
+    invalidate(Dirty::PreparedCircuits | Dirty::Operator | Dirty::RightHandSide);
+}
+
+void AnalysisSession::addInstanceRegionOverride(
+    std::size_t instance, const mesh::InstanceRegionOverride &override)
+{
+    if (!m_instanced || instance >= m_instanced->instances.size())
+        throw std::out_of_range("invalid instance index");
+    if (override.magnetisationRotationDegrees &&
+        !std::isfinite(*override.magnetisationRotationDegrees))
+        throw std::invalid_argument("magnetisation rotation must be finite");
+    if (override.currentScale && !std::isfinite(*override.currentScale))
+        throw std::invalid_argument("current scale must be finite");
+    if (override.circuit)
+        requireCircuit(CircuitId{*override.circuit});
+    m_instanced->instances[instance].regionOverrides.push_back(override);
+    invalidate(Dirty::PreparedCircuits | Dirty::Operator | Dirty::RightHandSide);
+}
+
+std::optional<mesh::ElementProvenance>
+AnalysisSession::elementProvenance(std::size_t globalElement) const
+{
+    if (globalElement >= m_instancingProvenance.elementProvenance.size())
+        return std::nullopt;
+    return m_instancingProvenance.elementProvenance[globalElement];
+}
+
+std::optional<mesh::NodeProvenance>
+AnalysisSession::nodeProvenance(std::size_t globalNode) const
+{
+    if (globalNode >= m_instancingProvenance.nodeProvenance.size())
+        return std::nullopt;
+    return m_instancingProvenance.nodeProvenance[globalNode];
+}
+
+std::vector<mesh::MeshIndex>
+AnalysisSession::elementsForInstance(std::size_t instanceIndex) const
+{
+    std::vector<mesh::MeshIndex> elements;
+    const auto &provenance = m_instancingProvenance.elementProvenance;
+    for (mesh::MeshIndex i = 0; i < provenance.size(); ++i)
+        if (provenance[i].instanceIndex == instanceIndex)
+            elements.push_back(i);
+    return elements;
+}
+
+std::vector<mesh::MeshIndex>
+AnalysisSession::nodesForInstance(std::size_t instanceIndex) const
+{
+    std::vector<mesh::MeshIndex> nodes;
+    const auto &provenance = m_instancingProvenance.nodeProvenance;
+    for (mesh::MeshIndex i = 0; i < provenance.size(); ++i)
+        if (provenance[i].instanceIndex == instanceIndex)
+            nodes.push_back(i);
+    return nodes;
+}
+
+std::size_t AnalysisSession::templateLabelCount() const
+{
+    std::size_t count = 0;
+    for (const auto &property : m_model.problem().labellist) {
+        const auto *label = dynamic_cast<const CMBlockLabel *>(property.get());
+        if (label && !label->isHole())
+            ++count;
+    }
+    return count;
+}
+
+mesh::SolverMesh
+AnalysisSession::remapInstancedRegions(const mesh::SolverMesh &canonical) const
+{
+    mesh::SolverMesh mesh = canonical;
+    const std::size_t labelCount = templateLabelCount();
+    if (labelCount == 0)
+        return mesh;
+    for (std::size_t e = 0; e < mesh.elements.size(); ++e) {
+        const std::size_t instance = m_instancingProvenance.elementProvenance[e].instanceIndex;
+        const std::int32_t attribute = mesh.elements[e].regionAttribute;
+        if (attribute > 0 && static_cast<std::size_t>(attribute) <= labelCount)
+            mesh.elements[e].regionAttribute =
+                static_cast<std::int32_t>(instance * labelCount + static_cast<std::size_t>(attribute));
+    }
+    return mesh;
+}
+
+std::shared_ptr<const mesh::SolverMesh> AnalysisSession::ensureInstancedMesh()
+{
+    if (m_mesh && !has(m_dirty, Dirty::Mesh))
+        return m_mesh;
+    const std::uint64_t templateId = mesh::templateTopologyIdentity(*m_instanced);
+    const std::uint64_t layoutId = mesh::instanceLayoutIdentity(*m_instanced);
+    if (!m_canonicalMesh || templateId != m_templateTopologyIdentity ||
+        layoutId != m_instanceLayoutIdentity) {
+        auto result = m_instanced->materialize();
+        m_meshDiagnostics.clear();
+        if (!result.succeeded()) {
+            for (const auto &diagnostic : result.diagnostics)
+                m_meshDiagnostics.push_back(
+                    {mesh::MeshDiagnosticSeverity::Error, diagnostic.message, "InstancedMesh",
+                     static_cast<int>(diagnostic.category)});
+            throw std::runtime_error("instanced mesh materialisation failed");
+        }
+        m_canonicalMesh =
+            std::make_shared<const mesh::SolverMesh>(std::move(result.mesh));
+        m_instancingProvenance = std::move(result.provenance);
+        m_templateTopologyIdentity = templateId;
+        m_instanceLayoutIdentity = layoutId;
+        ++m_materializationCount;
+        ++m_meshGenerations;
+    }
+    m_mesh = std::make_shared<const mesh::SolverMesh>(remapInstancedRegions(*m_canonicalMesh));
+    m_meshTopologyIdentity = mesh::materializedTopologyIdentity(*m_mesh);
+    m_dirty = static_cast<Dirty>(bits(m_dirty) & ~bits(Dirty::Mesh));
+    return m_mesh;
+}
+
+void AnalysisSession::rebuildInstancedPrepared(PreparedAnalysis &candidate) const
+{
+    candidate.labels.clear();
+    candidate.circuits.clear();
+    if (!m_instanced)
+        return;
+
+    std::vector<std::size_t> rawIndices;
+    std::vector<const CMBlockLabel *> templateLabels;
+    for (std::size_t raw = 0; raw < m_model.problem().labellist.size(); ++raw) {
+        const auto *label =
+            dynamic_cast<const CMBlockLabel *>(m_model.problem().labellist[raw].get());
+        if (label && !label->isHole()) {
+            templateLabels.push_back(label);
+            rawIndices.push_back(raw);
+        }
+    }
+    const std::size_t labelCount = templateLabels.size();
+    const std::size_t instanceCount = m_instanced->instances.size();
+    candidate.labels.reserve(labelCount * instanceCount);
+    for (std::size_t k = 0; k < instanceCount; ++k) {
+        const auto &instance = m_instanced->instances[k];
+        for (std::size_t j = 0; j < labelCount; ++j) {
+            CMBlockLabel label = *templateLabels[j];
+            for (const auto &override : instance.regionOverrides) {
+                if (override.sourceBlockLabel != rawIndices[j])
+                    continue;
+                if (override.circuit)
+                    label.InCircuit = static_cast<int>(*override.circuit);
+                if (override.magnetisationRotationDegrees)
+                    label.MagDir += *override.magnetisationRotationDegrees;
+                if (override.currentScale)
+                    label.Turns = static_cast<int>(
+                        std::lround(label.Turns * *override.currentScale));
+            }
+            candidate.labels.push_back(std::move(label));
+        }
+    }
+
+    for (std::size_t i = 0; i < candidate.labels.size(); ++i) {
+        const auto &label = candidate.labels[i];
+        if (label.InCircuit < 0)
+            continue;
+        CircuitId id{static_cast<std::size_t>(label.InCircuit)};
+        requireCircuit(id);
+        const auto constraint = m_parameters.circuitConstraints.at(id);
+        candidate.circuits.push_back({id, i, label.Turns, constraint});
+    }
 }
 
 void AnalysisSession::requireCircuit(CircuitId id) const
@@ -401,8 +623,11 @@ void AnalysisSession::synchronize()
     PreparedAnalysis candidate = m_prepared;
     if (has(m_dirty, Dirty::PreparedMaterials))
         rebuildMaterials(candidate);
-    if (has(m_dirty, Dirty::PreparedCircuits) || has(m_dirty, Dirty::RightHandSide))
+    if (m_instanced) {
+        rebuildInstancedPrepared(candidate);
+    } else if (has(m_dirty, Dirty::PreparedCircuits) || has(m_dirty, Dirty::RightHandSide)) {
         rebuildCircuits(candidate);
+    }
     if (has(m_dirty, Dirty::AirGapCoupling))
         candidate.airGapPositions = m_parameters.airGapPositions;
 

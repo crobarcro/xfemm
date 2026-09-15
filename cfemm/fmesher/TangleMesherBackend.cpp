@@ -348,6 +348,7 @@ femm::mesh::MeshResult TangleMesherBackend::mesh(
     }
     converted.mesh = std::move(materialized.mesh);
     converted.instancing = std::move(materialized.provenance);
+    converted.instancedTemplates = std::move(build.instanced);
     converted.boundaryMatches.clear();
     return converted;
 }

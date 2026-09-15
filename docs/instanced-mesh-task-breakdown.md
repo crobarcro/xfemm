@@ -223,31 +223,35 @@ deterministically, and solved by the unmodified solver with control-model agreem
 Milestone result: an analysis session owns the instanced representation and can
 change sources or AGE position without remeshing/materializing topology.
 
-- [ ] **E1: Cache canonical instanced and materialized meshes.**
+- [x] **E1: Cache canonical instanced and materialized meshes.**
   - Depends on: D4.
   - Add separate template-topology, instance-layout, and materialized-topology
     identities to `AnalysisSession`.
-- [ ] **E2: Implement cache invalidation rules.**
+- [x] **E2: Implement cache invalidation rules.**
   - Depends on: E1.
   - Test geometry, transform, seam, material, circuit/current, initial state, and
     AGE-angle changes against meshing/materialization/topology-import counters.
-- [ ] **E3: Resolve instance region overrides.**
+- [x] **E3: Resolve instance region overrides.**
   - Depends on: E1 and C6.
   - Apply circuit assignment, turns/current scale, and magnetization rotation while
     building prepared analysis; never mutate the shared template.
-- [ ] **E4: Test independent field DOFs and physics.**
+  - Note: overrides become a per-instance solver label list, so each instance
+    has independent degrees of freedom; physics changes never re-materialise.
+- [x] **E4: Test independent field DOFs and physics.**
   - Depends on: E3.
   - Compare opposite coil sides and alternating magnet directions with explicitly
     drawn controls. Confirm instancing alone introduces no periodic constraint.
-- [ ] **E5: Add C++ authoring/query API.**
+  - Note: the session test checks independent labels, opposite turns, rotated
+    magnetisation, no periodic constraint, and finite non-trivial fields.
+- [x] **E5: Add C++ authoring/query API.**
   - Depends on: E2–E4.
   - Expose template creation, instance transforms/overrides, provenance queries,
     and capability diagnostics with API documentation.
-- [ ] **E6: Extend post-processing provenance.**
+- [x] **E6: Extend post-processing provenance.**
   - Depends on: E5.
   - Allow selection and result attribution by template/instance while the legacy
     post-processor continues to consume global elements.
-- [ ] **E7: Add MATLAB/MEX bindings.**
+- [x] **E7: Add MATLAB/MEX bindings.**
   - Depends on: E5 and E6.
   - Preserve all existing entry points and add one documented instanced smoke case.
 

@@ -68,12 +68,22 @@ void FSolverAnalysisBackend::configure(const ModelDefinition &model,
     // indexes the unfiltered problem.labellist, holes included, so it needs
     // this translation to address m_solver->labellist correctly. -1 marks a
     // raw index that was a hole and has no solver-side counterpart.
-    std::vector<int> rawToSolverLabel(problem.labellist.size(), -1);
-    for (std::size_t rawIdx = 0; rawIdx < problem.labellist.size(); ++rawIdx) {
-        auto label = magneticCopy<CMBlockLabel>(problem.labellist[rawIdx], "block label");
-        if (!label.isHole()) {
-            rawToSolverLabel[rawIdx] = static_cast<int>(m_solver->labellist.size());
-            m_solver->labellist.push_back(std::move(label));
+    std::vector<int> rawToSolverLabel;
+    if (!prepared.labels.empty()) {
+        // An instanced session already provides a per-instance label list whose
+        // indices are exactly PreparedCircuit::labelIndex.
+        m_solver->labellist = prepared.labels;
+        rawToSolverLabel.resize(prepared.labels.size());
+        for (std::size_t i = 0; i < prepared.labels.size(); ++i)
+            rawToSolverLabel[i] = static_cast<int>(i);
+    } else {
+        rawToSolverLabel.assign(problem.labellist.size(), -1);
+        for (std::size_t rawIdx = 0; rawIdx < problem.labellist.size(); ++rawIdx) {
+            auto label = magneticCopy<CMBlockLabel>(problem.labellist[rawIdx], "block label");
+            if (!label.isHole()) {
+                rawToSolverLabel[rawIdx] = static_cast<int>(m_solver->labellist.size());
+                m_solver->labellist.push_back(std::move(label));
+            }
         }
     }
     m_solver->circproplist.clear();

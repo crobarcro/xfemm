@@ -128,6 +128,12 @@ struct PreparedAnalysis {
     std::vector<PreparedCircuit> circuits;
     std::map<AirGapId, AirGapPosition> airGapPositions;
     double frequency = 0;
+    /**
+     * Solver-side block labels. When non-empty (instanced sessions) these
+     * replace the model's labels for the solver import and PreparedCircuit
+     * labelIndex values index this list.
+     */
+    std::vector<CMBlockLabel> labels;
 };
 
 struct CircuitPortResult {
@@ -209,6 +215,38 @@ public:
     /** Name of the selected mesher backend, for diagnostics and tests. */
     const char *mesherBackendName() const;
 
+    // --- Instanced templates -------------------------------------------------
+    /** Canonical instanced templates, when instancing is active. */
+    const std::optional<mesh::InstancedMesh> &instancedMesh() const { return m_instanced; }
+    /** Install canonical templates; the session materialises them lazily. */
+    void setInstancedMesh(mesh::InstancedMesh instanced);
+    /** Stop instancing and return to mesher-driven topology. */
+    void clearInstancedMesh();
+    /** Replace one instance's transform; re-materialises but never re-meshes. */
+    void setInstanceTransform(std::size_t instance, const mesh::RigidTransform2D &transform);
+    /** Replace one instance's physics overrides; never changes topology. */
+    void setInstanceRegionOverrides(std::size_t instance,
+                                    std::vector<mesh::InstanceRegionOverride> overrides);
+    /** Append one physics override to an instance; never changes topology. */
+    void addInstanceRegionOverride(std::size_t instance,
+                                   const mesh::InstanceRegionOverride &override);
+    /** Identity of the canonical template meshes and their seams. */
+    std::uint64_t templateTopologyIdentity() const { return m_templateTopologyIdentity; }
+    /** Identity of the instance transforms and seam connections. */
+    std::uint64_t instanceLayoutIdentity() const { return m_instanceLayoutIdentity; }
+    /** Number of times the canonical templates were materialised. */
+    std::size_t materializationCount() const { return m_materializationCount; }
+    /** Local-to-global maps for the current materialisation. */
+    const mesh::InstancingProvenance &instancingProvenance() const { return m_instancingProvenance; }
+    /** Provenance of a global element, when instancing is active. */
+    std::optional<mesh::ElementProvenance> elementProvenance(std::size_t globalElement) const;
+    /** Provenance of a global node, when instancing is active. */
+    std::optional<mesh::NodeProvenance> nodeProvenance(std::size_t globalNode) const;
+    /** Global elements belonging to one instance, for selection and attribution. */
+    std::vector<mesh::MeshIndex> elementsForInstance(std::size_t instanceIndex) const;
+    /** Global nodes belonging to one instance. */
+    std::vector<mesh::MeshIndex> nodesForInstance(std::size_t instanceIndex) const;
+
     /** Select a mesher. The currently owned mesh is discarded. */
     void setMesher(std::shared_ptr<fmesher::MesherBackend> mesher);
     /** Change controls used for the next mesh. */
@@ -240,6 +278,12 @@ private:
     void invalidate(Dirty dirty);
     void rebuildMaterials(PreparedAnalysis &candidate) const;
     void rebuildCircuits(PreparedAnalysis &candidate) const;
+    std::shared_ptr<const mesh::SolverMesh> ensureInstancedMesh();
+    /** Build per-instance solver labels and circuit entries from overrides. */
+    void rebuildInstancedPrepared(PreparedAnalysis &candidate) const;
+    /** Copy a canonical materialised mesh, remapping region attributes per instance. */
+    mesh::SolverMesh remapInstancedRegions(const mesh::SolverMesh &canonical) const;
+    std::size_t templateLabelCount() const;
 
     ModelDefinition m_model;
     SolveParameters m_parameters;
@@ -251,6 +295,12 @@ private:
     std::vector<mesh::MeshDiagnostic> m_meshDiagnostics;
     std::uint64_t m_meshTopologyIdentity = 0;
     std::size_t m_meshGenerations = 0;
+    std::optional<mesh::InstancedMesh> m_instanced;
+    std::shared_ptr<const mesh::SolverMesh> m_canonicalMesh;
+    mesh::InstancingProvenance m_instancingProvenance;
+    std::uint64_t m_templateTopologyIdentity = 0;
+    std::uint64_t m_instanceLayoutIdentity = 0;
+    std::size_t m_materializationCount = 0;
     Dirty m_dirty = Dirty::All;
     std::uint64_t m_modelRevision = 1;
     std::uint64_t m_parameterRevision = 1;

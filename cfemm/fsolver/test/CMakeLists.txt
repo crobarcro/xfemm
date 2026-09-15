@@ -69,6 +69,12 @@ target_link_libraries(analysis_session_test PRIVATE fsolver)
 add_test(NAME analysis_session COMMAND analysis_session_test)
 set_tests_properties(analysis_session PROPERTIES LABELS "magnetics;solver;unit")
 
+add_executable(analysis_session_instanced_test analysis_session_instanced_test.cpp)
+target_link_libraries(analysis_session_instanced_test PRIVATE fsolver)
+add_test(NAME analysis_session_instanced COMMAND analysis_session_instanced_test)
+set_tests_properties(analysis_session_instanced PROPERTIES
+    LABELS "magnetics;solver;instanced;unit")
+
 add_executable(periodic_pbc_without_age_test periodic_pbc_without_age_test.cpp)
 target_link_libraries(periodic_pbc_without_age_test PRIVATE fsolver)
 add_test(NAME periodic_pbc_without_age

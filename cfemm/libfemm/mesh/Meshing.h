@@ -141,6 +141,12 @@ struct MeshResult {
     /** Ordered seam correspondences; additive and independent of SolverMesh. */
     std::vector<MeshBoundaryMatch> boundaryMatches;
     /**
+     * Canonical instanced templates when the mesh was produced by materialising
+     * a template, before materialisation. Additive: a session can cache this
+     * and re-materialise on a layout change without re-meshing the tile.
+     */
+    std::optional<InstancedMesh> instancedTemplates;
+    /**
      * Local-to-global provenance when the mesh was produced by materialising a
      * template. Additive: consumers that do not instance ignore it.
      */

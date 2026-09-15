@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -63,11 +64,32 @@ struct SeamConnection {
     SeamOrientation orientation = SeamOrientation::Forward;
 };
 
+/**
+ * Per-instance physics override for one source block label of the template.
+ *
+ * Physics metadata deliberately lives on the instance, never on the shared
+ * template. A rigid transform rotates directional quantities; it must not
+ * mutate the template. The initial implementation supports isotropic
+ * materials only.
+ */
+struct InstanceRegionOverride {
+    /** Zero-based index into the template problem's block-label list. */
+    std::size_t sourceBlockLabel = 0;
+    /** Replace the label's circuit membership. */
+    std::optional<std::size_t> circuit;
+    /** Add to the label's magnetisation direction, in degrees. */
+    std::optional<double> magnetisationRotationDegrees;
+    /** Scale the label's signed turns (a negative value reverses current). */
+    std::optional<double> currentScale;
+};
+
 /** One placed occurrence of a template. */
 struct MeshInstance {
     std::size_t templateIndex = 0;
     RigidTransform2D transform;
     std::vector<SeamConnection> seamConnections;
+    /** Per-instance physics; not part of the topology or layout identity. */
+    std::vector<InstanceRegionOverride> regionOverrides;
 };
 
 /** Stable diagnostic category for a rejected instanced mesh. */

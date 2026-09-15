@@ -116,7 +116,8 @@ jobs:
         octave --no-gui --quiet --eval
         "addpath(fullfile(pwd, 'mfemm')); mfemm_setup('ForceMexRecompile', true,
         'RunTests', true, 'Clean', true, 'Tidy', true);
-        Test_femmsession;"
+        Test_femmsession;
+        Test_femmsession_instanced;"
 
   python:
     name: Python interface
@@ -156,3 +157,4 @@ jobs:
           addpath(fullfile(pwd, 'mfemm'));
           mfemm_setup('SessionOnly', true);
           Test_femmsession;
+          Test_femmsession_instanced;
