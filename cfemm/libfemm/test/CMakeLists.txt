@@ -29,3 +29,10 @@ target_link_libraries(instanced_mesh_hash_test PRIVATE femm)
 add_test(NAME instanced_mesh_hashing COMMAND instanced_mesh_hash_test)
 set_tests_properties(instanced_mesh_hashing PROPERTIES
     LABELS "libfemm;mesh;instanced;unit")
+
+add_executable(instanced_mesh_airgap_test instanced_mesh_airgap_test.cpp)
+target_link_libraries(instanced_mesh_airgap_test PRIVATE femm)
+
+add_test(NAME instanced_mesh_airgap COMMAND instanced_mesh_airgap_test)
+set_tests_properties(instanced_mesh_airgap PROPERTIES
+    LABELS "libfemm;mesh;instanced;unit")

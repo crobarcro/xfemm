@@ -83,6 +83,34 @@ struct InstanceRegionOverride {
     std::optional<double> currentScale;
 };
 
+/**
+ * Couple two templates through one air-gap ring.
+ *
+ * Unlike a seam connection, an AGE coupling does not weld nodes: the inner
+ * (rotor) and outer (stator) rings keep independent unknowns and are linked
+ * algebraically by the solver's existing air-gap element. The two templates
+ * may have independent instance counts; the rings are assembled from each
+ * template's declared air-gap boundary seam, ordered by angle about the
+ * declared centre.
+ */
+struct AirGapCoupling {
+    std::size_t innerTemplate = 0;
+    std::size_t innerSeam = 0;
+    std::size_t outerTemplate = 0;
+    std::size_t outerSeam = 0;
+    std::string boundaryName;
+    SolverMesh::Periodicity periodicity = SolverMesh::Periodicity::Periodic;
+    double centerXMetres = 0.0;
+    double centerYMetres = 0.0;
+    double innerRadiusMetres = 0.0;
+    double outerRadiusMetres = 0.0;
+    double totalArcLengthDegrees = 360.0;
+    double innerAngleDegrees = 0.0;
+    double outerAngleDegrees = 0.0;
+    double innerShift = 0.0;
+    double outerShift = 0.0;
+};
+
 /** One placed occurrence of a template. */
 struct MeshInstance {
     std::size_t templateIndex = 0;
@@ -115,6 +143,7 @@ enum class MaterializationDiagnosticCategory {
     InvalidPeriodicNode,
     InvalidAirGapNode,
     InvalidAirGapStructure,
+    InvalidAirGapCoupling,
     IndexOverflow
 };
 
@@ -175,6 +204,8 @@ struct MaterializationResult {
 struct InstancedMesh {
     std::vector<MeshTemplate> templates;
     std::vector<MeshInstance> instances;
+    /** Cross-template air-gap couplings (independent stator/rotor domains). */
+    std::vector<AirGapCoupling> airGapCouplings;
 
     /** Validate template-local topology, transforms, seams, and connections. */
     std::vector<MaterializationDiagnostic> validate() const;

@@ -289,10 +289,14 @@ flux density to within a few percent. Remaining blockers:
   - Depends on: F1.
   - Produce conventional redraw, existing AGE/sliding, and instanced variants of
     the checked-in 12-pole, 36-slot design.
-- [ ] **F3: Build independent stator and rotor templates.**
+- [x] **F3: Build independent stator and rotor templates.**
   - Depends on: F2.
   - Use a stator slot template and rotor pole/pole-pair template with independent
     counts; connect the domains only through AGE rings.
+  - Note: `InstancedMesh::airGapCouplings` now assembles one global AGE from two
+    templates' air-gap seams while keeping their unknowns independent. Verified
+    with hand-authored rotor-pole (4 instances) and stator-slot (8 instances)
+    templates; applying it to the checked-in machine geometry is F4.
 - [ ] **F4: Add one-position CI smoke comparison.**
   - Depends on: F3.
   - Compare winding flux linkage, coil flux-density magnitude, torque, topology

@@ -290,6 +290,26 @@ std::vector<MaterializationDiagnostic> InstancedMesh::validate() const
         }
     }
 
+    for (std::size_t c = 0; c < airGapCouplings.size(); ++c) {
+        const auto &coupling = airGapCouplings[c];
+        if (coupling.innerTemplate >= templates.size() ||
+            coupling.outerTemplate >= templates.size()) {
+            addDiagnostic(diagnostics, MaterializationDiagnosticCategory::InvalidAirGapCoupling,
+                          c, 0, 0, "air-gap coupling references an invalid template");
+            continue;
+        }
+        if (coupling.innerSeam >= templates[coupling.innerTemplate].seams.size() ||
+            coupling.outerSeam >= templates[coupling.outerTemplate].seams.size()) {
+            addDiagnostic(diagnostics, MaterializationDiagnosticCategory::InvalidAirGapCoupling,
+                          c, 0, 0, "air-gap coupling references an invalid seam");
+            continue;
+        }
+        if (coupling.innerTemplate == coupling.outerTemplate) {
+            addDiagnostic(diagnostics, MaterializationDiagnosticCategory::InvalidAirGapCoupling,
+                          c, 0, 0, "air-gap coupling must join two distinct templates");
+        }
+    }
+
     using SeamKey = std::pair<std::pair<std::size_t, std::size_t>,
                               std::pair<std::size_t, std::size_t>>;
     std::map<SeamKey, int> orientations;
@@ -649,6 +669,98 @@ MaterializationResult InstancedMesh::materialize() const
             if (structureValid)
                 result.mesh.airGaps.push_back(std::move(mapped));
         }
+    }
+
+    // Assemble cross-template air-gap couplings from the per-instance seam
+    // nodes. The inner and outer rings keep independent unknowns; only the
+    // solver's air-gap element links them.
+    for (std::size_t c = 0; c < airGapCouplings.size(); ++c) {
+        const auto &coupling = airGapCouplings[c];
+        SolverMesh::AirGap gap;
+        gap.boundaryName = coupling.boundaryName;
+        gap.periodicity = coupling.periodicity;
+        gap.totalArcLengthDegrees = coupling.totalArcLengthDegrees;
+        gap.innerRadius = coupling.innerRadiusMetres;
+        gap.outerRadius = coupling.outerRadiusMetres;
+        gap.centerX = coupling.centerXMetres;
+        gap.centerY = coupling.centerYMetres;
+        gap.innerAngleDegrees = coupling.innerAngleDegrees;
+        gap.outerAngleDegrees = coupling.outerAngleDegrees;
+        gap.innerShift = coupling.innerShift;
+        gap.outerShift = coupling.outerShift;
+
+        const auto collectRing = [&](std::size_t templateIndex, std::size_t seamIndex,
+                                     std::vector<SolverMesh::AirGapRingPoint> &ring) {
+            const auto &seam = templates[templateIndex].seams[seamIndex];
+            for (std::size_t i = 0; i < instances.size(); ++i) {
+                if (instances[i].templateIndex != templateIndex)
+                    continue;
+                for (MeshIndex local : seam.orderedNodes) {
+                    const MeshIndex global = result.provenance.nodeMap[i][local];
+                    const auto &node = result.mesh.nodes[global];
+                    double angle = std::atan2(node.y - coupling.centerYMetres,
+                                              node.x - coupling.centerXMetres) *
+                                   180.0 / Pi;
+                    if (angle < 0.0)
+                        angle += 360.0;
+                    ring.push_back({global, angle, 1.0});
+                }
+            }
+            std::stable_sort(ring.begin(), ring.end(),
+                             [](const SolverMesh::AirGapRingPoint &left,
+                                const SolverMesh::AirGapRingPoint &right) {
+                                 return left.elementPosition < right.elementPosition;
+                             });
+            // Adjacent welded instances contribute the same boundary node
+            // twice; keep one ring entry per global node.
+            std::vector<SolverMesh::AirGapRingPoint> unique;
+            unique.reserve(ring.size());
+            for (const auto &point : ring)
+                if (unique.empty() || unique.back().node != point.node)
+                    unique.push_back(point);
+            ring = std::move(unique);
+        };
+        collectRing(coupling.innerTemplate, coupling.innerSeam, gap.innerRing);
+        collectRing(coupling.outerTemplate, coupling.outerSeam, gap.outerRing);
+
+        if (gap.innerRing.empty() || gap.innerRing.size() != gap.outerRing.size()) {
+            addDiagnostic(result.diagnostics,
+                          MaterializationDiagnosticCategory::InvalidAirGapCoupling, c, 0, 0,
+                          "air-gap coupling rings have incompatible cardinality");
+            continue;
+        }
+        const std::size_t count = gap.innerRing.size();
+        const double step = coupling.totalArcLengthDegrees / static_cast<double>(count);
+        if (!(step > 0.0)) {
+            addDiagnostic(result.diagnostics,
+                          MaterializationDiagnosticCategory::InvalidAirGapCoupling, c, 0, 0,
+                          "air-gap coupling has a non-positive angular step");
+            continue;
+        }
+        for (auto &point : gap.innerRing)
+            point.elementPosition /= step;
+        for (auto &point : gap.outerRing)
+            point.elementPosition /= step;
+        gap.innerShift = gap.innerRing.front().elementPosition;
+        gap.outerShift = gap.outerRing.front().elementPosition;
+        gap.totalArcElements = count;
+        gap.nodeIndices.reserve(count * 2);
+        for (const auto &point : gap.innerRing)
+            gap.nodeIndices.push_back(point.node);
+        for (const auto &point : gap.outerRing)
+            gap.nodeIndices.push_back(point.node);
+        gap.quadraturePoints.reserve(count + 1);
+        for (std::size_t i = 0; i <= count; ++i) {
+            const std::size_t next = i % count;
+            const std::size_t previous = next == 0 ? count - 1 : next - 1;
+            SolverMesh::AirGapQuadraturePoint point;
+            point.nodes = {{gap.innerRing[previous].node, gap.innerRing[next].node,
+                            gap.outerRing[previous].node, gap.outerRing[next].node}};
+            point.weights = {{gap.innerRing[previous].weight, gap.innerRing[next].weight,
+                              gap.outerRing[previous].weight, gap.outerRing[next].weight}};
+            gap.quadraturePoints.push_back(point);
+        }
+        result.mesh.airGaps.push_back(std::move(gap));
     }
 
     return result;
