@@ -267,12 +267,16 @@ RNFoundry-derived machine results while reusing mesh topology across positions.
 **Status: partially started, blocked.** See
 `mfemm/testing/radial_machine/FIXTURE_PROVENANCE.md`. The RNFoundry revision was
 rechecked and deliberately updated to `f4d42805` and the checked-in fixtures
-were regenerated, which fixes the conventional `redraw` comparison. Two
-blockers remain:
+were regenerated. Two post-processing bugs were fixed along the way (the
+in-memory series-circuit NaN and the `MagDirFctn` round-trip double-quoting),
+after which the legacy redraw, session redraw, and sliding session agree on
+flux density to within a few percent. Remaining blockers:
 
-1. The `sliding` case still produces non-finite circuit flux linkage through
-   `xfemm.femmsession`, with both meshers and with the AGE angle unchanged. This
-   must be resolved before F2–F5 can be completed.
+1. The `coil flux linkage` comparison still exceeds its tolerance. The quantity
+   is a small difference of large cancelling terms and amplifies the residual
+   `MagnetRedraw`-versus-`SlidingMesh` modelling difference (~5e-7 even with one
+   shared backend); a tolerance decision or a more robust metric is needed
+   before F4/F5.
 2. F3 needs a multi-template AGE-coupling extension: the current instancing
    path supports one rotational template and remaps each template's own AGE,
    but does not couple stator and rotor templates through the air-gap rings.

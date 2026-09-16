@@ -56,13 +56,36 @@ revision above whenever it is rerun.
 
 ## Known blockers
 
-- The checked-in fixtures were regenerated with the revision above and the
-  `redraw` comparison now produces finite results. The `sliding` case still
-  produces non-finite circuit flux linkage through `xfemm.femmsession`, with
-  both the Triangle and Tangle meshers and with the AGE angle left at its
-  initial value. This is independent of the mesher and of the fixture revision
-  and must be resolved before F2–F5 can be completed.
-- Independent stator/rotor templates (F3) additionally require a
-  multi-template AGE-coupling extension to the materializer: the current
-  instancing path supports one rotational template and remaps each template's
-  own AGE, but does not couple two templates through the air-gap rings.
+- Independent stator/rotor templates (F3) require a multi-template
+  AGE-coupling extension to the materializer: the current instancing path
+  supports one rotational template and remaps each template's own AGE, but
+  does not couple two templates through the air-gap rings.
+
+## Investigation log (redraw versus sliding)
+
+Two post-processing bugs were found and fixed while establishing this
+comparison:
+
+1. The in-memory post-processor used the solver's post-expansion series
+   circuits, so a zero-current series circuit had no member labels and
+   `fpproc::GetFluxLinkage` returned NaN. Fixed in
+   `cfemm/fpproc/InMemorySolution.cpp`.
+2. `loadfemmsolution` kept the surrounding quotes that `textscan` returns for
+   `MagDirFctn`, so a `loadfemmfile`/`writefemmfile` round-trip wrote
+   `""theta""`. The legacy redraw solve then evaluated a malformed
+   magnetization-direction expression and produced a field roughly 2x wrong,
+   which the winding-flux-linkage cancellation amplified to ~1000x. Fixed in
+   `mfemm/loadfemmsolution.m`.
+
+After both fixes the legacy redraw, the session redraw (Triangle and Tangle),
+and the sliding session agree on the magnet, air-gap, and stator flux density
+to within a few percent, and the `coil-region flux density` comparison passes.
+
+The `coil flux linkage` comparison still exceeds its tolerance
+(`max |delta| ~ 9.5e-7` against a `~1.5e-7` limit). The quantity is a small
+difference of large cancelling `Turns * intA / area` terms (~2e-6 against
+~0.14 terms), so it amplifies the remaining `MagnetRedraw`-versus-`SlidingMesh`
+modelling difference. Running both sides through the same session/Tangle
+backend still leaves a `~5e-7` difference, so the residual is the modelling
+difference rather than the mesher or the post-processor. A tolerance decision
+(or a more robust winding-flux-linkage metric) is needed before F4/F5.
