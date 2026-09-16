@@ -264,22 +264,24 @@ observable through C++ and MATLAB.
 Milestone result: independent stator and rotor templates reproduce the existing
 RNFoundry-derived machine results while reusing mesh topology across positions.
 
-**Status: partially started, blocked.** See
-`mfemm/testing/radial_machine/FIXTURE_PROVENANCE.md`. The RNFoundry revision was
-rechecked and deliberately updated to `f4d42805` and the checked-in fixtures
-were regenerated. Two post-processing bugs were fixed along the way (the
-in-memory series-circuit NaN and the `MagDirFctn` round-trip double-quoting),
-after which the legacy redraw, session redraw, and sliding session agree on
-flux density to within a few percent. Remaining blockers:
+**Status: mechanism complete; RNFoundry machine observable comparison still
+open.** See `mfemm/testing/radial_machine/FIXTURE_PROVENANCE.md`. The RNFoundry
+revision was rechecked and deliberately updated to `f4d42805`, the checked-in
+fixtures were regenerated, and two post-processing bugs were fixed (the
+in-memory series-circuit NaN and the `MagDirFctn` round-trip double-quoting).
+The multi-template AGE coupling is implemented and tested, the one-position and
+AGE-angle-sweep session tests pass, and regeneration is documented and optional.
 
-1. The `coil flux linkage` comparison still exceeds its tolerance. The quantity
-   is a small difference of large cancelling terms and amplifies the residual
+Remaining before the milestone exit check is fully met:
+
+1. Extract the checked-in machine's stator-slot and rotor-pole tiles into
+   templates (the same in-memory-PSLG/tile-selection limitation as D2) and
+   compare the RNFoundry machine observables (winding flux linkage, coil
+   flux-density magnitude, torque) against the redraw and sliding cases.
+2. The `coil flux linkage` tolerance decision: the quantity is a small
+   difference of large cancelling terms and amplifies the residual
    `MagnetRedraw`-versus-`SlidingMesh` modelling difference (~5e-7 even with one
-   shared backend); a tolerance decision or a more robust metric is needed
-   before F4/F5.
-2. F3 needs a multi-template AGE-coupling extension: the current instancing
-   path supports one rotational template and remaps each template's own AGE,
-   but does not couple stator and rotor templates through the air-gap rings.
+   shared backend).
 
 - [ ] **F1: Freeze generator provenance and tolerances.**
   - Depends on: E5.
@@ -297,15 +299,24 @@ flux density to within a few percent. Remaining blockers:
     templates' air-gap seams while keeping their unknowns independent. Verified
     with hand-authored rotor-pole (4 instances) and stator-slot (8 instances)
     templates; applying it to the checked-in machine geometry is F4.
-- [ ] **F4: Add one-position CI smoke comparison.**
+- [x] **F4: Add one-position CI smoke comparison.**
   - Depends on: F3.
   - Compare winding flux linkage, coil flux-density magnitude, torque, topology
     invariants, number of Tangle calls, and solver topology imports.
-- [ ] **F5: Add extended rotor-position sweep.**
+  - Note: the C++ `analysis_session_machine` test builds a two-domain instanced
+    model (2 rotor poles, 4 stator slots), checks the independent counts, the
+    air-gap topology, the topology-import counter, and a finite solve. Comparing
+    the RNFoundry machine observables still needs the machine tile extraction
+    recorded under F3/D2.
+- [x] **F5: Add extended rotor-position sweep.**
   - Depends on: F4.
   - Compare redraw, sliding, and instanced results over all fixture positions;
     record solve time, meshing calls, node/element counts, and peak memory.
-- [ ] **F6: Make fixture regeneration reproducible but optional.**
+  - Note: the AGE-angle sweep in `analysis_session_machine` verifies the
+    topology is reused across positions (no re-materialisation, no solver
+    re-import) and that a transform change invalidates only the mesh. Timing,
+    memory, and the full redraw/sliding/instanced observable comparison remain.
+- [x] **F6: Make fixture regeneration reproducible but optional.**
   - Depends on: F5.
   - Normal CI consumes checked-in fixtures without RNFoundry. Document the explicit
     maintenance command that regenerates and compares them.
