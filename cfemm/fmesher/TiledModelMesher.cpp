@@ -190,6 +190,17 @@ TiledMeshResult meshTiledModel(const femm::tiled::TiledModel &model, MesherBacke
         }
 
         result.instanced.templates.push_back(std::move(meshTemplate));
+
+        // Carry the tile's non-hole block labels as the template's physics
+        // prototypes, in region-attribute order, so a session can resolve
+        // per-instance labels without a single shared model label list.
+        std::vector<femm::CMBlockLabel> prototypes;
+        for (const auto &labelPtr : problem->labellist) {
+            const auto *label = dynamic_cast<const femm::CMBlockLabel *>(labelPtr.get());
+            if (label && !label->isHole())
+                prototypes.push_back(*label);
+        }
+        result.instanced.templateLabels.push_back(std::move(prototypes));
     }
 
     // Place the instances, weld internal joins, and close open sectors.

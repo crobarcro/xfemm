@@ -283,7 +283,11 @@ private:
     void rebuildInstancedPrepared(PreparedAnalysis &candidate) const;
     /** Copy a canonical materialised mesh, remapping region attributes per instance. */
     mesh::SolverMesh remapInstancedRegions(const mesh::SolverMesh &canonical) const;
-    std::size_t templateLabelCount() const;
+    /** Non-hole label count for one template (instanced prototypes or model). */
+    std::size_t templateLabelCountFor(std::size_t templateIndex) const;
+    /** Physics prototypes for one template plus their override source keys. */
+    void templateLabelsFor(std::size_t templateIndex, std::vector<CMBlockLabel> &labels,
+                           std::vector<std::size_t> &sourceIndices) const;
 
     ModelDefinition m_model;
     SolveParameters m_parameters;

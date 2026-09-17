@@ -1,5 +1,7 @@
 #include "TiledModel.h"
 
+#include "FemmProblem.h"
+
 #include <cmath>
 #include <iostream>
 #include <memory>
@@ -75,10 +77,10 @@ Tile annularTile(double sectorDeg, std::size_t count, Closure closure)
     tile.airGapBoundary = "sliding-gap";
 
     tile.geometry.nodes = {
-        {ri, 0.0, 0, 0},
-        {ro, 0.0, 0, 0},
-        {ri * std::cos(sector), ri * std::sin(sector), 0, 0},
-        {ro * std::cos(sector), ro * std::sin(sector), 0, 0},
+        {ri, 0.0, -1, 0},
+        {ro, 0.0, -1, 0},
+        {ri * std::cos(sector), ri * std::sin(sector), -1, 0},
+        {ro * std::cos(sector), ro * std::sin(sector), -1, 0},
     };
     // Radial seams (boundary 0 = "seam"), outer/inner arcs (boundary 1 = "outer").
     tile.geometry.segments = {{0, 1, -1, 0, false, 0}, {2, 3, -1, 0, false, 0}};
@@ -188,7 +190,7 @@ bool testBuildTileProblem()
     REQUIRE(problem->lineproplist.size() == 3);
     REQUIRE(problem->blockproplist.size() == 1);
     REQUIRE(problem->circproplist.size() == 1);
-    REQUIRE(problem->nodelist[0]->BoundaryMarker == 0);
+    REQUIRE(problem->nodelist[0]->BoundaryMarker == -1);
     REQUIRE(problem->linelist[0]->BoundaryMarker == 0);
     REQUIRE(problem->labellist[0]->BlockType == 0);
     REQUIRE(problem->labellist[0]->InCircuit == 0);

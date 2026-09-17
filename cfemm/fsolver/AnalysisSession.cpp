@@ -323,8 +323,11 @@ AnalysisSession::nodesForInstance(std::size_t instanceIndex) const
     return nodes;
 }
 
-std::size_t AnalysisSession::templateLabelCount() const
+std::size_t AnalysisSession::templateLabelCountFor(std::size_t templateIndex) const
 {
+    if (m_instanced && templateIndex < m_instanced->templateLabels.size() &&
+        !m_instanced->templateLabels[templateIndex].empty())
+        return m_instanced->templateLabels[templateIndex].size();
     std::size_t count = 0;
     for (const auto &property : m_model.problem().labellist) {
         const auto *label = dynamic_cast<const CMBlockLabel *>(property.get());
@@ -334,19 +337,53 @@ std::size_t AnalysisSession::templateLabelCount() const
     return count;
 }
 
+void AnalysisSession::templateLabelsFor(std::size_t templateIndex,
+                                        std::vector<CMBlockLabel> &labels,
+                                        std::vector<std::size_t> &sourceIndices) const
+{
+    labels.clear();
+    sourceIndices.clear();
+    if (m_instanced && templateIndex < m_instanced->templateLabels.size() &&
+        !m_instanced->templateLabels[templateIndex].empty()) {
+        labels = m_instanced->templateLabels[templateIndex];
+        sourceIndices.resize(labels.size());
+        for (std::size_t j = 0; j < labels.size(); ++j)
+            sourceIndices[j] = j;
+        return;
+    }
+    for (std::size_t raw = 0; raw < m_model.problem().labellist.size(); ++raw) {
+        const auto *label =
+            dynamic_cast<const CMBlockLabel *>(m_model.problem().labellist[raw].get());
+        if (label && !label->isHole()) {
+            labels.push_back(*label);
+            sourceIndices.push_back(raw);
+        }
+    }
+}
+
 mesh::SolverMesh
 AnalysisSession::remapInstancedRegions(const mesh::SolverMesh &canonical) const
 {
     mesh::SolverMesh mesh = canonical;
-    const std::size_t labelCount = templateLabelCount();
-    if (labelCount == 0)
+    if (!m_instanced)
         return mesh;
+    std::vector<std::size_t> instanceBase(m_instanced->instances.size(), 0);
+    std::size_t base = 0;
+    for (std::size_t i = 0; i < m_instanced->instances.size(); ++i) {
+        instanceBase[i] = base;
+        base += templateLabelCountFor(m_instanced->instances[i].templateIndex);
+    }
     for (std::size_t e = 0; e < mesh.elements.size(); ++e) {
-        const std::size_t instance = m_instancingProvenance.elementProvenance[e].instanceIndex;
+        const std::size_t instance =
+            m_instancingProvenance.elementProvenance[e].instanceIndex;
+        if (instance >= m_instanced->instances.size())
+            continue;
+        const std::size_t labelCount =
+            templateLabelCountFor(m_instanced->instances[instance].templateIndex);
         const std::int32_t attribute = mesh.elements[e].regionAttribute;
         if (attribute > 0 && static_cast<std::size_t>(attribute) <= labelCount)
-            mesh.elements[e].regionAttribute =
-                static_cast<std::int32_t>(instance * labelCount + static_cast<std::size_t>(attribute));
+            mesh.elements[e].regionAttribute = static_cast<std::int32_t>(
+                instanceBase[instance] + static_cast<std::size_t>(attribute));
     }
     return mesh;
 }
@@ -389,32 +426,18 @@ void AnalysisSession::rebuildInstancedPrepared(PreparedAnalysis &candidate) cons
     if (!m_instanced)
         return;
 
-    std::vector<std::size_t> rawIndices;
-    std::vector<const CMBlockLabel *> templateLabels;
-    for (std::size_t raw = 0; raw < m_model.problem().labellist.size(); ++raw) {
-        const auto *label =
-            dynamic_cast<const CMBlockLabel *>(m_model.problem().labellist[raw].get());
-        if (label && !label->isHole()) {
-            templateLabels.push_back(label);
-            rawIndices.push_back(raw);
-        }
-    }
-    const std::size_t labelCount = templateLabels.size();
-    const std::size_t instanceCount = m_instanced->instances.size();
-    candidate.labels.reserve(labelCount * instanceCount);
-    for (std::size_t k = 0; k < instanceCount; ++k) {
-        const auto &instance = m_instanced->instances[k];
-        for (std::size_t j = 0; j < labelCount; ++j) {
-            CMBlockLabel label = *templateLabels[j];
-            // A rigid transform rotates directional quantities. A constant
-            // magnetisation direction therefore follows the instance rotation;
-            // a positional MagDirFctn is evaluated at the transformed
-            // coordinates and must not be rotated again. Overrides are applied
-            // afterwards as an explicit delta.
+    for (const auto &instance : m_instanced->instances) {
+        std::vector<CMBlockLabel> templateLabels;
+        std::vector<std::size_t> sourceIndices;
+        templateLabelsFor(instance.templateIndex, templateLabels, sourceIndices);
+        for (std::size_t j = 0; j < templateLabels.size(); ++j) {
+            CMBlockLabel label = templateLabels[j];
+            // A rigid transform rotates directional quantities; a positional
+            // MagDirFctn already accounts for the transform.
             if (label.MagDirFctn.empty())
                 label.MagDir += instance.transform.rotationDegrees;
             for (const auto &override : instance.regionOverrides) {
-                if (override.sourceBlockLabel != rawIndices[j])
+                if (override.sourceBlockLabel != sourceIndices[j])
                     continue;
                 if (override.circuit)
                     label.InCircuit = static_cast<int>(*override.circuit);

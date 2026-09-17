@@ -1,6 +1,7 @@
 #ifndef FEMM_MESH_INSTANCEDMESH_H
 #define FEMM_MESH_INSTANCEDMESH_H
 
+#include "CBlockLabel.h"
 #include "SolverMesh.h"
 
 #include <cstddef>
@@ -226,6 +227,15 @@ struct InstancedMesh {
     std::vector<AirGapCoupling> airGapCouplings;
     /** Periodic/antiperiodic end links for open sectors. */
     std::vector<PeriodicClosure> periodicClosures;
+    /**
+     * Optional per-template physics prototypes, parallel to \c templates. Each
+     * entry is the template's non-hole block labels, whose order matches the
+     * template mesh's one-based region attributes. A session uses these to
+     * build per-instance solver labels for a multi-tile model; an empty entry
+     * falls back to the session model's own label list. Physics, not topology,
+     * so it is excluded from the layout identity.
+     */
+    std::vector<std::vector<CMBlockLabel>> templateLabels;
 
     /** Validate template-local topology, transforms, seams, and connections. */
     std::vector<MaterializationDiagnostic> validate() const;
