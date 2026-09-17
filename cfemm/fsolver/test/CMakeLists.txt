@@ -81,6 +81,12 @@ add_test(NAME analysis_session_machine COMMAND analysis_session_machine_test)
 set_tests_properties(analysis_session_machine PROPERTIES
     LABELS "magnetics;solver;instanced;unit")
 
+add_executable(tiled_model_airgap_test tiled_model_airgap_test.cpp)
+target_link_libraries(tiled_model_airgap_test PRIVATE fsolver)
+add_test(NAME tiled_model_airgap COMMAND tiled_model_airgap_test)
+set_tests_properties(tiled_model_airgap PROPERTIES
+    LABELS "solver;Tangle;tiled;instanced;unit")
+
 add_executable(periodic_pbc_without_age_test periodic_pbc_without_age_test.cpp)
 target_link_libraries(periodic_pbc_without_age_test PRIVATE fsolver)
 add_test(NAME periodic_pbc_without_age
