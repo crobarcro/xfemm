@@ -24,8 +24,8 @@ upstream at any revision, so xfemm cannot simply move the pin.
 ## Decision
 
 The required capability is added to the Tangle fork at
-`https://github.com/crobarcro/tangle` on branch `xfemm-library-api` (commit
-`0aa619f0466edc3aad41b399d57195d3c585ea41`):
+`https://github.com/crobarcro/tangle` on branch `xfemm-library-api` (current
+commit `5ae72ff4dcfe88e496b0e8098f4bb796abd7fee4`):
 
 - `MeshOptions` and an overload
   `tangle_mesh_fem(path, const MeshOptions&, Mesh&)` apply caller overrides
@@ -35,6 +35,13 @@ The required capability is added to the Tangle fork at
   between each declared pair of matched chains. The chains are extracted after
   refinement from the maintained `pbc_twin` map, so they reflect the final
   synchronously split discretisation and do not depend on `pbc_pairs`.
+- `FemProblem` and an overload
+  `tangle_mesh_fem(const FemProblem&, const MeshOptions&, Mesh&)` mesh a
+  FEMM-like problem already held in memory, so a caller can mesh a tile it has
+  parsed without a file round trip. `readFemFile` was factored into a stream
+  reader (`readFemStream`) plus a thin file wrapper; the record entry point
+  shares the exact file parser (arc discretization, LFS, PBC and AGE handling)
+  and emits the same `boundary_matches`. The file overloads are unchanged.
 
 xfemm temporarily pins `XFEMM_TANGLE_REPOSITORY` and the MEX
 `gettanglesourcedir` helper to that fork commit. Both are documented as

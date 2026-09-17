@@ -19,7 +19,7 @@ set(XFEMM_TANGLE_REPOSITORY https://github.com/crobarcro/tangle.git CACHE STRING
     "Tangle repository used by xfemm. Temporarily the development fork that
      carries the library options and boundary-match API; revert to
      https://github.com/dcm3c/tangle.git once those changes are upstreamed.")
-set(XFEMM_TANGLE_REVISION 0aa619f0466edc3aad41b399d57195d3c585ea41 CACHE STRING
+set(XFEMM_TANGLE_REVISION 5ae72ff4dcfe88e496b0e8098f4bb796abd7fee4 CACHE STRING
     "Pinned Tangle revision used by xfemm.")
 set(XFEMM_MESHER_BACKEND Triangle CACHE STRING
     "Default xfemm mesher backend (Triangle or Tangle).")
@@ -100,6 +100,7 @@ add_library(fmesher STATIC
     nosebl.cpp
     TangleMeshConverter.cpp
     TangleMesherBackend.cpp
+    TiledModelMesher.cpp
     TriangleMesher.cpp
     TriangleMesherBackend.cpp
     writepoly.cpp

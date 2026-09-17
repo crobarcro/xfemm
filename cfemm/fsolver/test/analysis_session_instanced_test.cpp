@@ -131,13 +131,17 @@ bool testIndependentPhysicsAndCaches()
     }
     assert(nonTrivial);
 
-    // A transform change re-materialises and re-imports topology.
+    // A transform change re-materialises and re-imports topology. A rigid
+    // rotation also carries the constant magnetisation with it: the instance
+    // rotation (90) is added before the explicit override delta (180).
     RigidTransform2D moved;
     moved.translationXMetres = 4.0;
+    moved.rotationDegrees = 90.0;
     session.setInstanceTransform(1, moved);
     session.synchronize();
     assert(session.materializationCount() == 2);
     assert(solver->topologyImportCount() == 2);
+    assert(session.prepared().labels[1].MagDir == 270.0);
 
     // Circuit, material, and solve-parameter changes never touch topology.
     session.setCircuitCurrent(session.model().circuit("phase"), CComplex(2, 0));

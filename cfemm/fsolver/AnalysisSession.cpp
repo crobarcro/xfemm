@@ -244,7 +244,10 @@ void AnalysisSession::setInstanceTransform(std::size_t instance,
         throw std::invalid_argument("instance transform must be finite");
     m_instanced->instances[instance].transform = transform;
     m_mesh.reset();
-    invalidate(Dirty::Mesh | Dirty::Operator | Dirty::RightHandSide);
+    // The transform rotates constant magnetisation, so prepared labels must be
+    // rebuilt as well as the mesh and operator.
+    invalidate(Dirty::Mesh | Dirty::PreparedCircuits | Dirty::Operator |
+               Dirty::RightHandSide);
 }
 
 void AnalysisSession::setInstanceRegionOverrides(
@@ -403,6 +406,13 @@ void AnalysisSession::rebuildInstancedPrepared(PreparedAnalysis &candidate) cons
         const auto &instance = m_instanced->instances[k];
         for (std::size_t j = 0; j < labelCount; ++j) {
             CMBlockLabel label = *templateLabels[j];
+            // A rigid transform rotates directional quantities. A constant
+            // magnetisation direction therefore follows the instance rotation;
+            // a positional MagDirFctn is evaluated at the transformed
+            // coordinates and must not be rotated again. Overrides are applied
+            // afterwards as an explicit delta.
+            if (label.MagDirFctn.empty())
+                label.MagDir += instance.transform.rotationDegrees;
             for (const auto &override : instance.regionOverrides) {
                 if (override.sourceBlockLabel != rawIndices[j])
                     continue;

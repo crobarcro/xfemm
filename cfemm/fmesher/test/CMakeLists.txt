@@ -62,6 +62,12 @@ add_test(NAME fmesher_template_request
 set_tests_properties(fmesher_template_request PROPERTIES
     LABELS "mesher;Tangle;Triangle;instanced;unit")
 
+add_executable(tiled_model_mesher_test tiled_model_mesher_test.cpp)
+target_link_libraries(tiled_model_mesher_test PRIVATE fmesher Tangle::tangle)
+add_test(NAME fmesher_tiled_model_mesher COMMAND tiled_model_mesher_test)
+set_tests_properties(fmesher_tiled_model_mesher PROPERTIES
+    LABELS "mesher;Tangle;tiled;instanced;unit")
+
 foreach(backend Triangle Tangle)
     add_test(NAME fmesher_${backend}_backend_solver_mesh
         COMMAND fmesher_backend_test "${backend}"

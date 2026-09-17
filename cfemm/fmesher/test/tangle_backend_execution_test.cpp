@@ -40,12 +40,21 @@ int main()
     femm::FemmProblem problem(femm::FileType::MagneticsFile);
     problem.pathName = "in-memory-engine-probe.fem";
     int calls = 0;
+    int inMemoryCalls = 0;
     std::string receivedPath;
     ::MeshOptions receivedOptions;
+    ::FemProblem receivedProblem;
     fmesher::TangleMesherBackend backend(
         [&](const std::string &path, const ::MeshOptions &options, Mesh &mesh) {
             ++calls;
             receivedPath = path;
+            receivedOptions = options;
+            mesh = engineMesh();
+            return TANGLE_OK;
+        },
+        [&](const ::FemProblem &problem, const ::MeshOptions &options, Mesh &mesh) {
+            ++inMemoryCalls;
+            receivedProblem = problem;
             receivedOptions = options;
             mesh = engineMesh();
             return TANGLE_OK;
@@ -101,9 +110,8 @@ int main()
 
     problem.pathName.clear();
     result = backend.mesh(problem, true);
-    if (result.succeeded() || result.status != femm::mesh::MeshStatus::InvalidInput ||
-        calls != 2)
-        return fail("pathless problem was not rejected before engine execution");
+    if (!result.succeeded() || inMemoryCalls != 1 || calls != 2)
+        return fail("pathless problem was not meshed through the in-memory engine");
 
     if (std::string(backend.name()) != "Tangle")
         return fail("Tangle backend did not report its name");

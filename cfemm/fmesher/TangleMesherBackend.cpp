@@ -258,6 +258,90 @@ TemplateBuild buildRotationalTemplate(const femm::FemmProblem &problem,
     return build;
 }
 
+/**
+ * Convert xfemm's in-memory problem into Tangle's FEMM-like record set. xfemm
+ * stores zero-based boundary/circuit references (with -1 for none) and areas,
+ * while the record set follows the .fem columns (one-based references, 0 for
+ * none, and a mesh-size diameter), so the conversion normalises both.
+ */
+::FemProblem toTangleProblem(const femm::FemmProblem &problem)
+{
+    constexpr double Pi = 3.141592653589793238462643383279502884;
+    ::FemProblem out;
+    out.isMagnetics = problem.filetype == femm::FileType::MagneticsFile;
+    out.minAngle = problem.MinAngle;
+    out.doSmartMesh = problem.DoSmartMesh;
+
+    for (const auto &node : problem.nodelist) {
+        if (!node)
+            continue;
+        ::FemProblem::Node converted;
+        converted.x = node->x;
+        converted.y = node->y;
+        converted.boundaryMarker = node->BoundaryMarker >= 0 ? node->BoundaryMarker + 1 : 0;
+        converted.group = node->InGroup;
+        out.nodes.push_back(converted);
+    }
+    for (const auto &segment : problem.linelist) {
+        if (!segment)
+            continue;
+        ::FemProblem::Segment converted;
+        converted.n0 = segment->n0;
+        converted.n1 = segment->n1;
+        converted.maxSideLength = segment->MaxSideLength;
+        converted.boundaryMarker =
+            segment->BoundaryMarker >= 0 ? segment->BoundaryMarker + 1 : 0;
+        converted.hidden = segment->Hidden ? 1 : 0;
+        converted.group = segment->InGroup;
+        out.segments.push_back(converted);
+    }
+    for (const auto &arc : problem.arclist) {
+        if (!arc)
+            continue;
+        ::FemProblem::Arc converted;
+        converted.n0 = arc->n0;
+        converted.n1 = arc->n1;
+        converted.arcLength = arc->ArcLength;
+        converted.maxSegDegrees = arc->MaxSideLength;
+        converted.boundaryMarker = arc->BoundaryMarker >= 0 ? arc->BoundaryMarker + 1 : 0;
+        converted.hidden = arc->Hidden ? 1 : 0;
+        converted.group = arc->InGroup;
+        out.arcs.push_back(converted);
+    }
+    for (const auto &property : problem.lineproplist) {
+        ::FemProblem::Boundary converted;
+        if (property) {
+            converted.name = property->BdryName;
+            converted.format = property->BdryFormat;
+            converted.innerAngle = property->InnerAngle;
+            converted.outerAngle = property->OuterAngle;
+        }
+        out.boundaries.push_back(converted);
+    }
+    for (const auto &labelPtr : problem.labellist) {
+        const auto *label = dynamic_cast<const femm::CMBlockLabel *>(labelPtr.get());
+        if (!label)
+            continue;
+        if (label->isHole()) {
+            out.holes.push_back({label->x, label->y});
+            continue;
+        }
+        ::FemProblem::Label converted;
+        converted.x = label->x;
+        converted.y = label->y;
+        converted.blockType = label->BlockType + 1;
+        converted.maxAreaDiameter =
+            label->MaxArea > 0 ? std::sqrt(4.0 * label->MaxArea / Pi) : -1.0;
+        converted.inCircuit = label->InCircuit >= 0 ? label->InCircuit + 1 : 0;
+        converted.magDir = label->MagDir;
+        converted.group = label->InGroup;
+        converted.turns = label->Turns;
+        converted.isExternal = label->IsExternal ? 1 : 0;
+        out.labels.push_back(converted);
+    }
+    return out;
+}
+
 std::vector<femm::mesh::MeshDiagnostic> materializationDiagnostics(
     const std::vector<femm::mesh::MaterializationDiagnostic> &diagnostics)
 {
@@ -272,12 +356,18 @@ std::vector<femm::mesh::MeshDiagnostic> materializationDiagnostics(
 
 } // namespace
 
-TangleMesherBackend::TangleMesherBackend(Engine engine)
+TangleMesherBackend::TangleMesherBackend(Engine engine, InMemoryEngine inMemoryEngine)
     : engine_(engine ? std::move(engine)
                      : Engine([](const std::string &path, const ::MeshOptions &options,
                                  ::Mesh &mesh) {
                            return tangle_mesh_fem(path, options, mesh);
                        }))
+    , inMemoryEngine_(inMemoryEngine
+                          ? std::move(inMemoryEngine)
+                          : InMemoryEngine([](const ::FemProblem &problem,
+                                              const ::MeshOptions &options, ::Mesh &mesh) {
+                                return tangle_mesh_fem(problem, options, mesh);
+                            }))
 {
 }
 
@@ -289,10 +379,9 @@ femm::mesh::MeshResult TangleMesherBackend::mesh(
         result.status = femm::mesh::MeshStatus::InvalidInput;
         return result;
     }
-    if (problem.getTitle().empty())
-        return failure(femm::mesh::MeshStatus::InvalidInput,
-                       "Tangle requires a FemmProblem loaded from a FEMM file",
-                       TANGLE_ERR_NO_FILE);
+    // A titled problem is meshed from its FEMM file; a pathless problem is a
+    // tile or model held in memory and is meshed through the record API.
+    const bool inMemory = problem.getTitle().empty();
 
     const bool instancing = !request.templates.empty();
     if (instancing && request.templates.size() > 1) {
@@ -320,7 +409,10 @@ femm::mesh::MeshResult TangleMesherBackend::mesh(
 
     ::Mesh tangleMesh;
     const int engineStatus =
-        engine_(problem.getTitle(), translateOptions(tileRequest.options), tangleMesh);
+        inMemory
+            ? inMemoryEngine_(toTangleProblem(problem), translateOptions(tileRequest.options),
+                              tangleMesh)
+            : engine_(problem.getTitle(), translateOptions(tileRequest.options), tangleMesh);
     if (engineStatus != TANGLE_OK)
         return failure(statusFor(engineStatus), statusMessage(engineStatus), engineStatus);
 

@@ -71,6 +71,9 @@ add_library(femm
     PostProcessor.cpp
     spars.cpp
     stringTools.cpp
+    Json.cpp
+    TiledModel.cpp
+    TiledModelJson.cpp
     linsolve/backend_factory.cpp
     mesh/InstancedMesh.cpp
     mesh/SolverMeshValidator.cpp

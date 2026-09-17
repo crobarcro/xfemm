@@ -111,6 +111,23 @@ struct AirGapCoupling {
     double outerShift = 0.0;
 };
 
+/**
+ * Identify two seams as the periodic/antiperiodic ends of an open sector.
+ *
+ * Unlike a seam connection, a closure does not weld nodes: the two ordered
+ * chains stay geometrically distinct and are linked by periodic field
+ * constraints. Internal joins between adjacent instances are welded as usual;
+ * a closed ring has no closure and instead welds its last seam to its first.
+ */
+struct PeriodicClosure {
+    std::size_t firstInstance = 0;
+    std::size_t firstSeam = 0;
+    std::size_t secondInstance = 0;
+    std::size_t secondSeam = 0;
+    SeamOrientation orientation = SeamOrientation::Forward;
+    SolverMesh::Periodicity periodicity = SolverMesh::Periodicity::Periodic;
+};
+
 /** One placed occurrence of a template. */
 struct MeshInstance {
     std::size_t templateIndex = 0;
@@ -144,6 +161,7 @@ enum class MaterializationDiagnosticCategory {
     InvalidAirGapNode,
     InvalidAirGapStructure,
     InvalidAirGapCoupling,
+    InvalidPeriodicClosure,
     IndexOverflow
 };
 
@@ -206,6 +224,8 @@ struct InstancedMesh {
     std::vector<MeshInstance> instances;
     /** Cross-template air-gap couplings (independent stator/rotor domains). */
     std::vector<AirGapCoupling> airGapCouplings;
+    /** Periodic/antiperiodic end links for open sectors. */
+    std::vector<PeriodicClosure> periodicClosures;
 
     /** Validate template-local topology, transforms, seams, and connections. */
     std::vector<MaterializationDiagnostic> validate() const;
@@ -214,8 +234,13 @@ struct InstancedMesh {
     MaterializationResult materialize() const;
 };
 
-/** Metre-scale tolerance used only to reject an inconsistent seam weld. */
-constexpr double InstancedMeshWeldToleranceMetres = 1e-9;
+/**
+ * Metre-scale tolerance used only to reject an inconsistent seam weld. It must
+ * accommodate the precision of mesher-generated seam nodes (Tangle's
+ * synchronised seam splitting can differ by tens of nanometres), so it is a
+ * micron-scale value rather than machine epsilon.
+ */
+constexpr double InstancedMeshWeldToleranceMetres = 1e-6;
 
 /**
  * Stable 64-bit identities for cache invalidation. They depend only on value

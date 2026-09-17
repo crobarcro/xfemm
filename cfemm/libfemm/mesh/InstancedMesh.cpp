@@ -310,6 +310,38 @@ std::vector<MaterializationDiagnostic> InstancedMesh::validate() const
         }
     }
 
+    for (std::size_t c = 0; c < periodicClosures.size(); ++c) {
+        const auto &closure = periodicClosures[c];
+        if (closure.firstInstance >= instances.size() ||
+            closure.secondInstance >= instances.size()) {
+            addDiagnostic(diagnostics, MaterializationDiagnosticCategory::InvalidPeriodicClosure,
+                          c, 0, 0, "periodic closure references an invalid instance");
+            continue;
+        }
+        if (closure.firstSeam >=
+                templates[instances[closure.firstInstance].templateIndex].seams.size() ||
+            closure.secondSeam >=
+                templates[instances[closure.secondInstance].templateIndex].seams.size()) {
+            addDiagnostic(diagnostics, MaterializationDiagnosticCategory::InvalidPeriodicClosure,
+                          c, 0, 0, "periodic closure references an invalid seam");
+            continue;
+        }
+        if (closure.firstInstance == closure.secondInstance &&
+            closure.firstSeam == closure.secondSeam) {
+            addDiagnostic(diagnostics, MaterializationDiagnosticCategory::InvalidPeriodicClosure,
+                          c, 0, 0, "periodic closure links a seam to itself");
+            continue;
+        }
+        const auto &first =
+            templates[instances[closure.firstInstance].templateIndex].seams[closure.firstSeam];
+        const auto &second =
+            templates[instances[closure.secondInstance].templateIndex].seams[closure.secondSeam];
+        if (first.orderedNodes.size() != second.orderedNodes.size()) {
+            addDiagnostic(diagnostics, MaterializationDiagnosticCategory::InvalidPeriodicClosure,
+                          c, 0, 0, "periodic closure seams have different node counts");
+        }
+    }
+
     using SeamKey = std::pair<std::pair<std::size_t, std::size_t>,
                               std::pair<std::size_t, std::size_t>>;
     std::map<SeamKey, int> orientations;
@@ -589,6 +621,30 @@ MaterializationResult InstancedMesh::materialize() const
         }
     }
 
+    // Emit the periodic/antiperiodic links that close an open sector. The two
+    // end seams are not welded, so their nodes stay distinct and the field is
+    // identified only by the explicit constraint.
+    for (const auto &closure : periodicClosures) {
+        const auto &first =
+            templates[instances[closure.firstInstance].templateIndex].seams[closure.firstSeam];
+        const auto &second =
+            templates[instances[closure.secondInstance].templateIndex].seams[closure.secondSeam];
+        const bool reverse = closure.orientation == SeamOrientation::Reverse;
+        const std::size_t count = first.orderedNodes.size();
+        for (std::size_t i = 0; i < count; ++i) {
+            const std::size_t j = reverse ? count - 1 - i : i;
+            const MeshIndex a =
+                result.provenance.nodeMap[closure.firstInstance][first.orderedNodes[i]];
+            const MeshIndex b =
+                result.provenance.nodeMap[closure.secondInstance][second.orderedNodes[j]];
+            const int type =
+                closure.periodicity == SolverMesh::Periodicity::Antiperiodic ? 1 : 0;
+            if (seenConstraints.insert({std::min(a, b), std::max(a, b), type}).second) {
+                result.mesh.periodicConstraints.push_back({a, b, closure.periodicity});
+            }
+        }
+    }
+
     // Remap AGE rings, quadrature nodes, and node-index lists.
     for (std::size_t i = 0; i < instances.size(); ++i) {
         const auto &instance = instances[i];
@@ -799,6 +855,15 @@ std::uint64_t instanceLayoutIdentity(const InstancedMesh &instanced)
             hash.addSize(connection.otherSeam);
             hash.addByte(connection.orientation == SeamOrientation::Reverse ? 1u : 0u);
         }
+    }
+    hash.addSize(instanced.periodicClosures.size());
+    for (const auto &closure : instanced.periodicClosures) {
+        hash.addSize(closure.firstInstance);
+        hash.addSize(closure.firstSeam);
+        hash.addSize(closure.secondInstance);
+        hash.addSize(closure.secondSeam);
+        hash.addByte(closure.orientation == SeamOrientation::Reverse ? 1u : 0u);
+        hash.addByte(closure.periodicity == SolverMesh::Periodicity::Antiperiodic ? 1u : 0u);
     }
     return hash.value();
 }
