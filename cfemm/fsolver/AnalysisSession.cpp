@@ -436,6 +436,13 @@ void AnalysisSession::rebuildInstancedPrepared(PreparedAnalysis &candidate) cons
             // MagDirFctn already accounts for the transform.
             if (label.MagDirFctn.empty())
                 label.MagDir += instance.transform.rotationDegrees;
+            // Move the label with its instance so region selection by
+            // coordinates matches the materialised mesh.
+            double labelX = 0.0;
+            double labelY = 0.0;
+            instance.transform.applyPoint(label.x, label.y, labelX, labelY);
+            label.x = labelX;
+            label.y = labelY;
             for (const auto &override : instance.regionOverrides) {
                 if (override.sourceBlockLabel != sourceIndices[j])
                     continue;

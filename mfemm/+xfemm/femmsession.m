@@ -44,11 +44,18 @@ classdef femmsession < fpproc
     methods
         function this = femmsession(filename)
             %FEMMSESSION Load FILENAME and create a native analysis session.
+            %   A .fem file is loaded as a normal problem; a .json file is a
+            %   tiled-magnetic model whose tiles are meshed once and repeated.
             narginchk(1, 1);
             this@fpproc();
-            this.sessionHandle = session_interface_mex('new', filename);
+            [~, ~, extension] = fileparts(filename);
+            if strcmpi(extension, '.json')
+                this.sessionHandle = session_interface_mex('newtiled', filename);
+            else
+                this.sessionHandle = session_interface_mex('new', filename);
+                this.FemmProblem = loadfemmfile(filename);
+            end
             this.openfilename = filename;
-            this.FemmProblem = loadfemmfile(filename);
         end
 
         function delete(this)

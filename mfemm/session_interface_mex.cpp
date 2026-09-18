@@ -7,10 +7,14 @@
 #include "FSolverAnalysisBackend.h"
 #include "FemmReader.h"
 #include "TangleMesherBackend.h"
+#include "TiledModel.h"
+#include "TiledModelJson.h"
+#include "TiledModelMesher.h"
 #include "TriangleMesherBackend.h"
 #include "postproc/fpproc_interface.h"
 
 #include <cmath>
+#include <fstream>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -71,6 +75,53 @@ public:
         result->m_session.reset(new femm::AnalysisSession(
             femm::ModelDefinition(std::move(owned)), result->m_solver));
         result->m_filename = filename;
+        return result;
+    }
+
+    /**
+     * Create a session from a tiled-model JSON file. The session model is the
+     * shared property set (no tile geometry); each tile is meshed once through
+     * Tangle and assembled into the session's instanced mesh.
+     */
+    static std::unique_ptr<SessionGateway> createTiled(const std::string &filename)
+    {
+        std::ifstream input(filename);
+        if (!input)
+            throw std::runtime_error("could not open tiled model: " + filename);
+        std::ostringstream buffer;
+        buffer << input.rdbuf();
+
+        femm::tiled::TiledModel model;
+        std::vector<femm::tiled::TiledDiagnostic> errors;
+        if (!femm::tiled::loadTiledModelJson(buffer.str(), model, errors))
+            throw std::runtime_error("could not parse tiled model: " +
+                                     (errors.empty() ? filename : errors.front().message));
+        const femm::tiled::TiledValidationResult validation =
+            femm::tiled::validateTiledModel(model);
+        if (!validation.succeeded())
+            throw std::runtime_error("invalid tiled model: " +
+                                     validation.diagnostics.front().message);
+
+        std::unique_ptr<SessionGateway> result(new SessionGateway);
+        std::unique_ptr<femm::FemmProblem> owned = femm::tiled::buildTileProblem(model, 0);
+        owned->nodelist.clear();
+        owned->linelist.clear();
+        owned->arclist.clear();
+        owned->labellist.clear();
+        owned->pathName.clear();
+        result->m_solver = std::make_shared<femm::FSolverAnalysisBackend>();
+        result->m_session.reset(new femm::AnalysisSession(
+            femm::ModelDefinition(std::move(owned)), result->m_solver));
+        result->m_filename = filename;
+
+        fmesher::TangleMesherBackend backend;
+        fmesher::TiledMeshResult meshed = fmesher::meshTiledModel(model, backend);
+        if (!meshed.ok)
+            throw std::runtime_error(
+                "could not mesh tiled model: " +
+                (meshed.diagnostics.empty() ? filename : meshed.diagnostics.front().message));
+        result->m_session->setInstancedMesh(std::move(meshed.instanced));
+        result->m_backendName = "tangle";
         return result;
     }
 
@@ -280,6 +331,11 @@ try {
     if (command == "new") {
         if (nrhs != 2 || nlhs != 1) throw std::invalid_argument("new requires one filename and one output");
         plhs[0] = convertPtr2Mat(SessionGateway::create(stringValue(prhs[1], "filename")).release());
+        return;
+    }
+    if (command == "newtiled") {
+        if (nrhs != 2 || nlhs != 1) throw std::invalid_argument("newtiled requires one filename and one output");
+        plhs[0] = convertPtr2Mat(SessionGateway::createTiled(stringValue(prhs[1], "filename")).release());
         return;
     }
     if (nrhs < 2) throw std::invalid_argument("second input must be a session handle");
