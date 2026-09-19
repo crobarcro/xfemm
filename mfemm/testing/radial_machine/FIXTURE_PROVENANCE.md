@@ -70,6 +70,30 @@ so torque and vector potential are compared against the sliding session, which
 shares the tiled model's AGE mechanism. The redraw comparison keeps the winding
 flux linkage and coil flux density checks.
 
+## Sliding-versus-redraw field discrepancy
+
+`Test_radial_machine_sliding_vs_redraw.m` compares the air-gap-element
+(`SlidingMesh`) and full-redraw (`MagnetRedraw`) methods at several rotor
+positions. The two agree on the winding flux linkage and the coil flux-density
+magnitude, but their detailed air-gap vector potential diverges as the rotor
+moves. The mean-removed sample correlation is about `1.0` at `0 deg`, `0.79` at
+`10 deg`, `-0.21` at `20 deg` and `-0.05` at `30 deg`.
+
+The redraw is validated as correct: a fresh `NPolePairs = 2` (120-degree)
+`MagnetRotation` model agrees with the checked-in 60-degree redraw fixture to
+`corr = 0.999999` at position 5. The discrepancy is therefore in the AGE path.
+It is not specific to this branch: the `master` fixtures (older RNFoundry) show
+the same correlation `0.54` at position 5 with the current code, and the AGE
+assembly (`static2d.cpp`), the AGE ring construction (`writepoly.cpp`) and the
+Tangle converter are unchanged from `master`. The AGE assembly matches the
+original FEMM source (`fkn/prob1big.cpp`) term for term.
+
+The AGE error grows linearly with the rotor angle even at integer multiples of
+the 0.6-degree ring spacing, where the interpolation should be exact, so it is
+not a coarse-ring interpolation artifact. The cause has not yet been isolated;
+the CI test reports the correlation but does not assert it, so the flux and
+density signal is not hidden until this is resolved.
+
 ## Result schema and recorded quantities
 
 `radial_machine_fixture_case.m` and `radial_machine_tiled_case.m` write

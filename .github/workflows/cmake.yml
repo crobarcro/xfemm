@@ -116,8 +116,11 @@ jobs:
         octave --no-gui --quiet --eval
         "addpath(fullfile(pwd, 'mfemm')); mfemm_setup('ForceMexRecompile', true,
         'RunTests', true, 'Clean', true, 'Tidy', true);
+        addpath(fullfile(pwd, 'mfemm', 'testing'));
+        addpath(fullfile(pwd, 'mfemm', 'testing', 'radial_machine'));
         Test_femmsession;
-        Test_femmsession_instanced;"
+        Test_femmsession_instanced;
+        Test_radial_machine_sliding_vs_redraw;"
 
   python:
     name: Python interface
