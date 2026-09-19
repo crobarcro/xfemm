@@ -272,10 +272,21 @@ double-quoting). The multi-template AGE coupling is implemented and tested, and
 `generate_tiled_machine_fixture.m` now produces the checked-in
 `data/radial_machine_tiled.json`: a 60-degree pole-pair rotor tile (6 instances)
 and a 10-degree slot tile (36 instances) coupled only through the AGE.
-`Test_radial_machine_tiled_methods.m` compares its winding flux linkage and coil
-flux density with the redraw and sliding fixtures; a three-position sweep passes.
-The winding-flux-linkage tolerance decision is recorded: it is a cancellation-
+`Test_radial_machine_tiled_methods.m` compares its winding flux linkage, coil
+flux density, cogging torque, air-gap torque, and vector-potential samples with
+the redraw and sliding fixtures; a three-position sweep passes. The
+winding-flux-linkage tolerance decision is recorded: it is a cancellation-
 dominated quantity compared with an absolute tolerance of `2e-6`.
+
+A separate, pre-existing finding is recorded in `FIXTURE_PROVENANCE.md`: the
+legacy redraw's detailed air-gap field and torque integrals do not reproduce the
+AGE at non-zero rotor positions (they agree exactly at position 0). The redraw
+field is validated against a 120-degree model, and the divergence grows linearly
+with the rotor angle; the AGE's stator-side field matches the redraw while its
+rotor-side field stays at the drawn position. `Test_radial_machine_sliding_vs_redraw.m`
+guards the two methods in CI and reports the field correlation and shared-contour
+air-gap torque relative error. Resolving this AGE discrepancy is not part of the
+instancing milestones and is tracked as a follow-up (see "Next tasks" below).
 
 - [x] **F1: Freeze generator provenance and tolerances.**
   - Depends on: E5.
@@ -310,12 +321,15 @@ dominated quantity compared with an absolute tolerance of `2e-6`.
     sliding fixtures. `meshTiledModel` now applies the JSON's per-instance
     circuit/turn/magnetisation overrides; the C++ `analysis_session_machine`
     test still covers independent counts and topology reuse. The comparison now
-    also covers cogging torque (weighted stress tensor, 35% relative tolerance)
-    and vector-potential samples in the meshed air-gap halves (5% relative
-    tolerance after removing the gauge-dependent mean) against the sliding
-    session. The legacy redraw's detailed field and torque do not reproduce the
-    sliding session at non-zero positions, so those two observables are
-    compared against the sliding session only.
+    also covers cogging torque (weighted stress tensor, 35% relative tolerance),
+    a shared-contour air-gap torque (15% relative tolerance), and vector-
+    potential samples in the meshed air-gap halves (5% relative tolerance after
+    removing the gauge-dependent mean) against the sliding session.
+    `Test_radial_machine_sliding_vs_redraw.m` is the CI guard for the two
+    rotor-motion methods. The legacy redraw's detailed field and torque do not
+    reproduce the sliding session at non-zero positions, so those observables
+    are compared against the sliding session only and the redraw comparison
+    reports them without asserting.
 - [x] **F5: Add extended rotor-position sweep.**
   - Depends on: F4.
   - Compare redraw, sliding, and instanced results over all fixture positions;
@@ -335,6 +349,28 @@ dominated quantity compared with an absolute tolerance of `2e-6`.
 **Milestone F exit check:** independent stator/rotor instance counts work, machine
 observables meet tolerances, and position sweeps neither remesh templates nor
 reimport solver topology.
+
+## Follow-up — AGE (sliding-band) versus redraw discrepancy
+
+Independent of the instancing milestones: the AGE path and the full-redraw path
+disagree on the detailed air-gap field and torque at non-zero rotor positions
+(they agree exactly at position 0). The redraw is validated against a
+120-degree model, the divergence grows linearly with the rotor angle, and the
+AGE's stator-side field matches the redraw while its rotor-side field stays at
+the drawn position. The ring reordering and the fractional `ci`/`co` coupling
+are both applied, and the AGE stiffness assembly matches the original FEMM
+source (`fkn/prob1big.cpp`), so the fault is likely in how the rotated inner
+ring is applied to the rotor mesh. Details are in `FIXTURE_PROVENANCE.md`.
+
+- [ ] **R1: Reproduce on FEMM's own `Antunes.fem` benchmark.** Show that the
+  AGE field barely rotates and returns exactly to the drawn field at one sector
+  angle, independent of RNFoundry.
+- [ ] **R2: Instrument the inner-ring rotation.** Print the physical angle of
+  the rotated inner ring versus the rotor-surface nodes to determine whether
+  the rotation is applied with the wrong sign, to the wrong ring, or not at all.
+- [ ] **R3: Fix and re-validate.** Once the AGE rotates the rotor rigidly, the
+  redraw and sliding air-gap torque and field should agree; tighten the
+  shared-contour torque tolerance and assert the redraw field comparison.
 
 ## Milestone G — Native compressed solver path
 
