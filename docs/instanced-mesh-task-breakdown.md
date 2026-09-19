@@ -362,9 +362,12 @@ are both applied, and the AGE stiffness assembly matches the original FEMM
 source (`fkn/prob1big.cpp`), so the fault is likely in how the rotated inner
 ring is applied to the rotor mesh. Details are in `FIXTURE_PROVENANCE.md`.
 
-- [ ] **R1: Reproduce on FEMM's own `Antunes.fem` benchmark.** Show that the
+- [x] **R1: Reproduce on FEMM's own `Antunes.fem` benchmark.** Show that the
   AGE field barely rotates and returns exactly to the drawn field at one sector
   angle, independent of RNFoundry.
+  - Note: with `setAGEPosition`, the benchmark's mean-removed field changes by
+    only `rmsd/std = 0.014` for 5-22.5 degrees and is bit-identical at 45
+    degrees, so the AGE is not rotating the rotor field.
 - [ ] **R2: Instrument the inner-ring rotation.** Print the physical angle of
   the rotated inner ring versus the rotor-surface nodes to determine whether
   the rotation is applied with the wrong sign, to the wrong ring, or not at all.
