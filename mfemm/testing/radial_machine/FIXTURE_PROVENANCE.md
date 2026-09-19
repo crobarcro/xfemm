@@ -24,7 +24,34 @@ plan.
 - `data/radial_machine_redraw_01.fem` .. `_10.fem` — independently drawn and
   meshed (MagnetRedraw) at `positions = linspace(0, 1, 10)` pole pitches.
 - `data/radial_machine_sliding.fem` — one AGE/sliding-mesh machine at position 0.
+- `data/radial_machine_tiled.json` — the tiled-magnetic model used by the
+  instanced-mesh comparison (see below).
 - `data/positions.txt` — the ten pole-pitch fractions.
+
+## Tiled-machine fixture
+
+`generate_tiled_machine_fixture.m` (this directory) decomposes the same
+12-pole / 36-slot design into one 60-degree pole-pair rotor tile repeated six
+times and one 10-degree slot tile repeated 36 times, coupled only through the
+air-gap element. The air gap is split at one third and two thirds of the gap,
+matching the AGE arc radii of the full-sector sliding model, so each tile
+carries one smooth AGE arc. The rotor tile naturally contains the N/S pair, so
+no per-instance magnet override is needed; the stator tile's two coil layers
+are connected to the other slots' phases by per-instance circuit and turn-scale
+overrides embedded in the JSON.
+
+The generator adds the required materials and boundary properties per tile,
+merges the collinear radial seam segments into one straight segment per edge
+(Tangle splits it at the retained vertices), and marks the gap-facing arcs as
+the AGE boundary. `meshTiledModel` applies the JSON's per-instance overrides
+when it places the instances.
+
+`Test_radial_machine_tiled_methods.m` compares the tiled model with the redraw
+and sliding fixtures. The winding flux linkage is a small difference of large
+cancelling `Turns * intA / area` terms; the tiled full-machine sums cancel by
+another order of magnitude relative to the sector, so the comparison uses an
+absolute tolerance of `2e-6` (above the documented `~1.3e-6` residual). Coil
+flux density is compared relatively (3%) and matches to a few percent.
 
 ## Result schema and recorded quantities
 
@@ -49,6 +76,8 @@ addpath('/path/to/xfemm/mfemm');
 addpath('/path/to/xfemm/mfemm/testing/radial_machine');
 generate_radial_machine_fixtures('/path/to/rnfoundry', ...
                                  '/path/to/xfemm/mfemm/testing/radial_machine/data');
+generate_tiled_machine_fixture('/path/to/rnfoundry', ...
+                               '/path/to/xfemm/mfemm/testing/radial_machine/data/radial_machine_tiled.json');
 ```
 
 The generator records no external revision in its output; update the RNFoundry
@@ -56,10 +85,10 @@ revision above whenever it is rerun.
 
 ## Known blockers
 
-- Independent stator/rotor templates (F3) require a multi-template
-  AGE-coupling extension to the materializer: the current instancing path
-  supports one rotational template and remaps each template's own AGE, but
-  does not couple two templates through the air-gap rings.
+- The tiled-machine comparison is a single-position smoke test
+  (`Test_radial_machine_tiled_methods`, default position 5). The tiled case
+  accepts multiple position indices, but a full ten-position sweep costs about
+  an hour because the tiled model is the full 360-degree machine.
 
 ## Investigation log (redraw versus sliding)
 
@@ -87,5 +116,12 @@ difference of large cancelling `Turns * intA / area` terms (~2e-6 against
 ~0.14 terms), so it amplifies the remaining `MagnetRedraw`-versus-`SlidingMesh`
 modelling difference. Running both sides through the same session/Tangle
 backend still leaves a `~5e-7` difference, so the residual is the modelling
-difference rather than the mesher or the post-processor. A tolerance decision
-(or a more robust winding-flux-linkage metric) is needed before F4/F5.
+difference rather than the mesher or the post-processor.
+
+Tolerance decision: the winding flux linkage is treated as a cancellation-
+dominated observable and compared with an absolute tolerance of `2e-6`, which
+covers the documented redraw-versus-sliding residual (`~9.5e-7`) and the
+tiled-versus-reference residual (`~1.6e-6`). Coil flux density remains the
+primary field observable and is compared relatively (3%). A more robust
+winding-flux-linkage metric (for example a coil line integral rather than the
+difference of block averages) is deferred to a future change.

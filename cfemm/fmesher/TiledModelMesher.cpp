@@ -208,6 +208,7 @@ TiledMeshResult meshTiledModel(const femm::tiled::TiledModel &model, MesherBacke
     for (std::size_t tileIndex = 0; tileIndex < model.tiles.size(); ++tileIndex) {
         const femm::tiled::Tile &tile = model.tiles[tileIndex];
         const std::size_t base = result.instanced.instances.size();
+        instanceBase[tileIndex] = base;
         const double step = validation.tiles[tileIndex].totalAngleDegrees /
                             static_cast<double>(tile.repeat.count);
         for (std::size_t k = 0; k < tile.repeat.count; ++k) {
@@ -237,6 +238,48 @@ TiledMeshResult meshTiledModel(const femm::tiled::TiledModel &model, MesherBacke
                     ? SolverMesh::Periodicity::Antiperiodic
                     : SolverMesh::Periodicity::Periodic;
             result.instanced.periodicClosures.push_back(closure);
+        }
+    }
+
+    // Apply per-instance physics overrides (circuit, turn scale, magnetisation
+    // rotation). sourceBlockLabel indexes the non-hole label prototypes in the
+    // same order meshTiledModel records them.
+    for (const femm::tiled::TileLabelOverride &override : model.overrides) {
+        const femm::tiled::Tile *tile = femm::tiled::findTile(model, override.tile);
+        if (!tile)
+            continue;
+        std::size_t tileIndex = model.tiles.size();
+        for (std::size_t i = 0; i < model.tiles.size(); ++i)
+            if (model.tiles[i].name == override.tile)
+                tileIndex = i;
+        if (tileIndex >= model.tiles.size())
+            continue;
+
+        std::size_t prototypeIndex = 0;
+        bool found = false;
+        for (const femm::tiled::TileLabel &label : tile->geometry.labels) {
+            if (label.hole)
+                continue;
+            if (label.name == override.label) {
+                found = true;
+                break;
+            }
+            ++prototypeIndex;
+        }
+        if (!found)
+            continue;
+
+        for (std::size_t k = 0; k < tile->repeat.count; ++k) {
+            auto &instance = result.instanced.instances[instanceBase[tileIndex] + k];
+            femm::mesh::InstanceRegionOverride region;
+            region.sourceBlockLabel = prototypeIndex;
+            if (k < override.circuit.size() && override.circuit[k] >= 0)
+                region.circuit = static_cast<std::size_t>(override.circuit[k]);
+            if (k < override.magDir.size())
+                region.magnetisationRotationDegrees = override.magDir[k];
+            if (k < override.turnScale.size())
+                region.currentScale = override.turnScale[k];
+            instance.regionOverrides.push_back(region);
         }
     }
 

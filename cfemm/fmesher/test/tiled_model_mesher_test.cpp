@@ -121,6 +121,55 @@ int runCase(const femm::tiled::TiledModel &model, const std::string &label,
     return 0;
 }
 
+int testOverridesApplied()
+{
+    femm::tiled::TiledModel model = makeModel(60.0, 6, femm::tiled::Closure::Closed, false);
+    femm::tiled::TileLabelOverride override;
+    override.tile = "slot";
+    override.label = "coil";
+    override.circuit = {-1, -1, 0, -1, -1, -1};
+    override.turnScale = {1.0, 1.0, -2.0, 1.0, 1.0, 1.0};
+    override.magDir = {0.0, 0.0, 45.0, 0.0, 0.0, 0.0};
+    model.overrides.push_back(override);
+
+    fmesher::TangleMesherBackend backend;
+    fmesher::TiledMeshResult result = fmesher::meshTiledModel(model, backend);
+    if (!result.ok) {
+        for (const auto &diagnostic : result.diagnostics)
+            std::cerr << "  override case: " << diagnostic.message << '\n';
+        return fail("override case: meshTiledModel failed");
+    }
+    const auto &instances = result.instanced.instances;
+    if (instances.size() != 6)
+        return fail("override case: wrong instance count");
+    for (std::size_t k = 0; k < instances.size(); ++k) {
+        const auto &overrides = instances[k].regionOverrides;
+        if (overrides.size() != 1)
+            return fail("override case: instance has wrong override count");
+        const auto &region = overrides.front();
+        if (region.sourceBlockLabel != 0)
+            return fail("override case: wrong source label");
+        if (k == 2) {
+            if (!region.circuit || *region.circuit != 0)
+                return fail("override case: circuit override not applied");
+            if (!region.currentScale || std::abs(*region.currentScale + 2.0) > 1e-12)
+                return fail("override case: turn scale override not applied");
+            if (!region.magnetisationRotationDegrees ||
+                std::abs(*region.magnetisationRotationDegrees - 45.0) > 1e-12)
+                return fail("override case: magnetisation override not applied");
+        } else {
+            if (region.circuit)
+                return fail("override case: unused circuit entry became active");
+            if (region.currentScale && std::abs(*region.currentScale - 1.0) > 1e-12)
+                return fail("override case: unused turn scale entry changed");
+            if (region.magnetisationRotationDegrees &&
+                std::abs(*region.magnetisationRotationDegrees) > 1e-12)
+                return fail("override case: unused magnetisation entry changed");
+        }
+    }
+    return 0;
+}
+
 } // namespace
 
 int main()
@@ -130,6 +179,8 @@ int main()
         return status;
     if (const int status = runCase(makeModel(10.0, 6, femm::tiled::Closure::Periodic, false),
                                    "open sector", 1, 6, true))
+        return status;
+    if (const int status = testOverridesApplied())
         return status;
     std::cout << "tiled model mesher tests passed\n";
     return 0;

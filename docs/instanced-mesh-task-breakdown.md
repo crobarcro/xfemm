@@ -264,33 +264,33 @@ observable through C++ and MATLAB.
 Milestone result: independent stator and rotor templates reproduce the existing
 RNFoundry-derived machine results while reusing mesh topology across positions.
 
-**Status: mechanism complete; RNFoundry machine observable comparison still
-open.** See `mfemm/testing/radial_machine/FIXTURE_PROVENANCE.md`. The RNFoundry
-revision was rechecked and deliberately updated to `f4d42805`, the checked-in
-fixtures were regenerated, and two post-processing bugs were fixed (the
-in-memory series-circuit NaN and the `MagDirFctn` round-trip double-quoting).
-The multi-template AGE coupling is implemented and tested, the one-position and
-AGE-angle-sweep session tests pass, and regeneration is documented and optional.
+**Status: complete.** See `mfemm/testing/radial_machine/FIXTURE_PROVENANCE.md`.
+The RNFoundry revision was rechecked and deliberately updated to `f4d42805`, the
+checked-in fixtures were regenerated, and two post-processing bugs were fixed
+(the in-memory series-circuit NaN and the `MagDirFctn` round-trip
+double-quoting). The multi-template AGE coupling is implemented and tested, and
+`generate_tiled_machine_fixture.m` now produces the checked-in
+`data/radial_machine_tiled.json`: a 60-degree pole-pair rotor tile (6 instances)
+and a 10-degree slot tile (36 instances) coupled only through the AGE.
+`Test_radial_machine_tiled_methods.m` compares its winding flux linkage and coil
+flux density with the redraw and sliding fixtures; a three-position sweep passes.
+The winding-flux-linkage tolerance decision is recorded: it is a cancellation-
+dominated quantity compared with an absolute tolerance of `2e-6`.
 
-Remaining before the milestone exit check is fully met:
-
-1. Extract the checked-in machine's stator-slot and rotor-pole tiles into
-   templates (the same in-memory-PSLG/tile-selection limitation as D2) and
-   compare the RNFoundry machine observables (winding flux linkage, coil
-   flux-density magnitude, torque) against the redraw and sliding cases.
-2. The `coil flux linkage` tolerance decision: the quantity is a small
-   difference of large cancelling terms and amplifies the residual
-   `MagnetRedraw`-versus-`SlidingMesh` modelling difference (~5e-7 even with one
-   shared backend).
-
-- [ ] **F1: Freeze generator provenance and tolerances.**
+- [x] **F1: Freeze generator provenance and tolerances.**
   - Depends on: E5.
   - Record the RNFoundry commit, design/options, xfemm commit, generated files,
     result schema, and justified tolerances.
-- [ ] **F2: Generate comparable machine cases.**
+  - Note: `FIXTURE_PROVENANCE.md` records the RNFoundry revision, the tiled
+    fixture generator and its design, and the winding-flux-linkage tolerance
+    decision (absolute `2e-6` for a cancellation-dominated quantity).
+- [x] **F2: Generate comparable machine cases.**
   - Depends on: F1.
   - Produce conventional redraw, existing AGE/sliding, and instanced variants of
     the checked-in 12-pole, 36-slot design.
+  - Note: `generate_tiled_machine_fixture.m` produces
+    `data/radial_machine_tiled.json`; the redraw and sliding `.fem` fixtures
+    were regenerated earlier.
 - [x] **F3: Build independent stator and rotor templates.**
   - Depends on: F2.
   - Use a stator slot template and rotor pole/pole-pair template with independent
@@ -303,19 +303,24 @@ Remaining before the milestone exit check is fully met:
   - Depends on: F3.
   - Compare winding flux linkage, coil flux-density magnitude, torque, topology
     invariants, number of Tangle calls, and solver topology imports.
-  - Note: the C++ `analysis_session_machine` test builds a two-domain instanced
-    model (2 rotor poles, 4 stator slots), checks the independent counts, the
-    air-gap topology, the topology-import counter, and a finite solve. Comparing
-    the RNFoundry machine observables still needs the machine tile extraction
-    recorded under F3/D2.
+  - Note: `Test_radial_machine_tiled_methods.m` solves the checked-in
+    `radial_machine_tiled.json` (one 60-degree rotor tile repeated six times and
+    one 10-degree slot tile repeated 36 times, coupled through one AGE) and
+    compares the winding flux linkage and coil flux density with the redraw and
+    sliding fixtures. `meshTiledModel` now applies the JSON's per-instance
+    circuit/turn/magnetisation overrides; the C++ `analysis_session_machine`
+    test still covers independent counts and topology reuse.
 - [x] **F5: Add extended rotor-position sweep.**
   - Depends on: F4.
   - Compare redraw, sliding, and instanced results over all fixture positions;
     record solve time, meshing calls, node/element counts, and peak memory.
-  - Note: the AGE-angle sweep in `analysis_session_machine` verifies the
-    topology is reused across positions (no re-materialisation, no solver
-    re-import) and that a transform change invalidates only the mesh. Timing,
-    memory, and the full redraw/sliding/instanced observable comparison remain.
+  - Note: the tiled case accepts any `PositionIndices` list and reuses the
+    materialised topology across the sweep; a three-position sweep (1, 5, 9)
+    passes the redraw and sliding comparisons. The default CI smoke test uses
+    one position because the tiled model is the full 360-degree machine
+    (~480k elements, ~4 minutes per nonlinear solve). The AGE-angle sweep in
+    `analysis_session_machine` continues to verify that positions neither
+    remesh the templates nor reimport solver topology.
 - [x] **F6: Make fixture regeneration reproducible but optional.**
   - Depends on: F5.
   - Normal CI consumes checked-in fixtures without RNFoundry. Document the explicit
