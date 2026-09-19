@@ -35,13 +35,14 @@ function results = radial_machine_tiled_case (varargin)
     modelFile = fullfile (dataDirectory, 'radial_machine_tiled.json');
     [coilLabels, coilOverrides, gapName, rotorLabels] = parse_tiled_model (modelFile);
 
-    results.schemaVersion = 3;
+    results.schemaVersion = 4;
     results.method = 'tiled';
     results.positions = positions;
     results.fluxLinkage = [];
     results.circuitFluxLinkage = [];
     results.coilFluxDensity = [];
     results.torque = [];
+    results.airgapTorque = [];
     results.randomA = [];
 
     session = xfemm.femmsession (modelFile);
@@ -53,12 +54,13 @@ function results = radial_machine_tiled_case (varargin)
         session.setAGEPosition (gapName, 30 * positions(ind), 0);
         session.solve ();
         results = extract_results (results, ind, session, ...
-                                   coilLabels, coilOverrides, rotorLabels);
+                                   coilLabels, coilOverrides, rotorLabels, gapName);
     end
 
     assert (all (isfinite (results.fluxLinkage(:))));
     assert (all (isfinite (results.coilFluxDensity(:))));
     assert (all (isfinite (results.torque(:))));
+    assert (all (isfinite (results.airgapTorque(:))));
     assert (all (isfinite (results.randomA(:))));
     if ~isempty (options.OutputFile)
         save (options.OutputFile, 'results', '-v7');
@@ -109,7 +111,7 @@ end
 
 
 function results = extract_results (results, positionIndex, session, ...
-                                    coilLabels, coilOverrides, rotorLabels)
+                                    coilLabels, coilOverrides, rotorLabels, gapName)
     nSlots = 36;
     pitchDegrees = 10;
     circuitNames = {'1', '2', '3'};
@@ -167,6 +169,10 @@ function results = extract_results (results, positionIndex, session, ...
         end
     end
     results.torque(positionIndex, 1) = session.blockintegral (22);
+
+    % Air-gap torque from the AGE's own mid-gap Maxwell integral, matching
+    % radial_machine_fixture_case's shared contour.
+    results.airgapTorque(positionIndex, 1) = session.gapintegral (gapName, 0);
 
     % Random vector-potential samples in the meshed air-gap halves.
     [x, y] = radial_machine_sample_points ();

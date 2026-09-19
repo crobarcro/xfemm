@@ -22,11 +22,11 @@ function report = Test_radial_machine_static_rotation_methods (positionIndices)
     % A is defined up to a constant in the periodic sector. Direct circuit
     % linkage is therefore gauge-dependent for the partial winding model;
     % fluxLinkage below is formed from opposing coil sides and is invariant.
-    % The legacy redraw's detailed vector potential and weighted-stress-tensor
-    % torque do not reproduce the sliding session at non-zero positions, so
-    % those observables are compared only in the tiled-machine test.
-    sliding = rmfield (sliding, {'circuitFluxLinkage', 'torque', 'randomA'});
-    redraw = rmfield (redraw, {'circuitFluxLinkage', 'torque', 'randomA'});
+    % The legacy redraw's detailed vector potential and torque integrals do not
+    % reproduce the sliding session at non-zero positions, so those observables
+    % are reported only in the tiled-machine and sliding-versus-redraw tests.
+    sliding = rmfield (sliding, {'circuitFluxLinkage', 'torque', 'airgapTorque', 'randomA'});
+    redraw = rmfield (redraw, {'circuitFluxLinkage', 'torque', 'airgapTorque', 'randomA'});
 
     report = compare_radial_machine_static_results (redraw, sliding, ...
         'FluxAbsoluteTolerance', 2e-6);

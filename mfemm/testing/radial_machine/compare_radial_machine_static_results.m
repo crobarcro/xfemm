@@ -16,6 +16,8 @@ function report = compare_radial_machine_static_results (reference, candidate, v
     options.FluxDensityAbsoluteTolerance = 1e-4;
     options.TorqueRelativeTolerance = 0.35;
     options.TorqueAbsoluteTolerance = 0.05;
+    options.AirGapTorqueRelativeTolerance = 0.15;
+    options.AirGapTorqueAbsoluteTolerance = 0.02;
     options.RandomARelativeTolerance = 0.05;
     options = parse_options (options, varargin{:});
 
@@ -45,6 +47,12 @@ function report = compare_radial_machine_static_results (reference, candidate, v
         report.torque = tolerance_check (reference.torque, candidate.torque, ...
             options.TorqueRelativeTolerance, options.TorqueAbsoluteTolerance, ...
             'cogging torque');
+    end
+    if isfield (reference, 'airgapTorque') && isfield (candidate, 'airgapTorque')
+        report.airgapTorque = tolerance_check ( ...
+            reference.airgapTorque, candidate.airgapTorque, ...
+            options.AirGapTorqueRelativeTolerance, ...
+            options.AirGapTorqueAbsoluteTolerance, 'air-gap torque');
     end
     if isfield (reference, 'randomA') && isfield (candidate, 'randomA')
         report.randomA = centered_tolerance_check (...

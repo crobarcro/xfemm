@@ -41,9 +41,19 @@ function report = Test_radial_machine_sliding_vs_redraw (positionIndices)
     fprintf ('Sliding-versus-redraw air-gap vector-potential correlation: %s\n', ...
              mat2str (report.fieldCorrelation, 4));
 
+    % Report the shared-contour air-gap torque (the sliding model's AGE gap
+    % integral versus the redraw sampled Maxwell stress at the same radius),
+    % without asserting it: the redraw's sampled contour is mesh-sensitive and
+    % currently differs from the AGE at non-zero positions.
+    scale = max (abs (sliding.airgapTorque), abs (redraw.airgapTorque));
+    report.airgapTorqueRelativeError = ...
+        (abs (sliding.airgapTorque - redraw.airgapTorque) ./ max (scale, eps))';
+    fprintf ('Sliding-versus-redraw shared-contour air-gap torque rel. error: %s\n', ...
+             mat2str (report.airgapTorqueRelativeError, 4));
+
     % Compare the observables the two methods are expected to reproduce.
-    sliding = rmfield (sliding, {'circuitFluxLinkage', 'torque', 'randomA'});
-    redraw = rmfield (redraw, {'circuitFluxLinkage', 'torque', 'randomA'});
+    sliding = rmfield (sliding, {'circuitFluxLinkage', 'torque', 'airgapTorque', 'randomA'});
+    redraw = rmfield (redraw, {'circuitFluxLinkage', 'torque', 'airgapTorque', 'randomA'});
     report.comparison = compare_radial_machine_static_results ( ...
         redraw, sliding, 'FluxAbsoluteTolerance', 2e-6);
     report.passed = report.comparison.passed;

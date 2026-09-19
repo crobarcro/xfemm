@@ -97,16 +97,41 @@ density signal is not hidden until this is resolved.
 ## Result schema and recorded quantities
 
 `radial_machine_fixture_case.m` and `radial_machine_tiled_case.m` write
-`schemaVersion = 3` with:
+`schemaVersion = 4` with:
 
 - `positions`, `fluxLinkage` (gauge-invariant winding flux linkage from
   opposing coil sides), `circuitFluxLinkage` (direct FEMM circuit flux
   linkage), `coilFluxDensity` (flux-density magnitude at the coil sample
-  points), `torque` (weighted-stress-tensor cogging torque), and `randomA`
-  (vector potential at the fixed air-gap sample points).
+  points), `torque` (weighted-stress-tensor cogging torque), `airgapTorque`
+  (shared-contour air-gap torque), and `randomA` (vector potential at the fixed
+  air-gap sample points).
 
 Tolerances are justified from the redraw-versus-sliding comparison and are
 stored beside the fixture comparison helpers.
+
+## Torque integrals
+
+Two torque integrals are available and they are not interchangeable:
+
+- `torque` (`blockintegral(22)`) is the Henrotte weighted-stress-tensor torque.
+  It solves a mesh-size-weighted Laplace mask over the selected rotor regions
+  plus the surrounding air, then integrates `B` against the mask gradient over
+  the selected elements only. It is strongly mesh-dependent: at position 0 the
+  redraw and sliding have the same field (`corr = 1.0`) but give `0.429` and
+  `0.113` respectively.
+- `airgapTorque` is a shared-contour Maxwell-stress torque. For the sliding and
+  tiled models it is the AGE's own mid-gap integral (`gapintegral`), evaluated
+  at `R = (ri + ro)/2 = 0.0575 m`; for the redraw it is the sampled Maxwell
+  integral on a circle at the same radius, scaled by the six tiles. The tiled
+  and sliding models agree to about 10% (`-0.866` vs `-0.788` at position 5).
+  The redraw differs (`-0.303` at position 5), but the redraw's sampled contour
+  is itself mesh-sensitive, so the shared-contour comparison does not yet
+  settle whether the AGE or the redraw torque is correct. The redraw cannot
+  expose an AGE gap integral, and its air-gap is not split at `0.0575 m`.
+
+`Test_radial_machine_sliding_vs_redraw.m` reports both the field correlation and
+the shared-contour air-gap torque relative error without asserting them, so the
+discrepancy is visible without hiding the flux/density signal.
 
 ## Regeneration
 
