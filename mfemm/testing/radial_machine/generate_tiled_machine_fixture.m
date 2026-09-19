@@ -15,6 +15,9 @@ function generate_tiled_machine_fixture (rnfoundryRoot, outputFile)
             'RNFoundry root does not exist: %s', rnfoundryRoot);
     addpath (genpath (rnfoundryRoot), '-end');
 
+    % RNFoundry assigns random group numbers; seed for a reproducible fixture.
+    rng (0);
+
     design = example_design ();
     design = completedesign_RADIAL_SLOTTED (design, struct ());
     design.Rgm = mean ([design.Rmo, design.Rai]);
