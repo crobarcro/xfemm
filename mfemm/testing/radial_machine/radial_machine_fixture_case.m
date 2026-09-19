@@ -22,12 +22,14 @@ function results = radial_machine_fixture_case (method, varargin)
         positions = positions(fixtureIndices);
     end
 
-    results.schemaVersion = 2;
+    results.schemaVersion = 3;
     results.method = method;
     results.positions = positions;
     results.fluxLinkage = [];
     results.circuitFluxLinkage = [];
     results.coilFluxDensity = [];
+    results.torque = [];
+    results.randomA = [];
 
     switch lower (method)
         case 'sliding'
@@ -71,6 +73,8 @@ function results = radial_machine_fixture_case (method, varargin)
     assert (all (isfinite (results.fluxLinkage(:))));
     assert (all (isfinite (results.circuitFluxLinkage(:))));
     assert (all (isfinite (results.coilFluxDensity(:))));
+    assert (all (isfinite (results.torque(:))));
+    assert (all (isfinite (results.randomA(:))));
     if ~isempty (options.OutputFile)
         save (options.OutputFile, 'results', '-v7');
     end
@@ -115,6 +119,35 @@ function results = extract_results (results, positionIndex, problem, solution)
     coords = reshape ([problem.BlockLabels(coilIndices).Coords], 2, [])';
     B = solution.getb (coords(:,1), coords(:,2));
     results.coilFluxDensity(positionIndex, :) = sqrt (sum (B.^2, 1));
+
+    % Weighted-stress-tensor torque on the rotor, normalised to the full
+    % machine, matching feasim_RADIAL_SLOTTED.
+    rotorIndices = rotor_label_indices (problem);
+    solution.clearblock ();
+    for labelIndex = rotorIndices
+        label = problem.BlockLabels(labelIndex);
+        solution.selectblock (label.Coords(1), label.Coords(2), false);
+    end
+    results.torque(positionIndex, 1) = ...
+        12 * solution.blockintegral (22) / 2;
+
+    % Random vector-potential samples in the meshed air-gap halves.
+    [x, y] = radial_machine_sample_points ();
+    A = solution.geta (x, y);
+    results.randomA(positionIndex, :) = A(:)';
+end
+
+
+function indices = rotor_label_indices (problem)
+    indices = [];
+    for labelIndex = 1:numel (problem.BlockLabels)
+        label = problem.BlockLabels(labelIndex);
+        radius = hypot (label.Coords(1), label.Coords(2));
+        if strcmp (label.BlockType, 'NdFeB 40 MGOe') ...
+                || (strcmp (label.BlockType, '1117 Steel') && radius < 0.0565)
+            indices(end+1) = labelIndex; %#ok<AGROW>
+        end
+    end
 end
 
 

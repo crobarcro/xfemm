@@ -44,27 +44,45 @@ The generator adds the required materials and boundary properties per tile,
 merges the collinear radial seam segments into one straight segment per edge
 (Tangle splits it at the retained vertices), and marks the gap-facing arcs as
 the AGE boundary. `meshTiledModel` applies the JSON's per-instance overrides
-when it places the instances.
+when it places the instances. The rotor tile uses `MagArrangement = 'NN'`, the
+same default the redraw/sliding fixtures use; `'NS'` produces the same N/S pair
+with the opposite polarity assignment and flips the vector potential.
 
 `Test_radial_machine_tiled_methods.m` compares the tiled model with the redraw
-and sliding fixtures. The winding flux linkage is a small difference of large
-cancelling `Turns * intA / area` terms; the tiled full-machine sums cancel by
-another order of magnitude relative to the sector, so the comparison uses an
-absolute tolerance of `2e-6` (above the documented `~1.3e-6` residual). Coil
-flux density is compared relatively (3%) and matches to a few percent.
+and sliding fixtures:
+
+- Winding flux linkage is a small difference of large cancelling
+  `Turns * intA / area` terms; the tiled full-machine sums cancel by another
+  order of magnitude relative to the sector, so the comparison uses an absolute
+  tolerance of `2e-6` (above the documented `~1.3e-6` residual).
+- Coil flux density is compared relatively (3%) and matches to a few percent.
+- Cogging torque is the weighted-stress-tensor torque over the rotor regions
+  (`blockintegral(22)`), normalised as in `feasim_RADIAL_SLOTTED`. It is
+  mesh-sensitive, so the tiled-versus-sliding comparison uses a 35% relative
+  tolerance.
+- Vector potential is sampled at a fixed set of points in the two meshed
+  air-gap halves (`radial_machine_sample_points.m`); the comparison removes the
+  gauge-dependent mean of each sample set and uses a 5% relative tolerance.
+
+The legacy redraw's detailed vector potential and torque do not reproduce the
+sliding session at non-zero rotor positions (they agree exactly at position 0),
+so torque and vector potential are compared against the sliding session, which
+shares the tiled model's AGE mechanism. The redraw comparison keeps the winding
+flux linkage and coil flux density checks.
 
 ## Result schema and recorded quantities
 
-`radial_machine_fixture_case.m` writes `schemaVersion = 2` with:
+`radial_machine_fixture_case.m` and `radial_machine_tiled_case.m` write
+`schemaVersion = 3` with:
 
 - `positions`, `fluxLinkage` (gauge-invariant winding flux linkage from
   opposing coil sides), `circuitFluxLinkage` (direct FEMM circuit flux
-  linkage), and `coilFluxDensity` (flux-density magnitude at the coil sample
-  points).
+  linkage), `coilFluxDensity` (flux-density magnitude at the coil sample
+  points), `torque` (weighted-stress-tensor cogging torque), and `randomA`
+  (vector potential at the fixed air-gap sample points).
 
-Tolerances are justified from the existing redraw-versus-sliding comparison and
-are stored beside the fixture comparison helpers. They cannot be finalised until
-the sliding-mesh session path produces finite results (see below).
+Tolerances are justified from the redraw-versus-sliding comparison and are
+stored beside the fixture comparison helpers.
 
 ## Regeneration
 

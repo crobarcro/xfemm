@@ -309,10 +309,13 @@ dominated quantity compared with an absolute tolerance of `2e-6`.
     compares the winding flux linkage and coil flux density with the redraw and
     sliding fixtures. `meshTiledModel` now applies the JSON's per-instance
     circuit/turn/magnetisation overrides; the C++ `analysis_session_machine`
-    test still covers independent counts and topology reuse. Torque extraction
-    is not yet compared: the checked-in redraw/sliding fixture schema records
-    flux linkage and coil flux density only, so a shared torque observable would
-    be a separate change.
+    test still covers independent counts and topology reuse. The comparison now
+    also covers cogging torque (weighted stress tensor, 35% relative tolerance)
+    and vector-potential samples in the meshed air-gap halves (5% relative
+    tolerance after removing the gauge-dependent mean) against the sliding
+    session. The legacy redraw's detailed field and torque do not reproduce the
+    sliding session at non-zero positions, so those two observables are
+    compared against the sliding session only.
 - [x] **F5: Add extended rotor-position sweep.**
   - Depends on: F4.
   - Compare redraw, sliding, and instanced results over all fixture positions;

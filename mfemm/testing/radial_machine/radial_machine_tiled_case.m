@@ -33,14 +33,16 @@ function results = radial_machine_tiled_case (varargin)
     end
 
     modelFile = fullfile (dataDirectory, 'radial_machine_tiled.json');
-    [coilLabels, coilOverrides, gapName] = parse_tiled_model (modelFile);
+    [coilLabels, coilOverrides, gapName, rotorLabels] = parse_tiled_model (modelFile);
 
-    results.schemaVersion = 2;
+    results.schemaVersion = 3;
     results.method = 'tiled';
     results.positions = positions;
     results.fluxLinkage = [];
     results.circuitFluxLinkage = [];
     results.coilFluxDensity = [];
+    results.torque = [];
+    results.randomA = [];
 
     session = xfemm.femmsession (modelFile);
     cleanup = onCleanup (@() delete (session));
@@ -51,27 +53,34 @@ function results = radial_machine_tiled_case (varargin)
         session.setAGEPosition (gapName, 30 * positions(ind), 0);
         session.solve ();
         results = extract_results (results, ind, session, ...
-                                   coilLabels, coilOverrides);
+                                   coilLabels, coilOverrides, rotorLabels);
     end
 
     assert (all (isfinite (results.fluxLinkage(:))));
     assert (all (isfinite (results.coilFluxDensity(:))));
+    assert (all (isfinite (results.torque(:))));
+    assert (all (isfinite (results.randomA(:))));
     if ~isempty (options.OutputFile)
         save (options.OutputFile, 'results', '-v7');
     end
 end
 
 
-function [coilLabels, coilOverrides, gapName] = parse_tiled_model (modelFile)
+function [coilLabels, coilOverrides, gapName, rotorLabels] = parse_tiled_model (modelFile)
     model = jsondecode (fileread (modelFile));
     tiles = as_array (model.tiles);
     stator = [];
+    rotor = [];
     for t = 1:numel (tiles)
         if strcmp (tiles{t}.name, 'stator')
             stator = tiles{t};
         end
+        if strcmp (tiles{t}.name, 'rotor')
+            rotor = tiles{t};
+        end
     end
     assert (~isempty (stator), 'tiled model has no stator tile');
+    assert (~isempty (rotor), 'tiled model has no rotor tile');
     labels = as_array (stator.geometry.labels);
     coilLabels = {};
     for k = 1:numel (labels)
@@ -87,11 +96,20 @@ function [coilLabels, coilOverrides, gapName] = parse_tiled_model (modelFile)
     end
     couplings = as_array (model.couplings);
     gapName = couplings{1}.boundary;
+
+    rotorLabels = {};
+    rotorTileLabels = as_array (rotor.geometry.labels);
+    for k = 1:numel (rotorTileLabels)
+        material = rotorTileLabels{k}.material;
+        if strcmp (material, 'NdFeB 40 MGOe') || strcmp (material, '1117 Steel')
+            rotorLabels{end+1} = rotorTileLabels{k}; %#ok<AGROW>
+        end
+    end
 end
 
 
 function results = extract_results (results, positionIndex, session, ...
-                                    coilLabels, coilOverrides)
+                                    coilLabels, coilOverrides, rotorLabels)
     nSlots = 36;
     pitchDegrees = 10;
     circuitNames = {'1', '2', '3'};
@@ -135,6 +153,25 @@ function results = extract_results (results, positionIndex, session, ...
         end
     end
     results.coilFluxDensity(positionIndex, :) = coilFluxDensity;
+
+    % Weighted-stress-tensor torque over the rotor regions of all six
+    % instances. The tiled model is the full machine, so no pole scaling.
+    session.clearblock ();
+    for instance = 0:5
+        angle = instance * 60 * pi / 180;
+        for k = 1:numel (rotorLabels)
+            label = rotorLabels{k};
+            x = label.x * cos (angle) - label.y * sin (angle);
+            y = label.x * sin (angle) + label.y * cos (angle);
+            session.selectblock (x, y, false);
+        end
+    end
+    results.torque(positionIndex, 1) = session.blockintegral (22);
+
+    % Random vector-potential samples in the meshed air-gap halves.
+    [x, y] = radial_machine_sample_points ();
+    A = session.geta (x, y);
+    results.randomA(positionIndex, :) = A(:)';
 end
 
 

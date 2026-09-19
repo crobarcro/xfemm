@@ -25,8 +25,14 @@ function report = Test_radial_machine_tiled_methods (positionIndices)
     sliding = radial_machine_fixture_case ('sliding', 'PositionIndices', positionIndices);
 
     % Direct FEMM circuit flux linkage is gauge-dependent for the partial
-    % winding sector, so it is not compared.
+    % winding sector, so it is not compared. The legacy redraw's detailed
+    % vector potential and weighted-stress-tensor torque do not reproduce the
+    % sliding session at non-zero positions (they agree exactly at position 0),
+    % so those observables are compared against the sliding session, which
+    % shares the tiled model's AGE mechanism.
     tiled = rmfield (tiled, 'circuitFluxLinkage');
+    redraw = rmfield (redraw, {'circuitFluxLinkage', 'torque', 'randomA'});
+    sliding = rmfield (sliding, 'circuitFluxLinkage');
 
     comparisonOptions = {'FluxAbsoluteTolerance', 2e-6};
     fprintf ('Tiled versus redraw:\n');
