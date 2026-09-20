@@ -227,12 +227,15 @@ bool testSessionNativeMode()
         REQUIRE(std::abs(value - expected) < 1e-7 * (1.0 + std::abs(expected)));
     }
     REQUIRE(largest > 1e-9);
+    REQUIRE(nativeSolver->nativeOrderingBuildCount() == 1);
 
-    // Physics changes reuse the view; only a transform rebuilds it. Translate
-    // the whole ring rigidly so the welded seams stay coincident.
+    // Physics changes reuse both the view and its ordering; only a transform
+    // rebuilds them. Translate the whole ring rigidly so welded seams stay
+    // coincident.
     native.setCircuitCurrent(native.model().circuit("phase"), CComplex(2, 0));
     native.solve();
     REQUIRE(native.viewGenerationCount() == 1);
+    REQUIRE(nativeSolver->nativeOrderingBuildCount() == 1);
     for (std::size_t i = 0; i < native.instancedMesh()->instances.size(); ++i) {
         RigidTransform2D moved = native.instancedMesh()->instances[i].transform;
         moved.translationXMetres += 0.01;
@@ -240,6 +243,7 @@ bool testSessionNativeMode()
     }
     native.solve();
     REQUIRE(native.viewGenerationCount() == 2);
+    REQUIRE(nativeSolver->nativeOrderingBuildCount() == 2);
     return true;
 }
 

@@ -223,6 +223,10 @@ int main()
     sessionModel->labellist.clear();
     sessionModel->pathName.clear();
 
+    // Keep a copy for the session-native AGE-angle check below; the original is
+    // moved into the materialised session.
+    femm::mesh::InstancedMesh nativeInstanced = meshed.instanced;
+
     auto solver = std::make_shared<femm::FSolverAnalysisBackend>();
     femm::AnalysisSession session(femm::ModelDefinition(std::move(sessionModel)), solver);
     session.setInstancedMesh(std::move(meshed.instanced));
@@ -247,6 +251,31 @@ int main()
         return status;
     if (session.materializationCount() != materializations)
         return fail("changing the AGE angle rematerialised the mesh");
+
+    // Session-native mode must reuse the topology-derived ordering across a
+    // physics-only AGE angle change.
+    {
+        std::unique_ptr<femm::FemmProblem> nativeModel = femm::tiled::buildTileProblem(model, 0);
+        nativeModel->nodelist.clear();
+        nativeModel->linelist.clear();
+        nativeModel->arclist.clear();
+        nativeModel->labellist.clear();
+        nativeModel->pathName.clear();
+        auto nativeSolver = std::make_shared<femm::FSolverAnalysisBackend>();
+        femm::AnalysisSession nativeSession(femm::ModelDefinition(std::move(nativeModel)),
+                                            nativeSolver);
+        nativeSession.setInstancedMesh(std::move(nativeInstanced));
+        nativeSession.setNativeInstanced(true);
+        nativeSession.solve();
+        if (nativeSolver->nativeOrderingBuildCount() != 1)
+            return fail("native ordering was not built exactly once");
+        nativeSession.setAirGapAngle(nativeSession.model().airGap("gap"), 15.0, 0.0);
+        nativeSession.solve();
+        if (nativeSolver->nativeOrderingBuildCount() != 1)
+            return fail("AGE angle change rebuilt the native ordering");
+        if (nativeSession.viewGenerationCount() != 1)
+            return fail("AGE angle change rebuilt the native view");
+    }
 
     for (double angle : {15.0, 30.0}) {
         session.setAirGapAngle(session.model().airGap("gap"), angle, 0.0);

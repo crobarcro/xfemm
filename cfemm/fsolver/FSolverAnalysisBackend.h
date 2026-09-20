@@ -54,6 +54,8 @@ public:
     std::size_t nativeSolveCount() const { return m_nativeSolves; }
     /** System bandwidth of the last native setup. */
     int nativeBandwidth() const { return m_nativeBandwidth; }
+    /** Times the native adjacency/ordering were rebuilt (topology changes only). */
+    std::size_t nativeOrderingBuildCount() const { return m_nativeOrderingBuilds; }
 
     /** Native solved state used to construct an in-memory post-processor view. */
     const FSolver &solvedSolver() const;
@@ -82,6 +84,7 @@ private:
     /** Cuthill-McKee ordering (old -> new) cached with the native view. */
     std::vector<std::size_t> m_nativeOrdering;
     int m_nativeBandwidth = 0;
+    std::size_t m_nativeOrderingBuilds = 0;
     /** new -> old global node map of the last native assembly. */
     std::vector<std::size_t> m_nativeNewToOld;
     std::uint64_t m_topologyIdentity = 0;

@@ -203,15 +203,21 @@ void FSolverAnalysisBackend::synchronizeNative(
     if (!view)
         throw std::invalid_argument("native synchronize requires a logical view");
     configure(model, parameters, prepared);
+    // The ordering and bandwidth depend only on the topology, which the session
+    // rebuilds as a new LogicalMeshView. Reuse them whenever the same view is
+    // handed back, so a physics-only update (circuit current, material, AGE
+    // angle) does not redo the adjacency or Cuthill-McKee pass.
+    const bool topologyChanged = (m_nativeView != view) || m_nativeOrdering.empty();
     m_nativeView = std::move(view);
     m_nativeLabelBases = labelBases;
     m_nativeAirGapPositions = airGapPositions;
-    // The ordering and bandwidth depend only on topology; compute them once
-    // per view so repeated solves and physics-only updates reuse them.
-    const auto adjacency = m_nativeView->buildAdjacency();
-    m_nativeOrdering = m_nativeView->cuthillMcKeeOrdering(adjacency);
-    m_nativeBandwidth =
-        static_cast<int>(mesh::LogicalMeshView::bandwidth(adjacency, m_nativeOrdering));
+    if (topologyChanged) {
+        const auto adjacency = m_nativeView->buildAdjacency();
+        m_nativeOrdering = m_nativeView->cuthillMcKeeOrdering(adjacency);
+        m_nativeBandwidth =
+            static_cast<int>(mesh::LogicalMeshView::bandwidth(adjacency, m_nativeOrdering));
+        ++m_nativeOrderingBuilds;
+    }
     m_nativeMode = true;
 }
 
