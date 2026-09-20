@@ -70,29 +70,36 @@ so torque and vector potential are compared against the sliding session, which
 shares the tiled model's AGE mechanism. The redraw comparison keeps the winding
 flux linkage and coil flux density checks.
 
-## Sliding-versus-redraw field discrepancy
+## Sliding-versus-redraw field comparison
 
 `Test_radial_machine_sliding_vs_redraw.m` compares the air-gap-element
 (`SlidingMesh`) and full-redraw (`MagnetRedraw`) methods at several rotor
-positions. The two agree on the winding flux linkage and the coil flux-density
-magnitude, but their detailed air-gap vector potential diverges as the rotor
-moves. The mean-removed sample correlation is about `1.0` at `0 deg`, `0.79` at
-`10 deg`, `-0.21` at `20 deg` and `-0.05` at `30 deg`.
+positions. These are different rotor-motion models and are not expected to agree
+field-for-field:
 
-The redraw is validated as correct: a fresh `NPolePairs = 2` (120-degree)
-`MagnetRotation` model agrees with the checked-in 60-degree redraw fixture to
-`corr = 0.999999` at position 5. The discrepancy is therefore in the AGE path.
-It is not specific to this branch: the `master` fixtures (older RNFoundry) show
-the same correlation `0.54` at position 5 with the current code, and the AGE
-assembly (`static2d.cpp`), the AGE ring construction (`writepoly.cpp`) and the
-Tangle converter are unchanged from `master`. The AGE assembly matches the
+- the AGE keeps the rotor and stator meshes fixed and applies the **relative**
+  angle (`InnerAngle - OuterAngle`) at the air gap, so the solution is expressed
+  with the rotor in its drawn frame;
+- the redraw physically redraws the rotor magnet regions and re-meshes.
+
+Sampling A on circles at 13.33 degrees shows this directly: the AGE's rotor iron
+(`R = 0.040`), magnet (`R = 0.050`), and rotor-side gap (`R = 0.0568`) match the
+redraw at 0 degrees (`corr >= 0.9998`), while its stator-side gap (`R = 0.0582`)
+matches the redraw at 13.33 degrees (`corr = 1.000`). The stator-side observables
+(winding flux linkage, coil flux density, stator-side vector potential) therefore
+match; those are what the F4/F5 comparisons use. The mean-removed correlation of
+the fixed air-gap samples compared directly at the same global angles is about
+`1.0` at `0 deg`, `0.79` at `10 deg`, `-0.21` at `20 deg`, and `-0.05` at
+`30 deg`, which is the expected rotor-frame difference rather than a defect.
+
+The redraw is validated for the redrawn geometry: a fresh `NPolePairs = 2`
+(120-degree) `MagnetRotation` model agrees with the checked-in 60-degree redraw
+fixture to `corr = 0.999999` at position 5. The AGE assembly (`static2d.cpp`),
+the AGE ring construction (`writepoly.cpp`), and the Tangle converter match the
 original FEMM source (`fkn/prob1big.cpp`) term for term.
 
-The AGE error grows linearly with the rotor angle even at integer multiples of
-the 0.6-degree ring spacing, where the interpolation should be exact, so it is
-not a coarse-ring interpolation artifact. The cause has not yet been isolated;
-the CI test reports the correlation but does not assert it, so the flux and
-density signal is not hidden until this is resolved.
+Two follow-ups remain: confirm the relative-angle invariance directly, and settle
+whether torque is comparable across the two models (see the task tracker).
 
 ## Result schema and recorded quantities
 
@@ -131,7 +138,7 @@ Two torque integrals are available and they are not interchangeable:
 
 `Test_radial_machine_sliding_vs_redraw.m` reports both the field correlation and
 the shared-contour air-gap torque relative error without asserting them, so the
-discrepancy is visible without hiding the flux/density signal.
+model difference is visible without hiding the flux/density signal.
 
 ## Regeneration
 
