@@ -72,13 +72,13 @@ jobs:
           -DXFEMM_TANGLE_REPOSITORY=${{env.XFEMM_TANGLE_REPOSITORY}} \
           -DXFEMM_TANGLE_REVISION=${{env.XFEMM_TANGLE_REVISION}} \
           cfemm
-    - name: Build the materializer unit tests
+    - name: Build the materializer and native view unit tests
       run: >
         cmake --build ${{github.workspace}}/build
-        --target instanced_mesh_test instanced_mesh_hash_test -j2
-    - name: Run the materializer unit tests under sanitizers
+        --target instanced_mesh_test instanced_mesh_hash_test logical_mesh_view_test -j2
+    - name: Run the materializer and native view unit tests under sanitizers
       working-directory: ${{github.workspace}}/build
-      run: ctest -R "instanced_mesh" --output-on-failure
+      run: ctest -R "instanced_mesh|logical_mesh_view" --output-on-failure
 
   petsc:
     name: PETSc linear solver backend
