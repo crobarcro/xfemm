@@ -5,12 +5,16 @@
 #include "TiledModel.h"
 #include "TiledModelMesher.h"
 
+#include "mesh/LogicalMeshView.h"
 #include "mesh/SolverMeshValidator.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -84,6 +88,7 @@ femm::tiled::TiledModel makeTwoTileModel()
     auto circuit = std::make_unique<femm::CMCircuit>();
     circuit->CircName = "phase";
     circuit->CircType = 1;
+    circuit->Amps = 1;
     model.circuitProps.push_back(std::move(circuit));
 
     // Rotor pole (30 deg, air gap on its outer arc) and stator slot (10 deg,
@@ -131,6 +136,69 @@ int runPipelineChecks(femm::mesh::InstancedMesh &instanced)
     return 0;
 }
 
+/**
+ * G4/G5: the native compressed assembly must reproduce the materialised AGE
+ * solve, including after the AGE is repositioned without remeshing.
+ */
+int compareNative(femm::AnalysisSession &session,
+                  const std::shared_ptr<femm::FSolverAnalysisBackend> &solver,
+                  const std::string &label)
+{
+    const auto &materializedSystem = solver->solvedSystem();
+    const std::size_t materializedNodes = solver->solvedSolver().NumNodes;
+    const std::vector<double> reference(materializedSystem.rhs().begin(),
+                                        materializedSystem.rhs().end());
+    // Tangle's synchronised seam splitting can place a welded node a few
+    // nanometres from the representative, so match coordinates at a
+    // 1e-3 cm (1e-5 m) tolerance rather than exact equality.
+    std::map<std::pair<long long, long long>, std::size_t> lookup;
+    for (std::size_t i = 0; i < solver->solvedSolver().meshnode.size(); ++i) {
+        lookup[{std::llround(solver->solvedSolver().meshnode[i].x * 1e3),
+                std::llround(solver->solvedSolver().meshnode[i].y * 1e3)}] = i;
+    }
+
+    std::vector<MaterializationDiagnostic> diagnostics;
+    const LogicalMeshView view = LogicalMeshView::build(*session.instancedMesh(), diagnostics);
+    if (!view.valid())
+        return fail(label + ": logical view is invalid");
+    if (view.nodeCount() != materializedNodes)
+        return fail(label + ": node count differs");
+    if (!solver->solveNative(view, session.instanceLabelBases(), session.airGapPositioning()))
+        return fail(label + ": native solve failed");
+
+    const auto canonical = session.mesh();
+    for (std::size_t node = 0; node < view.nodeCount(); ++node) {
+        double x = 0.0, y = 0.0;
+        view.nodeCoordinates(node, x, y);
+        if (std::abs(x - canonical->nodes[node].x) > 1e-6 ||
+            std::abs(y - canonical->nodes[node].y) > 1e-6) {
+            std::cerr << "view/materialised coordinate mismatch at " << node << ": view=" << x
+                      << "," << y << " mesh=" << canonical->nodes[node].x << ","
+                      << canonical->nodes[node].y << '\n';
+            return fail(label + ": view coordinates differ from the materialised mesh");
+        }
+    }
+
+    const auto &native = solver->nativeSystem();
+    double largest = 0.0;
+    for (std::size_t node = 0; node < view.nodeCount(); ++node) {
+        double x = 0.0, y = 0.0;
+        view.nodeCoordinates(node, x, y);
+        const auto found =
+            lookup.find({std::llround(x * 100.0 * 1e3), std::llround(y * 100.0 * 1e3)});
+        if (found == lookup.end())
+            return fail(label + ": node is missing from the materialised mesh");
+        const double nativeValue = native.rhs()[node];
+        const double referenceValue = reference[found->second];
+        largest = std::max(largest, std::abs(referenceValue));
+        if (!(std::abs(nativeValue - referenceValue) < 1e-6 * (1.0 + std::abs(referenceValue))))
+            return fail(label + ": native field differs from the materialised field");
+    }
+    if (largest <= 1e-9)
+        return fail(label + ": trivial field");
+    return 0;
+}
+
 } // namespace
 
 int main()
@@ -166,6 +234,19 @@ int main()
     if (session.prepared().labels.size() != 8)
         return fail("session did not build one label set per instance");
     const std::size_t materializations = session.materializationCount();
+
+    session.solve();
+    if (const int status = compareNative(session, solver, "native-default"))
+        return status;
+
+    // A relative rotor position updates the AGE coupling without remeshing the
+    // stored templates; the native path must track it.
+    session.setAirGapAngle(session.model().airGap("gap"), 15.0, 0.0);
+    session.solve();
+    if (const int status = compareNative(session, solver, "native-angle"))
+        return status;
+    if (session.materializationCount() != materializations)
+        return fail("changing the AGE angle rematerialised the mesh");
 
     for (double angle : {15.0, 30.0}) {
         session.setAirGapAngle(session.model().airGap("gap"), angle, 0.0);

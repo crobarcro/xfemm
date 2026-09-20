@@ -76,6 +76,7 @@ add_library(femm
     TiledModelJson.cpp
     linsolve/backend_factory.cpp
     mesh/InstancedMesh.cpp
+    mesh/LogicalMeshView.cpp
     mesh/SolverMeshValidator.cpp
     )
 if(XFEMM_USE_PETSc)

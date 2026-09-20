@@ -2,6 +2,7 @@
 #define XFEMM_ANALYSISSESSION_H
 
 #include "FemmProblem.h"
+#include "mesh/LogicalMeshView.h"
 #include "mesh/Meshing.h"
 
 #include <cstdint>
@@ -10,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -188,6 +190,20 @@ public:
     virtual TrialSolution solve(const ModelDefinition &model,
                                 const SolveParameters &parameters,
                                 const PreparedAnalysis &prepared) = 0;
+
+    /**
+     * Optional compressed path: receive the canonical logical view instead of a
+     * materialised mesh. Backends that do not implement it leave the session's
+     * materialised path in place. The default implementation does nothing.
+     */
+    virtual void synchronizeNative(const ModelDefinition &, const SolveParameters &,
+                                   const PreparedAnalysis &,
+                                   std::shared_ptr<const mesh::LogicalMeshView>,
+                                   const std::vector<std::size_t> &,
+                                   const std::map<std::string, std::pair<double, double>> &,
+                                   Dirty)
+    {
+    }
 };
 
 } // namespace femm
@@ -222,6 +238,21 @@ public:
     void setInstancedMesh(mesh::InstancedMesh instanced);
     /** Stop instancing and return to mesher-driven topology. */
     void clearInstancedMesh();
+    /**
+     * Solve instanced meshes through the compressed logical view instead of a
+     * materialised SolverMesh. The view is rebuilt only when the mesh is dirty;
+     * physics changes never re-expand topology. Requires a backend that
+     * implements synchronizeNative(); otherwise the materialised path is used.
+     */
+    void setNativeInstanced(bool enabled);
+    bool nativeInstanced() const { return m_nativeInstanced; }
+    /** Number of times the compressed logical view was rebuilt. */
+    std::size_t viewGenerationCount() const { return m_viewGenerations; }
+    /** Current compressed view, when native instancing is active. */
+    const std::shared_ptr<const mesh::LogicalMeshView> &logicalView() const
+    {
+        return m_logicalView;
+    }
     /** Replace one instance's transform; re-materialises but never re-meshes. */
     void setInstanceTransform(std::size_t instance, const mesh::RigidTransform2D &transform);
     /** Replace one instance's physics overrides; never changes topology. */
@@ -238,6 +269,15 @@ public:
     std::size_t materializationCount() const { return m_materializationCount; }
     /** Local-to-global maps for the current materialisation. */
     const mesh::InstancingProvenance &instancingProvenance() const { return m_instancingProvenance; }
+    /**
+     * First solver-label index of each instance, followed by the total label
+     * count. Entry i is exactly the base added to an instance's template
+     * region attributes when the materialised mesh is remapped, so a native
+     * consumer can resolve per-instance labels from a LogicalMeshView.
+     */
+    std::vector<std::size_t> instanceLabelBases() const;
+    /** Current air-gap angles keyed by boundary name, for native AGE assembly. */
+    std::map<std::string, std::pair<double, double>> airGapPositioning() const;
     /** Provenance of a global element, when instancing is active. */
     std::optional<mesh::ElementProvenance> elementProvenance(std::size_t globalElement) const;
     /** Provenance of a global node, when instancing is active. */
@@ -279,6 +319,7 @@ private:
     void rebuildMaterials(PreparedAnalysis &candidate) const;
     void rebuildCircuits(PreparedAnalysis &candidate) const;
     std::shared_ptr<const mesh::SolverMesh> ensureInstancedMesh();
+    std::shared_ptr<const mesh::LogicalMeshView> ensureInstancedView();
     /** Build per-instance solver labels and circuit entries from overrides. */
     void rebuildInstancedPrepared(PreparedAnalysis &candidate) const;
     /** Copy a canonical materialised mesh, remapping region attributes per instance. */
@@ -300,6 +341,9 @@ private:
     std::uint64_t m_meshTopologyIdentity = 0;
     std::size_t m_meshGenerations = 0;
     std::optional<mesh::InstancedMesh> m_instanced;
+    bool m_nativeInstanced = false;
+    std::shared_ptr<const mesh::LogicalMeshView> m_logicalView;
+    std::size_t m_viewGenerations = 0;
     std::shared_ptr<const mesh::SolverMesh> m_canonicalMesh;
     mesh::InstancingProvenance m_instancingProvenance;
     std::uint64_t m_templateTopologyIdentity = 0;

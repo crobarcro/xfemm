@@ -87,6 +87,15 @@ add_test(NAME tiled_model_airgap COMMAND tiled_model_airgap_test)
 set_tests_properties(tiled_model_airgap PROPERTIES
     LABELS "solver;Tangle;tiled;instanced;unit")
 
+add_executable(native_static2d_test native_static2d_test.cpp)
+target_link_libraries(native_static2d_test PRIVATE fsolver)
+add_test(NAME native_static2d COMMAND native_static2d_test)
+set_tests_properties(native_static2d PROPERTIES
+    LABELS "magnetics;solver;instanced;native;unit")
+
+add_executable(instanced_solver_benchmark instanced_solver_benchmark.cpp)
+target_link_libraries(instanced_solver_benchmark PRIVATE fsolver)
+
 add_executable(periodic_pbc_without_age_test periodic_pbc_without_age_test.cpp)
 target_link_libraries(periodic_pbc_without_age_test PRIVATE fsolver)
 add_test(NAME periodic_pbc_without_age

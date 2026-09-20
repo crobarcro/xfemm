@@ -1,4 +1,5 @@
 #include "InstancedMesh.h"
+#include "InstancedMeshDetail.h"
 
 #include <algorithm>
 #include <cmath>
@@ -194,6 +195,339 @@ void hashSolverMesh(StableHash &hash, const SolverMesh &mesh)
 }
 
 } // namespace
+
+namespace detail {
+
+bool buildWeldPlan(const InstancedMesh &instanced, WeldPlan &plan,
+                   std::vector<MaterializationDiagnostic> &diagnostics)
+{
+    diagnostics = instanced.validate();
+    if (!diagnostics.empty())
+        return false;
+
+    // Flatten (instance, local node) into one key space for welding.
+    plan.instanceBase.assign(instanced.instances.size(), 0);
+    std::size_t totalNodes = 0;
+    for (std::size_t i = 0; i < instanced.instances.size(); ++i) {
+        plan.instanceBase[i] = totalNodes;
+        totalNodes +=
+            instanced.templates[instanced.instances[i].templateIndex].localMesh.nodes.size();
+    }
+    plan.totalNodes = totalNodes;
+    UnionFind welds(totalNodes);
+
+    // Apply each unique seam connection once. Orientation is symmetric under
+    // swapping the two endpoints, so the canonical key ignores declaration order.
+    using SeamKey = std::pair<std::pair<std::size_t, std::size_t>,
+                              std::pair<std::size_t, std::size_t>>;
+    std::map<SeamKey, SeamOrientation> applied;
+    for (std::size_t i = 0; i < instanced.instances.size(); ++i) {
+        const auto &instance = instanced.instances[i];
+        for (const auto &connection : instance.seamConnections) {
+            const auto first = std::make_pair(i, connection.seam);
+            const auto second =
+                std::make_pair(connection.otherInstance, connection.otherSeam);
+            const SeamKey key = first <= second ? SeamKey(first, second)
+                                                : SeamKey(second, first);
+            applied.emplace(key, connection.orientation);
+        }
+    }
+    for (const auto &entry : applied) {
+        const std::size_t instanceA = entry.first.first.first;
+        const std::size_t seamA = entry.first.first.second;
+        const std::size_t instanceB = entry.first.second.first;
+        const std::size_t seamB = entry.first.second.second;
+        const TemplateSeam &first =
+            instanced.templates[instanced.instances[instanceA].templateIndex].seams[seamA];
+        const TemplateSeam &second =
+            instanced.templates[instanced.instances[instanceB].templateIndex].seams[seamB];
+        const bool reverse = entry.second == SeamOrientation::Reverse;
+        const std::size_t count = first.orderedNodes.size();
+        for (std::size_t i = 0; i < count; ++i) {
+            const std::size_t j = reverse ? count - 1 - i : i;
+            welds.unite(plan.instanceBase[instanceA] + first.orderedNodes[i],
+                        plan.instanceBase[instanceB] + second.orderedNodes[j]);
+        }
+    }
+
+    // Validate that every declared weld actually places its nodes together.
+    for (std::size_t i = 0; i < instanced.instances.size(); ++i) {
+        const auto &instance = instanced.instances[i];
+        const auto &transform = instance.transform;
+        for (const auto &connection : instance.seamConnections) {
+            const TemplateSeam &first =
+                instanced.templates[instance.templateIndex].seams[connection.seam];
+            const TemplateSeam &second =
+                instanced.templates[instanced.instances[connection.otherInstance].templateIndex]
+                    .seams[connection.otherSeam];
+            const bool reverse = connection.orientation == SeamOrientation::Reverse;
+            const std::size_t count = first.orderedNodes.size();
+            const auto &firstMesh = instanced.templates[instance.templateIndex].localMesh;
+            const auto &secondMesh =
+                instanced.templates[instanced.instances[connection.otherInstance].templateIndex]
+                    .localMesh;
+            const auto &secondTransform = instanced.instances[connection.otherInstance].transform;
+            for (std::size_t k = 0; k < count; ++k) {
+                const std::size_t j = reverse ? count - 1 - k : k;
+                const auto &a = firstMesh.nodes[first.orderedNodes[k]];
+                const auto &b = secondMesh.nodes[second.orderedNodes[j]];
+                double ax, ay, bx, by;
+                transform.applyPoint(a.x, a.y, ax, ay);
+                secondTransform.applyPoint(b.x, b.y, bx, by);
+                if (std::abs(ax - bx) > InstancedMeshWeldToleranceMetres ||
+                    std::abs(ay - by) > InstancedMeshWeldToleranceMetres) {
+                    addDiagnostic(diagnostics,
+                                  MaterializationDiagnosticCategory::SeamCoordinateMismatch,
+                                  i, connection.seam, k,
+                                  "declared weld nodes do not coincide");
+                }
+            }
+        }
+    }
+    if (!diagnostics.empty())
+        return false;
+
+    plan.root.resize(totalNodes);
+    for (std::size_t i = 0; i < totalNodes; ++i)
+        plan.root[i] = welds.find(i);
+    return true;
+}
+
+bool remapTopology(const InstancedMesh &instanced,
+                   const std::function<MeshIndex(std::size_t, MeshIndex)> &nodeFor,
+                   const std::function<void(MeshIndex, double &, double &)> &coordinates,
+                   TopologyRemap &out,
+                   std::vector<MaterializationDiagnostic> &diagnostics)
+{
+    const auto &templates = instanced.templates;
+    const auto &instances = instanced.instances;
+    const std::size_t initialDiagnostics = diagnostics.size();
+
+    // Remap ordinary periodic constraints.
+    std::set<std::tuple<MeshIndex, MeshIndex, int>> seenConstraints;
+    for (std::size_t i = 0; i < instances.size(); ++i) {
+        const auto &localMesh = templates[instances[i].templateIndex].localMesh;
+        for (std::size_t c = 0; c < localMesh.periodicConstraints.size(); ++c) {
+            const auto &constraint = localMesh.periodicConstraints[c];
+            if (constraint.first >= localMesh.nodes.size() ||
+                constraint.second >= localMesh.nodes.size()) {
+                addDiagnostic(diagnostics,
+                              MaterializationDiagnosticCategory::InvalidPeriodicNode, i, c, 0,
+                              "periodic constraint references an invalid local node");
+                continue;
+            }
+            const MeshIndex first = nodeFor(i, constraint.first);
+            const MeshIndex second = nodeFor(i, constraint.second);
+            const int type =
+                constraint.periodicity == SolverMesh::Periodicity::Antiperiodic ? 1 : 0;
+            if (seenConstraints.insert({std::min(first, second), std::max(first, second), type})
+                    .second) {
+                out.periodicConstraints.push_back({first, second, constraint.periodicity});
+            }
+        }
+    }
+
+    // Emit the periodic/antiperiodic links that close an open sector. The two
+    // end seams are not welded, so their nodes stay distinct and the field is
+    // identified only by the explicit constraint.
+    for (const auto &closure : instanced.periodicClosures) {
+        const auto &first =
+            templates[instances[closure.firstInstance].templateIndex].seams[closure.firstSeam];
+        const auto &second =
+            templates[instances[closure.secondInstance].templateIndex].seams[closure.secondSeam];
+        const bool reverse = closure.orientation == SeamOrientation::Reverse;
+        const std::size_t count = first.orderedNodes.size();
+        for (std::size_t i = 0; i < count; ++i) {
+            const std::size_t j = reverse ? count - 1 - i : i;
+            const MeshIndex a = nodeFor(closure.firstInstance, first.orderedNodes[i]);
+            const MeshIndex b = nodeFor(closure.secondInstance, second.orderedNodes[j]);
+            const int type =
+                closure.periodicity == SolverMesh::Periodicity::Antiperiodic ? 1 : 0;
+            if (seenConstraints.insert({std::min(a, b), std::max(a, b), type}).second) {
+                out.periodicConstraints.push_back({a, b, closure.periodicity});
+            }
+        }
+    }
+
+    // Remap AGE rings, quadrature nodes, and node-index lists.
+    for (std::size_t i = 0; i < instances.size(); ++i) {
+        const auto &instance = instances[i];
+        const auto &localMesh = templates[instance.templateIndex].localMesh;
+        for (std::size_t g = 0; g < localMesh.airGaps.size(); ++g) {
+            const auto &gap = localMesh.airGaps[g];
+            SolverMesh::AirGap mapped;
+            mapped.boundaryName = gap.boundaryName;
+            mapped.periodicity = gap.periodicity;
+            mapped.totalArcElements = gap.totalArcElements;
+            mapped.totalArcLengthDegrees = gap.totalArcLengthDegrees;
+            mapped.innerRadius = gap.innerRadius;
+            mapped.outerRadius = gap.outerRadius;
+            mapped.innerShift = gap.innerShift;
+            mapped.outerShift = gap.outerShift;
+            double centerX = 0.0, centerY = 0.0;
+            instance.transform.applyPoint(gap.centerX, gap.centerY, centerX, centerY);
+            mapped.centerX = centerX;
+            mapped.centerY = centerY;
+            mapped.innerAngleDegrees =
+                wrapDegrees(gap.innerAngleDegrees + instance.transform.rotationDegrees);
+            mapped.outerAngleDegrees =
+                wrapDegrees(gap.outerAngleDegrees + instance.transform.rotationDegrees);
+
+            bool structureValid = true;
+            const auto remapNode = [&](MeshIndex node, std::size_t localIndex,
+                                       const char *description) -> MeshIndex {
+                if (node >= localMesh.nodes.size()) {
+                    addDiagnostic(diagnostics,
+                                  MaterializationDiagnosticCategory::InvalidAirGapNode, i, g,
+                                  localIndex, std::string("AGE ") + description +
+                                                  " references an invalid local node");
+                    structureValid = false;
+                    return InvalidMeshIndex;
+                }
+                return nodeFor(i, node);
+            };
+
+            mapped.nodeIndices.reserve(gap.nodeIndices.size());
+            for (std::size_t n = 0; n < gap.nodeIndices.size(); ++n)
+                mapped.nodeIndices.push_back(
+                    remapNode(gap.nodeIndices[n], n, "nodeIndices"));
+
+            mapped.quadraturePoints.reserve(gap.quadraturePoints.size());
+            for (std::size_t q = 0; q < gap.quadraturePoints.size(); ++q) {
+                SolverMesh::AirGapQuadraturePoint point;
+                for (std::size_t k = 0; k < 4; ++k)
+                    point.nodes[k] = remapNode(gap.quadraturePoints[q].nodes[k],
+                                               q * 4 + k, "quadrature");
+                point.weights = gap.quadraturePoints[q].weights;
+                mapped.quadraturePoints.push_back(point);
+            }
+
+            const std::vector<SolverMesh::AirGapRingPoint> *sourceRings[] = {
+                &gap.innerRing, &gap.outerRing};
+            std::vector<SolverMesh::AirGapRingPoint> *targetRings[] = {
+                &mapped.innerRing, &mapped.outerRing};
+            for (std::size_t r = 0; r < 2; ++r) {
+                targetRings[r]->reserve(sourceRings[r]->size());
+                for (std::size_t p = 0; p < sourceRings[r]->size(); ++p) {
+                    SolverMesh::AirGapRingPoint point = (*sourceRings[r])[p];
+                    point.node = remapNode(point.node, p, "ring");
+                    targetRings[r]->push_back(point);
+                }
+            }
+
+            if (gap.quadraturePoints.empty() ||
+                gap.quadraturePoints.size() - 1 != gap.totalArcElements ||
+                gap.innerRing.empty() != gap.outerRing.empty() ||
+                (!gap.innerRing.empty() &&
+                 (gap.innerRing.size() != gap.outerRing.size() ||
+                  gap.innerRing.size() < gap.totalArcElements))) {
+                addDiagnostic(diagnostics,
+                              MaterializationDiagnosticCategory::InvalidAirGapStructure, i, g,
+                              0, "AGE structure is inconsistent");
+                structureValid = false;
+            }
+            if (structureValid)
+                out.airGaps.push_back(std::move(mapped));
+        }
+    }
+
+    // Assemble cross-template air-gap couplings from the per-instance seam
+    // nodes. The inner and outer rings keep independent unknowns; only the
+    // solver's air-gap element links them.
+    for (std::size_t c = 0; c < instanced.airGapCouplings.size(); ++c) {
+        const auto &coupling = instanced.airGapCouplings[c];
+        SolverMesh::AirGap gap;
+        gap.boundaryName = coupling.boundaryName;
+        gap.periodicity = coupling.periodicity;
+        gap.totalArcLengthDegrees = coupling.totalArcLengthDegrees;
+        gap.innerRadius = coupling.innerRadiusMetres;
+        gap.outerRadius = coupling.outerRadiusMetres;
+        gap.centerX = coupling.centerXMetres;
+        gap.centerY = coupling.centerYMetres;
+        gap.innerAngleDegrees = coupling.innerAngleDegrees;
+        gap.outerAngleDegrees = coupling.outerAngleDegrees;
+        gap.innerShift = coupling.innerShift;
+        gap.outerShift = coupling.outerShift;
+
+        const auto collectRing = [&](std::size_t templateIndex, std::size_t seamIndex,
+                                     std::vector<SolverMesh::AirGapRingPoint> &ring) {
+            const auto &seam = templates[templateIndex].seams[seamIndex];
+            for (std::size_t i = 0; i < instances.size(); ++i) {
+                if (instances[i].templateIndex != templateIndex)
+                    continue;
+                for (MeshIndex local : seam.orderedNodes) {
+                    const MeshIndex global = nodeFor(i, local);
+                    double x = 0.0, y = 0.0;
+                    coordinates(global, x, y);
+                    double angle = std::atan2(y - coupling.centerYMetres,
+                                              x - coupling.centerXMetres) *
+                                   180.0 / Pi;
+                    if (angle < 0.0)
+                        angle += 360.0;
+                    ring.push_back({global, angle, 1.0});
+                }
+            }
+            std::stable_sort(ring.begin(), ring.end(),
+                             [](const SolverMesh::AirGapRingPoint &left,
+                                const SolverMesh::AirGapRingPoint &right) {
+                                 return left.elementPosition < right.elementPosition;
+                             });
+            // Adjacent welded instances contribute the same boundary node
+            // twice; keep one ring entry per global node.
+            std::vector<SolverMesh::AirGapRingPoint> unique;
+            unique.reserve(ring.size());
+            for (const auto &point : ring)
+                if (unique.empty() || unique.back().node != point.node)
+                    unique.push_back(point);
+            ring = std::move(unique);
+        };
+        collectRing(coupling.innerTemplate, coupling.innerSeam, gap.innerRing);
+        collectRing(coupling.outerTemplate, coupling.outerSeam, gap.outerRing);
+
+        if (gap.innerRing.empty() || gap.innerRing.size() != gap.outerRing.size()) {
+            addDiagnostic(diagnostics,
+                          MaterializationDiagnosticCategory::InvalidAirGapCoupling, c, 0, 0,
+                          "air-gap coupling rings have incompatible cardinality");
+            continue;
+        }
+        const std::size_t count = gap.innerRing.size();
+        const double step = coupling.totalArcLengthDegrees / static_cast<double>(count);
+        if (!(step > 0.0)) {
+            addDiagnostic(diagnostics,
+                          MaterializationDiagnosticCategory::InvalidAirGapCoupling, c, 0, 0,
+                          "air-gap coupling has a non-positive angular step");
+            continue;
+        }
+        for (auto &point : gap.innerRing)
+            point.elementPosition /= step;
+        for (auto &point : gap.outerRing)
+            point.elementPosition /= step;
+        gap.innerShift = gap.innerRing.front().elementPosition;
+        gap.outerShift = gap.outerRing.front().elementPosition;
+        gap.totalArcElements = count;
+        gap.nodeIndices.reserve(count * 2);
+        for (const auto &point : gap.innerRing)
+            gap.nodeIndices.push_back(point.node);
+        for (const auto &point : gap.outerRing)
+            gap.nodeIndices.push_back(point.node);
+        gap.quadraturePoints.reserve(count + 1);
+        for (std::size_t i = 0; i <= count; ++i) {
+            const std::size_t next = i % count;
+            const std::size_t previous = next == 0 ? count - 1 : next - 1;
+            SolverMesh::AirGapQuadraturePoint point;
+            point.nodes = {{gap.innerRing[previous].node, gap.innerRing[next].node,
+                            gap.outerRing[previous].node, gap.outerRing[next].node}};
+            point.weights = {{gap.innerRing[previous].weight, gap.innerRing[next].weight,
+                              gap.outerRing[previous].weight, gap.outerRing[next].weight}};
+            gap.quadraturePoints.push_back(point);
+        }
+        out.airGaps.push_back(std::move(gap));
+    }
+
+    return diagnostics.size() == initialDiagnostics;
+}
+
+} // namespace detail
 
 bool RigidTransform2D::isFinite() const
 {
@@ -411,99 +745,20 @@ std::vector<MaterializationDiagnostic> InstancedMesh::validate() const
 MaterializationResult InstancedMesh::materialize() const
 {
     MaterializationResult result;
-    result.diagnostics = validate();
-    if (!result.diagnostics.empty())
-        return result;
-
-    // Flatten (instance, local node) into one key space for welding.
-    std::vector<std::size_t> instanceBase(instances.size(), 0);
-    std::size_t totalNodes = 0;
-    for (std::size_t i = 0; i < instances.size(); ++i) {
-        instanceBase[i] = totalNodes;
-        totalNodes += templates[instances[i].templateIndex].localMesh.nodes.size();
-    }
-    UnionFind welds(totalNodes);
-
-    // Apply each unique seam connection once. Orientation is symmetric under
-    // swapping the two endpoints, so the canonical key ignores declaration order.
-    using SeamKey = std::pair<std::pair<std::size_t, std::size_t>,
-                              std::pair<std::size_t, std::size_t>>;
-    std::map<SeamKey, SeamOrientation> applied;
-    for (std::size_t i = 0; i < instances.size(); ++i) {
-        const auto &instance = instances[i];
-        for (const auto &connection : instance.seamConnections) {
-            const auto first = std::make_pair(i, connection.seam);
-            const auto second =
-                std::make_pair(connection.otherInstance, connection.otherSeam);
-            const SeamKey key = first <= second ? SeamKey(first, second)
-                                                : SeamKey(second, first);
-            applied.emplace(key, connection.orientation);
-        }
-    }
-    for (const auto &entry : applied) {
-        const std::size_t instanceA = entry.first.first.first;
-        const std::size_t seamA = entry.first.first.second;
-        const std::size_t instanceB = entry.first.second.first;
-        const std::size_t seamB = entry.first.second.second;
-        const TemplateSeam &first = templates[instances[instanceA].templateIndex]
-                                        .seams[seamA];
-        const TemplateSeam &second = templates[instances[instanceB].templateIndex]
-                                         .seams[seamB];
-        const bool reverse = entry.second == SeamOrientation::Reverse;
-        const std::size_t count = first.orderedNodes.size();
-        for (std::size_t i = 0; i < count; ++i) {
-            const std::size_t j = reverse ? count - 1 - i : i;
-            welds.unite(instanceBase[instanceA] + first.orderedNodes[i],
-                        instanceBase[instanceB] + second.orderedNodes[j]);
-        }
-    }
-
-    // Validate that every declared weld actually places its nodes together.
-    for (std::size_t i = 0; i < instances.size(); ++i) {
-        const auto &instance = instances[i];
-        const auto &transform = instance.transform;
-        for (const auto &connection : instance.seamConnections) {
-            const TemplateSeam &first =
-                templates[instance.templateIndex].seams[connection.seam];
-            const TemplateSeam &second =
-                templates[instances[connection.otherInstance].templateIndex]
-                    .seams[connection.otherSeam];
-            const bool reverse = connection.orientation == SeamOrientation::Reverse;
-            const std::size_t count = first.orderedNodes.size();
-            const auto &firstMesh =
-                templates[instance.templateIndex].localMesh;
-            const auto &secondMesh =
-                templates[instances[connection.otherInstance].templateIndex].localMesh;
-            const auto &secondTransform = instances[connection.otherInstance].transform;
-            for (std::size_t k = 0; k < count; ++k) {
-                const std::size_t j = reverse ? count - 1 - k : k;
-                const auto &a = firstMesh.nodes[first.orderedNodes[k]];
-                const auto &b = secondMesh.nodes[second.orderedNodes[j]];
-                double ax, ay, bx, by;
-                transform.applyPoint(a.x, a.y, ax, ay);
-                secondTransform.applyPoint(b.x, b.y, bx, by);
-                if (std::abs(ax - bx) > InstancedMeshWeldToleranceMetres ||
-                    std::abs(ay - by) > InstancedMeshWeldToleranceMetres) {
-                    addDiagnostic(result.diagnostics,
-                                  MaterializationDiagnosticCategory::SeamCoordinateMismatch,
-                                  i, connection.seam, k,
-                                  "declared weld nodes do not coincide");
-                }
-            }
-        }
-    }
-    if (!result.diagnostics.empty())
+    detail::WeldPlan plan;
+    if (!detail::buildWeldPlan(*this, plan, result.diagnostics))
         return result;
 
     // Assign deterministic global node indices: first encounter wins.
-    std::vector<MeshIndex> rootToGlobal(totalNodes, InvalidMeshIndex);
+    const std::vector<std::size_t> &instanceBase = plan.instanceBase;
+    std::vector<MeshIndex> rootToGlobal(plan.totalNodes, InvalidMeshIndex);
     result.provenance.nodeMap.resize(instances.size());
     for (std::size_t i = 0; i < instances.size(); ++i) {
         const auto &instance = instances[i];
         const auto &localMesh = templates[instance.templateIndex].localMesh;
         result.provenance.nodeMap[i].resize(localMesh.nodes.size(), InvalidMeshIndex);
         for (MeshIndex n = 0; n < localMesh.nodes.size(); ++n) {
-            const std::size_t root = welds.find(instanceBase[i] + n);
+            const std::size_t root = plan.root[instanceBase[i] + n];
             if (rootToGlobal[root] == InvalidMeshIndex) {
                 if (result.mesh.nodes.size() >= InvalidMeshIndex) {
                     addDiagnostic(result.diagnostics,
@@ -596,228 +851,24 @@ MaterializationResult InstancedMesh::materialize() const
     for (const auto &entry : edgeMarkers)
         result.mesh.edges.push_back({entry.first.first, entry.first.second, entry.second});
 
-    // Remap ordinary periodic constraints.
-    std::set<std::tuple<MeshIndex, MeshIndex, int>> seenConstraints;
-    for (std::size_t i = 0; i < instances.size(); ++i) {
-        const auto &localMesh = templates[instances[i].templateIndex].localMesh;
-        for (std::size_t c = 0; c < localMesh.periodicConstraints.size(); ++c) {
-            const auto &constraint = localMesh.periodicConstraints[c];
-            if (constraint.first >= localMesh.nodes.size() ||
-                constraint.second >= localMesh.nodes.size()) {
-                addDiagnostic(result.diagnostics,
-                              MaterializationDiagnosticCategory::InvalidPeriodicNode, i, c, 0,
-                              "periodic constraint references an invalid local node");
-                continue;
-            }
-            const MeshIndex first = result.provenance.nodeMap[i][constraint.first];
-            const MeshIndex second = result.provenance.nodeMap[i][constraint.second];
-            const int type =
-                constraint.periodicity == SolverMesh::Periodicity::Antiperiodic ? 1 : 0;
-            if (seenConstraints.insert({std::min(first, second), std::max(first, second), type})
-                    .second) {
-                result.mesh.periodicConstraints.push_back(
-                    {first, second, constraint.periodicity});
-            }
-        }
+    // Remap ordinary periodic constraints, periodic closures, per-instance
+    // AGE topology, and cross-template AGE couplings through the provenance.
+    detail::TopologyRemap topology;
+    if (!detail::remapTopology(
+            *this,
+            [&result](std::size_t instance, MeshIndex local) {
+                return result.provenance.nodeMap[instance][local];
+            },
+            [&result](MeshIndex node, double &x, double &y) {
+                x = result.mesh.nodes[node].x;
+                y = result.mesh.nodes[node].y;
+            },
+            topology, result.diagnostics)) {
+        return result;
     }
+    result.mesh.periodicConstraints = std::move(topology.periodicConstraints);
+    result.mesh.airGaps = std::move(topology.airGaps);
 
-    // Emit the periodic/antiperiodic links that close an open sector. The two
-    // end seams are not welded, so their nodes stay distinct and the field is
-    // identified only by the explicit constraint.
-    for (const auto &closure : periodicClosures) {
-        const auto &first =
-            templates[instances[closure.firstInstance].templateIndex].seams[closure.firstSeam];
-        const auto &second =
-            templates[instances[closure.secondInstance].templateIndex].seams[closure.secondSeam];
-        const bool reverse = closure.orientation == SeamOrientation::Reverse;
-        const std::size_t count = first.orderedNodes.size();
-        for (std::size_t i = 0; i < count; ++i) {
-            const std::size_t j = reverse ? count - 1 - i : i;
-            const MeshIndex a =
-                result.provenance.nodeMap[closure.firstInstance][first.orderedNodes[i]];
-            const MeshIndex b =
-                result.provenance.nodeMap[closure.secondInstance][second.orderedNodes[j]];
-            const int type =
-                closure.periodicity == SolverMesh::Periodicity::Antiperiodic ? 1 : 0;
-            if (seenConstraints.insert({std::min(a, b), std::max(a, b), type}).second) {
-                result.mesh.periodicConstraints.push_back({a, b, closure.periodicity});
-            }
-        }
-    }
-
-    // Remap AGE rings, quadrature nodes, and node-index lists.
-    for (std::size_t i = 0; i < instances.size(); ++i) {
-        const auto &instance = instances[i];
-        const auto &localMesh = templates[instance.templateIndex].localMesh;
-        for (std::size_t g = 0; g < localMesh.airGaps.size(); ++g) {
-            const auto &gap = localMesh.airGaps[g];
-            SolverMesh::AirGap mapped;
-            mapped.boundaryName = gap.boundaryName;
-            mapped.periodicity = gap.periodicity;
-            mapped.totalArcElements = gap.totalArcElements;
-            mapped.totalArcLengthDegrees = gap.totalArcLengthDegrees;
-            mapped.innerRadius = gap.innerRadius;
-            mapped.outerRadius = gap.outerRadius;
-            mapped.innerShift = gap.innerShift;
-            mapped.outerShift = gap.outerShift;
-            double centerX = 0.0, centerY = 0.0;
-            instance.transform.applyPoint(gap.centerX, gap.centerY, centerX, centerY);
-            mapped.centerX = centerX;
-            mapped.centerY = centerY;
-            mapped.innerAngleDegrees =
-                wrapDegrees(gap.innerAngleDegrees + instance.transform.rotationDegrees);
-            mapped.outerAngleDegrees =
-                wrapDegrees(gap.outerAngleDegrees + instance.transform.rotationDegrees);
-
-            bool structureValid = true;
-            const auto remapNode = [&](MeshIndex node, std::size_t localIndex,
-                                       const char *description) -> MeshIndex {
-                if (node >= localMesh.nodes.size()) {
-                    addDiagnostic(result.diagnostics,
-                                  MaterializationDiagnosticCategory::InvalidAirGapNode, i, g,
-                                  localIndex, std::string("AGE ") + description +
-                                                  " references an invalid local node");
-                    structureValid = false;
-                    return InvalidMeshIndex;
-                }
-                return result.provenance.nodeMap[i][node];
-            };
-
-            mapped.nodeIndices.reserve(gap.nodeIndices.size());
-            for (std::size_t n = 0; n < gap.nodeIndices.size(); ++n)
-                mapped.nodeIndices.push_back(
-                    remapNode(gap.nodeIndices[n], n, "nodeIndices"));
-
-            mapped.quadraturePoints.reserve(gap.quadraturePoints.size());
-            for (std::size_t q = 0; q < gap.quadraturePoints.size(); ++q) {
-                SolverMesh::AirGapQuadraturePoint point;
-                for (std::size_t k = 0; k < 4; ++k)
-                    point.nodes[k] = remapNode(gap.quadraturePoints[q].nodes[k],
-                                               q * 4 + k, "quadrature");
-                point.weights = gap.quadraturePoints[q].weights;
-                mapped.quadraturePoints.push_back(point);
-            }
-
-            const std::vector<SolverMesh::AirGapRingPoint> *sourceRings[] = {
-                &gap.innerRing, &gap.outerRing};
-            std::vector<SolverMesh::AirGapRingPoint> *targetRings[] = {
-                &mapped.innerRing, &mapped.outerRing};
-            for (std::size_t r = 0; r < 2; ++r) {
-                targetRings[r]->reserve(sourceRings[r]->size());
-                for (std::size_t p = 0; p < sourceRings[r]->size(); ++p) {
-                    SolverMesh::AirGapRingPoint point = (*sourceRings[r])[p];
-                    point.node = remapNode(point.node, p, "ring");
-                    targetRings[r]->push_back(point);
-                }
-            }
-
-            if (gap.quadraturePoints.empty() ||
-                gap.quadraturePoints.size() - 1 != gap.totalArcElements ||
-                gap.innerRing.empty() != gap.outerRing.empty() ||
-                (!gap.innerRing.empty() &&
-                 (gap.innerRing.size() != gap.outerRing.size() ||
-                  gap.innerRing.size() < gap.totalArcElements))) {
-                addDiagnostic(result.diagnostics,
-                              MaterializationDiagnosticCategory::InvalidAirGapStructure, i, g,
-                              0, "AGE structure is inconsistent");
-                structureValid = false;
-            }
-            if (structureValid)
-                result.mesh.airGaps.push_back(std::move(mapped));
-        }
-    }
-
-    // Assemble cross-template air-gap couplings from the per-instance seam
-    // nodes. The inner and outer rings keep independent unknowns; only the
-    // solver's air-gap element links them.
-    for (std::size_t c = 0; c < airGapCouplings.size(); ++c) {
-        const auto &coupling = airGapCouplings[c];
-        SolverMesh::AirGap gap;
-        gap.boundaryName = coupling.boundaryName;
-        gap.periodicity = coupling.periodicity;
-        gap.totalArcLengthDegrees = coupling.totalArcLengthDegrees;
-        gap.innerRadius = coupling.innerRadiusMetres;
-        gap.outerRadius = coupling.outerRadiusMetres;
-        gap.centerX = coupling.centerXMetres;
-        gap.centerY = coupling.centerYMetres;
-        gap.innerAngleDegrees = coupling.innerAngleDegrees;
-        gap.outerAngleDegrees = coupling.outerAngleDegrees;
-        gap.innerShift = coupling.innerShift;
-        gap.outerShift = coupling.outerShift;
-
-        const auto collectRing = [&](std::size_t templateIndex, std::size_t seamIndex,
-                                     std::vector<SolverMesh::AirGapRingPoint> &ring) {
-            const auto &seam = templates[templateIndex].seams[seamIndex];
-            for (std::size_t i = 0; i < instances.size(); ++i) {
-                if (instances[i].templateIndex != templateIndex)
-                    continue;
-                for (MeshIndex local : seam.orderedNodes) {
-                    const MeshIndex global = result.provenance.nodeMap[i][local];
-                    const auto &node = result.mesh.nodes[global];
-                    double angle = std::atan2(node.y - coupling.centerYMetres,
-                                              node.x - coupling.centerXMetres) *
-                                   180.0 / Pi;
-                    if (angle < 0.0)
-                        angle += 360.0;
-                    ring.push_back({global, angle, 1.0});
-                }
-            }
-            std::stable_sort(ring.begin(), ring.end(),
-                             [](const SolverMesh::AirGapRingPoint &left,
-                                const SolverMesh::AirGapRingPoint &right) {
-                                 return left.elementPosition < right.elementPosition;
-                             });
-            // Adjacent welded instances contribute the same boundary node
-            // twice; keep one ring entry per global node.
-            std::vector<SolverMesh::AirGapRingPoint> unique;
-            unique.reserve(ring.size());
-            for (const auto &point : ring)
-                if (unique.empty() || unique.back().node != point.node)
-                    unique.push_back(point);
-            ring = std::move(unique);
-        };
-        collectRing(coupling.innerTemplate, coupling.innerSeam, gap.innerRing);
-        collectRing(coupling.outerTemplate, coupling.outerSeam, gap.outerRing);
-
-        if (gap.innerRing.empty() || gap.innerRing.size() != gap.outerRing.size()) {
-            addDiagnostic(result.diagnostics,
-                          MaterializationDiagnosticCategory::InvalidAirGapCoupling, c, 0, 0,
-                          "air-gap coupling rings have incompatible cardinality");
-            continue;
-        }
-        const std::size_t count = gap.innerRing.size();
-        const double step = coupling.totalArcLengthDegrees / static_cast<double>(count);
-        if (!(step > 0.0)) {
-            addDiagnostic(result.diagnostics,
-                          MaterializationDiagnosticCategory::InvalidAirGapCoupling, c, 0, 0,
-                          "air-gap coupling has a non-positive angular step");
-            continue;
-        }
-        for (auto &point : gap.innerRing)
-            point.elementPosition /= step;
-        for (auto &point : gap.outerRing)
-            point.elementPosition /= step;
-        gap.innerShift = gap.innerRing.front().elementPosition;
-        gap.outerShift = gap.outerRing.front().elementPosition;
-        gap.totalArcElements = count;
-        gap.nodeIndices.reserve(count * 2);
-        for (const auto &point : gap.innerRing)
-            gap.nodeIndices.push_back(point.node);
-        for (const auto &point : gap.outerRing)
-            gap.nodeIndices.push_back(point.node);
-        gap.quadraturePoints.reserve(count + 1);
-        for (std::size_t i = 0; i <= count; ++i) {
-            const std::size_t next = i % count;
-            const std::size_t previous = next == 0 ? count - 1 : next - 1;
-            SolverMesh::AirGapQuadraturePoint point;
-            point.nodes = {{gap.innerRing[previous].node, gap.innerRing[next].node,
-                            gap.outerRing[previous].node, gap.outerRing[next].node}};
-            point.weights = {{gap.innerRing[previous].weight, gap.innerRing[next].weight,
-                              gap.outerRing[previous].weight, gap.outerRing[next].weight}};
-            gap.quadraturePoints.push_back(point);
-        }
-        result.mesh.airGaps.push_back(std::move(gap));
-    }
 
     return result;
 }

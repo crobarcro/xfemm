@@ -212,6 +212,7 @@ std::shared_ptr<const mesh::SolverMesh> AnalysisSession::ensureMesh()
 void AnalysisSession::setInstancedMesh(mesh::InstancedMesh instanced)
 {
     m_instanced = std::move(instanced);
+    m_logicalView.reset();
     m_canonicalMesh.reset();
     m_instancingProvenance = {};
     m_templateTopologyIdentity = 0;
@@ -226,6 +227,7 @@ void AnalysisSession::clearInstancedMesh()
     if (!m_instanced)
         return;
     m_instanced.reset();
+    m_logicalView.reset();
     m_canonicalMesh.reset();
     m_instancingProvenance = {};
     m_templateTopologyIdentity = 0;
@@ -285,6 +287,16 @@ void AnalysisSession::addInstanceRegionOverride(
     invalidate(Dirty::PreparedCircuits | Dirty::Operator | Dirty::RightHandSide);
 }
 
+void AnalysisSession::setNativeInstanced(bool enabled)
+{
+    if (m_nativeInstanced == enabled)
+        return;
+    m_nativeInstanced = enabled;
+    m_logicalView.reset();
+    invalidate(Dirty::Mesh | Dirty::PreparedCircuits | Dirty::Operator |
+               Dirty::RightHandSide);
+}
+
 std::optional<mesh::ElementProvenance>
 AnalysisSession::elementProvenance(std::size_t globalElement) const
 {
@@ -321,6 +333,35 @@ AnalysisSession::nodesForInstance(std::size_t instanceIndex) const
         if (provenance[i].instanceIndex == instanceIndex)
             nodes.push_back(i);
     return nodes;
+}
+
+std::map<std::string, std::pair<double, double>> AnalysisSession::airGapPositioning() const
+{
+    std::map<std::string, std::pair<double, double>> positions;
+    for (const auto &entry : m_parameters.airGapPositions) {
+        if (entry.first.value >= m_model.problem().lineproplist.size())
+            continue;
+        const auto &boundary = m_model.problem().lineproplist[entry.first.value];
+        if (!boundary)
+            continue;
+        positions[boundary->BdryName] = {entry.second.innerAngle, entry.second.outerAngle};
+    }
+    return positions;
+}
+
+std::vector<std::size_t> AnalysisSession::instanceLabelBases() const
+{
+    std::vector<std::size_t> bases;
+    if (!m_instanced)
+        return bases;
+    bases.reserve(m_instanced->instances.size() + 1);
+    std::size_t base = 0;
+    for (const auto &instance : m_instanced->instances) {
+        bases.push_back(base);
+        base += templateLabelCountFor(instance.templateIndex);
+    }
+    bases.push_back(base);
+    return bases;
 }
 
 std::size_t AnalysisSession::templateLabelCountFor(std::size_t templateIndex) const
@@ -417,6 +458,29 @@ std::shared_ptr<const mesh::SolverMesh> AnalysisSession::ensureInstancedMesh()
     m_meshTopologyIdentity = mesh::materializedTopologyIdentity(*m_mesh);
     m_dirty = static_cast<Dirty>(bits(m_dirty) & ~bits(Dirty::Mesh));
     return m_mesh;
+}
+
+std::shared_ptr<const mesh::LogicalMeshView> AnalysisSession::ensureInstancedView()
+{
+    if (m_logicalView && !has(m_dirty, Dirty::Mesh))
+        return m_logicalView;
+    std::vector<mesh::MaterializationDiagnostic> diagnostics;
+    auto view = std::make_shared<mesh::LogicalMeshView>(
+        mesh::LogicalMeshView::build(*m_instanced, diagnostics));
+    if (!view->valid()) {
+        m_meshDiagnostics.clear();
+        for (const auto &diagnostic : diagnostics)
+            m_meshDiagnostics.push_back(
+                {mesh::MeshDiagnosticSeverity::Error, diagnostic.message, "LogicalMeshView",
+                 static_cast<int>(diagnostic.category)});
+        throw std::runtime_error(
+            "instanced logical view construction failed: " +
+            (diagnostics.empty() ? std::string("no diagnostic") : diagnostics.front().message));
+    }
+    m_logicalView = std::move(view);
+    ++m_viewGenerations;
+    m_dirty = static_cast<Dirty>(bits(m_dirty) & ~bits(Dirty::Mesh));
+    return m_logicalView;
 }
 
 void AnalysisSession::rebuildInstancedPrepared(PreparedAnalysis &candidate) const
@@ -659,6 +723,23 @@ void AnalysisSession::synchronize()
         return;
 
     const Dirty requested = m_dirty;
+
+    if (m_instanced && m_nativeInstanced) {
+        const auto view = ensureInstancedView();
+        PreparedAnalysis candidate = m_prepared;
+        if (has(m_dirty, Dirty::PreparedMaterials))
+            rebuildMaterials(candidate);
+        rebuildInstancedPrepared(candidate);
+        if (has(m_dirty, Dirty::AirGapCoupling))
+            candidate.airGapPositions = m_parameters.airGapPositions;
+        const Dirty rebuilt = static_cast<Dirty>(bits(requested) & ~bits(Dirty::SolveState));
+        m_backend->synchronizeNative(m_model, m_parameters, candidate, view,
+                                     instanceLabelBases(), airGapPositioning(), rebuilt);
+        m_prepared = std::move(candidate);
+        m_dirty = Dirty::SolveState;
+        return;
+    }
+
     const auto immutableMesh = ensureMesh();
     PreparedAnalysis candidate = m_prepared;
     if (has(m_dirty, Dirty::PreparedMaterials))

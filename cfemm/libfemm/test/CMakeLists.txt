@@ -30,6 +30,13 @@ add_test(NAME instanced_mesh_hashing COMMAND instanced_mesh_hash_test)
 set_tests_properties(instanced_mesh_hashing PROPERTIES
     LABELS "libfemm;mesh;instanced;unit")
 
+add_executable(logical_mesh_view_test logical_mesh_view_test.cpp)
+target_link_libraries(logical_mesh_view_test PRIVATE femm)
+
+add_test(NAME logical_mesh_view COMMAND logical_mesh_view_test)
+set_tests_properties(logical_mesh_view PROPERTIES
+    LABELS "libfemm;mesh;instanced;native;unit")
+
 add_executable(instanced_mesh_airgap_test instanced_mesh_airgap_test.cpp)
 target_link_libraries(instanced_mesh_airgap_test PRIVATE femm)
 

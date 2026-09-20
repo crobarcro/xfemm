@@ -385,33 +385,91 @@ Details and the two torque-integral constructions are in
 Milestone result: the solver consumes logical instances without storing a fully
 expanded mesh, with the materialized path retained as an oracle.
 
-- [ ] **G1: Add a logical global-index/DOF view.**
+- [x] **G1: Add a logical global-index/DOF view.**
   - Depends on: F4.
   - Map instance-local nodes to DOFs, honor welded seams, and keep unconnected
     instance unknowns independent.
-- [ ] **G2: Build adjacency and ordering from logical instances.**
+  - Note: `cfemm/libfemm/mesh/LogicalMeshView.h/.cpp` stores template geometry
+    once plus compact per-instance metadata and welded-seam maps; logical element
+    connectivity and coordinates are computed on demand. Global node numbering is
+    identical to `InstancedMesh::materialize()`, verified by
+    `logical_mesh_view_test`. The shared weld plan was factored into
+    `InstancedMeshDetail.h` so the view and the materializer cannot diverge.
+- [x] **G2: Build adjacency and ordering from logical instances.**
   - Depends on: G1.
   - Compare matrix dimensions, adjacency, and bandwidth/profile with materialized
     topology; handle disconnected components and explicit PBCs.
-- [ ] **G3: Assemble elements through the logical view.**
+  - Note: `LogicalMeshView::buildAdjacency()` builds a CSR graph from logical
+    element connectivity; the adjacency is checked node-for-node against the
+    materialized mesh and `cuthillMcKeeOrdering()` is checked not to increase
+    bandwidth or profile. The native assembly currently assembles in global node
+    order, so applying the ordering during assembly remains a follow-up.
+- [x] **G3: Assemble elements through the logical view.**
   - Depends on: G2.
   - Support the Stage D/E isotropic magnetostatic scope first and retain a runtime
     materialized debug path.
-- [ ] **G4: Integrate AGE coupling and per-instance sources.**
+  - Note: `FSolver::Static2DNative` (`cfemm/fsolver/native_static2d.cpp`)
+    assembles and solves planar magnetostatics by iterating the view, including
+    circuits, point currents, line boundary conditions, PBC, linear and nonlinear
+    isotropic materials (the Newton-Raphson loop and per-logical-element
+    permeability state are ported from `Static2D`), and constant or functional
+    (`MagDirFctn`) magnetisation. `FSolverAnalysisBackend::solveNative` is the
+    opt-in entry point; `AnalysisSession` exposes `instanceLabelBases()` for
+    per-instance labels and `setNativeInstanced(true)` for a session mode that
+    builds the view instead of materialising. The existing `solve()` path is the
+    retained materialized oracle. Non-planar coordinates, harmonic problems, and
+    incremental previous solutions are rejected so the caller can fall back.
+- [x] **G4: Integrate AGE coupling and per-instance sources.**
   - Depends on: G3.
   - Confirm AGE positioning updates coupling without rebuilding stored topology.
+  - Note: the native path builds AGE quadrature from the view's remapped
+    `airGaps()` and applies requested inner/outer angles through
+    `applyAirGapPositions` (mirroring `positionAirGaps`) without touching stored
+    topology. `tiled_model_airgap_test` solves the two-tile coupled AGE
+    materialized and natively at the default and at a 15-degree relative rotor
+    position; the fields agree and the materialization count is unchanged.
 - [ ] **G5: Run full native/materialized equivalence suite.**
   - Depends on: G4 and F5.
   - Compare sparsity, residual, nodal solution modulo gauge, circuit quantities,
     fields, energy, forces, and torque for every earlier fixture.
-- [ ] **G6: Verify compressed-memory scaling.**
+  - Note: **Partial.** Native/materialized nodal-solution equivalence is checked
+    for a welded linear ring and a nonlinear B-H ring (`native_static2d_test`), for
+    the two-tile AGE machine fixture at two rotor positions
+    (`tiled_model_airgap_test`), and for the checked-in RNFoundry radial-machine
+    tiled fixture (`instanced_solver_benchmark` reports an identical field
+    checksum for both paths). Axisymmetric and harmonic cases are not yet native;
+    they continue to use the materialized path. Comparing energy, force, and
+    torque through the native path is the remaining work.
+- [x] **G6: Verify compressed-memory scaling.**
   - Depends on: G5.
   - Demonstrate stored mesh memory scales with template size plus instance metadata
     rather than logical element count. Keep materialization available for at least
     one release cycle.
+  - Note: `LogicalMeshView::storedByteCount()` counts template geometry plus
+    instance metadata; `expandedByteCount()` counts the equivalent `SolverMesh`.
+    `logical_mesh_view_test` verifies the stored view is smaller and grows more
+    slowly than the expanded mesh as instances are added. Materialization remains
+    the default session path and the test oracle.
 
 **Milestone G exit check:** native and materialized results agree and the measured
 stored-mesh memory shows the intended asymptotic reduction.
+
+**Status:** the compressed representation and the native path (including
+nonlinear materials, functional magnetisation, and AGE) satisfy the exit check
+for the tested fixtures. Axisymmetric/harmonic equivalence and native
+energy/force/torque comparison (G5) remain before the milestone is fully complete.
+
+**Performance harness.** `cfemm/fsolver/test/instanced_solver_benchmark.cpp`
+(built as `instanced_solver_benchmark`) solves the checked-in RNFoundry radial
+machine fixture three ways — `conventional` (redraw `.fem`), `materialized`
+(instanced, expanded), and `native` (compressed `LogicalMeshView`) — and reports
+topology counts, stored/expanded mesh bytes, meshing/view/solve time, bandwidth,
+a field checksum, and process peak RSS. `test/rmbench/benchmark_instanced.sh`
+runs each method in its own process for uncontaminated memory numbers and
+defaults to a 60-degree sector (`--instance-divisor 6`) for quick runs. On that
+sector the native path matches the materialized field checksum exactly, solves at
+comparable speed, and uses roughly a quarter of the stored mesh memory; see
+`docs/instanced-mesh-benchmark.md` for sample numbers.
 
 ## Milestone H — Optional optimisation and extension backlog
 
