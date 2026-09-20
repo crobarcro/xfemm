@@ -11,9 +11,26 @@ namespace fmesher {
 class MesherBackend {
 public:
     virtual ~MesherBackend() = default;
+
+    /** Short backend name for diagnostics, e.g. "Triangle" or "Tangle". */
+    virtual const char *name() const = 0;
+
+    /** Mesh using an explicit backend-neutral request. */
     virtual femm::mesh::MeshResult mesh(femm::FemmProblem &problem,
-                                         bool periodic,
-                                         const femm::mesh::MeshingOptions &options = {}) = 0;
+                                         const femm::mesh::MeshingRequest &request) = 0;
+
+    /**
+     * Compatibility adapter for the pre-request API. The periodic flag maps to
+     * the request-wide "emit field constraints" choice.
+     */
+    femm::mesh::MeshResult mesh(femm::FemmProblem &problem, bool periodic,
+                                const femm::mesh::MeshingOptions &options = {})
+    {
+        femm::mesh::MeshingRequest request;
+        request.options = options;
+        request.createPeriodicFieldConstraints = periodic;
+        return mesh(problem, request);
+    }
 };
 
 } // namespace fmesher

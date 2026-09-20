@@ -9,6 +9,11 @@ on:
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
+  # Tangle is temporarily pinned to the fork that carries the library options
+  # and boundary-match API. Revert both values to dcm3c/tangle and the merged
+  # upstream commit once those changes are upstreamed.
+  XFEMM_TANGLE_REPOSITORY: https://github.com/crobarcro/tangle.git
+  XFEMM_TANGLE_REVISION: b5d51ad8639526a83576b42aee5ce1ef82d96e9b
 
 jobs:
   build:
@@ -32,7 +37,17 @@ jobs:
         cd cfemm
         cmake -B ${{github.workspace}}/build \
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} \
-          -DXFEMM_MESHER_BACKEND=${{matrix.mesher-backend}}
+          -DXFEMM_MESHER_BACKEND=${{matrix.mesher-backend}} \
+          -DXFEMM_TANGLE_REPOSITORY=${{env.XFEMM_TANGLE_REPOSITORY}} \
+          -DXFEMM_TANGLE_REVISION=${{env.XFEMM_TANGLE_REVISION}}
+
+    - name: Verify the pinned Tangle revision
+      run: |
+        fetched=$(git -C "${{github.workspace}}/build/_deps/tangle_upstream-src" rev-parse HEAD)
+        if [ "$fetched" != "${{env.XFEMM_TANGLE_REVISION}}" ]; then
+          echo "Fetched Tangle $fetched, expected ${{env.XFEMM_TANGLE_REVISION}}"
+          exit 1
+        fi
 
     - name: Build
       # Build your program with the given configuration
@@ -43,6 +58,29 @@ jobs:
       # Execute tests defined by the CMake configuration.
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest -C ${{env.BUILD_TYPE}}
+
+  sanitizers:
+    name: Address/UB sanitizers
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Configure CMake
+      run: |
+        cmake -B ${{github.workspace}}/build \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DXFEMM_ENABLE_SANITIZERS=ON \
+          -DXFEMM_TANGLE_REPOSITORY=${{env.XFEMM_TANGLE_REPOSITORY}} \
+          -DXFEMM_TANGLE_REVISION=${{env.XFEMM_TANGLE_REVISION}} \
+          cfemm
+    - name: Build the materializer and native view unit tests
+      run: >
+        cmake --build ${{github.workspace}}/build
+        --target instanced_mesh_test instanced_mesh_hash_test
+        instanced_mesh_airgap_test instanced_mesh_sector_test
+        logical_mesh_view_test -j2
+    - name: Run the materializer and native view unit tests under sanitizers
+      working-directory: ${{github.workspace}}/build
+      run: ctest -R "instanced_mesh|logical_mesh_view" --output-on-failure
 
   petsc:
     name: PETSc linear solver backend
@@ -56,6 +94,8 @@ jobs:
         cmake -B ${{github.workspace}}/build
         -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
         -DXFEMM_USE_PETSc=ON
+        -DXFEMM_TANGLE_REPOSITORY=${{env.XFEMM_TANGLE_REPOSITORY}}
+        -DXFEMM_TANGLE_REVISION=${{env.XFEMM_TANGLE_REVISION}}
         cfemm
     - name: Build
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} -j2
@@ -78,7 +118,11 @@ jobs:
         octave --no-gui --quiet --eval
         "addpath(fullfile(pwd, 'mfemm')); mfemm_setup('ForceMexRecompile', true,
         'RunTests', true, 'Clean', true, 'Tidy', true);
-        Test_femmsession;"
+        addpath(fullfile(pwd, 'mfemm', 'testing'));
+        addpath(fullfile(pwd, 'mfemm', 'testing', 'radial_machine'));
+        Test_femmsession;
+        Test_femmsession_instanced;
+        Test_radial_machine_sliding_vs_redraw;"
 
   python:
     name: Python interface
@@ -118,3 +162,4 @@ jobs:
           addpath(fullfile(pwd, 'mfemm'));
           mfemm_setup('SessionOnly', true);
           Test_femmsession;
+          Test_femmsession_instanced;

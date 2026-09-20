@@ -62,7 +62,7 @@ returns a validated `SolverMesh`, and is trustworthy enough to become the defaul
   - Map Tangle status values to `MeshStatus` and preserve actionable diagnostics.
   - Checks: an injected engine counter proves Tangle executed once; a scratch
     directory remains empty; diagnostics name `Tangle` only when Tangle ran.
-- [ ] **A2.3: Exercise backend options.**
+- [x] **A2.3: Exercise backend options.**
   - Depends on: A2.2.
   - Map all supported `MeshingOptions` explicitly. Reject or diagnose unsupported
     options rather than ignoring them.
@@ -87,7 +87,7 @@ returns a validated `SolverMesh`, and is trustworthy enough to become the defaul
   - Compare AGE ring sizes, radii, centers, periodicity, valid quadrature, and a
     small angle sweep through the existing solver/session path.
   - Include a periodic `.pbc` fixture with zero AGE records to prevent conflation.
-- [ ] **A3.4: Make Tangle the default backend.**
+- [x] **A3.4: Make Tangle the default backend.**
   - Depends on: A2.3, A3.2, and A3.3.
   - Change `AnalysisSession` default construction to `TangleMesherBackend` while
     preserving explicit Triangle injection.
@@ -103,28 +103,28 @@ through the in-memory backend API.
 Milestone result: callers can ask Tangle for matching ordered boundary chains
 without implicitly imposing periodic or antiperiodic field constraints.
 
-- [ ] **B1: Add `MeshingRequest` and compatibility adapter.**
+- [x] **B1: Add `MeshingRequest` and compatibility adapter.**
   - Depends on: A3.4.
   - Add request options, boundary matches, and an explicit “emit field constraint”
     choice. Keep the old `(problem, periodic, options)` entry point as an adapter.
   - Checks: old and new calls produce equivalent `SolverMesh` results.
-- [ ] **B2: Specify stable geometry references.**
+- [x] **B2: Specify stable geometry references.**
   - Depends on: B1.
   - Select stable identifiers for matched source segments/arcs and reject stale,
     mixed line/arc, duplicated, or missing references before invoking Tangle.
   - Checks: geometry mutation and invalid-reference cases produce diagnostics.
-- [ ] **B3: Expose Tangle topology-only paired refinement.**
+- [x] **B3: Expose Tangle topology-only paired refinement.**
   - Depends on: B1 and B2; expected upstream Tangle change.
   - Synchronize splitting and return ordered chain correspondence independently
     of PBC output semantics.
   - Checks: straight and arc chains, forward and reverse order, refinement caused
     from either side, and unequal-chain rejection.
-- [ ] **B4: Convert matches to backend-neutral seam data.**
+- [x] **B4: Convert matches to backend-neutral seam data.**
   - Depends on: B3.
   - Return ordered node references and orientation without adding them to
     `SolverMesh::periodicConstraints` unless explicitly requested.
   - Checks: the same matched geometry once with and once without field constraints.
-- [ ] **B5: Characterize Triangle compatibility.**
+- [x] **B5: Characterize Triangle compatibility.**
   - Depends on: B4.
   - Keep legacy Triangle periodic behavior intact. If topology-only matching is
     unsupported there, return a clear capability diagnostic rather than emulating
@@ -139,38 +139,38 @@ the expected typed node pairs.
 Milestone result: hand-authored templates can be expanded deterministically into
 an ordinary solver-compatible mesh without invoking a mesher.
 
-- [ ] **C1: Add transform and template value types.**
+- [x] **C1: Add transform and template value types.**
   - Depends on: none; merge after B1 to avoid competing mesh API changes.
   - Add `RigidTransform2D`, `TemplateSeam`, `MeshTemplate`, `SeamConnection`,
     `MeshInstance`, and `InstancedMesh` under `cfemm/libfemm/mesh`.
   - Initially reject reflections and non-finite transforms.
-- [ ] **C2: Validate template-local topology.**
+- [x] **C2: Validate template-local topology.**
   - Depends on: C1.
   - Validate local node/edge/element indices, unique seam nodes, ordered connected
     chains, transform orientation, and compatible seam cardinality.
   - Checks: one failure test per invariant with stable diagnostic categories.
-- [ ] **C3: Build deterministic node provenance and seam welding.**
+- [x] **C3: Build deterministic node provenance and seam welding.**
   - Depends on: C2.
   - Map `(template, instance, local node)` to global nodes. Weld only declared
     seam pairs; use transformed coordinates only to validate a declaration.
   - Checks: translated pair, reversed seam, closed annular ring, and close but
     undeclared nodes that must remain distinct.
-- [ ] **C4: Materialize elements and edges.**
+- [x] **C4: Materialize elements and edges.**
   - Depends on: C3.
   - Remap connectivity, reject degenerate/reversed elements, canonicalize duplicate
     internal seam edges, and define marker-conflict behavior.
   - Checks: exact counts and positive signed areas for repeated wedges.
-- [ ] **C5: Remap periodic and AGE topology.**
+- [x] **C5: Remap periodic and AGE topology.**
   - Depends on: C3.
   - Remap PBC pairs, AGE rings, quadrature nodes, and AGE node-index lists through
     the checked provenance table while preserving periodicity and weights.
   - Checks: synthetic PBC-only and AGE templates plus invalid local references.
-- [ ] **C6: Add reverse provenance and deterministic hashing.**
+- [x] **C6: Add reverse provenance and deterministic hashing.**
   - Depends on: C4 and C5.
   - Provide global-to-template/instance maps and stable topology/layout identities.
   - Checks: repeat runs hash identically; transform or seam changes alter the
     appropriate identity; physics-only metadata does not alter topology identity.
-- [ ] **C7: Add sanitizer test configuration.**
+- [x] **C7: Add sanitizer test configuration.**
   - Depends on: C2–C6.
   - Run the materializer unit suite with address and undefined-behavior sanitizers
     on a supported CI platform.
@@ -184,28 +184,33 @@ PBC/AGE data.
 Milestone result: xfemm meshes one selected tile with Tangle, repeats it, and
 solves the materialized mesh through the unchanged `FSolver`.
 
-- [ ] **D1: Define `TemplateRequest`.**
+- [x] **D1: Define `TemplateRequest`.**
   - Depends on: B4 and C1.
   - Identify source geometry, center of rotation, instance transforms, named seam
     chains, and supported region policy. Validate complete rotational coverage.
-- [ ] **D2: Extract one tile PSLG for Tangle.**
+  - Note: the initial implementation treats the loaded problem as the tile, so
+    "source geometry" is the problem's own PSLG. Selecting a tile out of a larger
+    model is deferred until an upstream in-memory PSLG API exists (decision 0003).
+- [x] **D2: Extract one tile PSLG for Tangle.**
   - Depends on: D1.
   - Preserve source markers, block-region attributes, holes, mesh controls, units,
     and stable mappings back to source entities.
   - Checks: isolated tile PSLG matches expected geometry and region seeds.
-- [ ] **D3: Capture Tangle seam nodes and construct `MeshTemplate`.**
+  - Note: satisfied by handing the loaded problem's PSLG to Tangle unchanged;
+    per-entity source mappings await the in-memory PSLG API.
+- [x] **D3: Capture Tangle seam nodes and construct `MeshTemplate`.**
   - Depends on: D2 and B4.
   - Convert ordered boundary matches into template seams and prove Tangle is called
     exactly once per template.
-- [ ] **D4: Materialize through `MeshResult`.**
+- [x] **D4: Materialize through `MeshResult`.**
   - Depends on: D3 and C6.
   - Construct instances, weld declared neighbor seams, materialize, and return the
     ordinary mesh plus additive provenance without breaking existing consumers.
-- [ ] **D5: Add input diagnostics.**
+- [x] **D5: Add input diagnostics.**
   - Depends on: D4.
   - Cover incomplete rotations, overlap, seam mismatch, conflicting markers,
     anisotropic materials, reflections, and AGE topology inside a template.
-- [ ] **D6: Solve a repeated-ring control.**
+- [x] **D6: Solve a repeated-ring control.**
   - Depends on: D4 and D5.
   - Check exact topology invariants and compare sampled field, energy, and force
     values with a conventionally generated full ring at documented tolerances.
@@ -218,31 +223,35 @@ deterministically, and solved by the unmodified solver with control-model agreem
 Milestone result: an analysis session owns the instanced representation and can
 change sources or AGE position without remeshing/materializing topology.
 
-- [ ] **E1: Cache canonical instanced and materialized meshes.**
+- [x] **E1: Cache canonical instanced and materialized meshes.**
   - Depends on: D4.
   - Add separate template-topology, instance-layout, and materialized-topology
     identities to `AnalysisSession`.
-- [ ] **E2: Implement cache invalidation rules.**
+- [x] **E2: Implement cache invalidation rules.**
   - Depends on: E1.
   - Test geometry, transform, seam, material, circuit/current, initial state, and
     AGE-angle changes against meshing/materialization/topology-import counters.
-- [ ] **E3: Resolve instance region overrides.**
+- [x] **E3: Resolve instance region overrides.**
   - Depends on: E1 and C6.
   - Apply circuit assignment, turns/current scale, and magnetization rotation while
     building prepared analysis; never mutate the shared template.
-- [ ] **E4: Test independent field DOFs and physics.**
+  - Note: overrides become a per-instance solver label list, so each instance
+    has independent degrees of freedom; physics changes never re-materialise.
+- [x] **E4: Test independent field DOFs and physics.**
   - Depends on: E3.
   - Compare opposite coil sides and alternating magnet directions with explicitly
     drawn controls. Confirm instancing alone introduces no periodic constraint.
-- [ ] **E5: Add C++ authoring/query API.**
+  - Note: the session test checks independent labels, opposite turns, rotated
+    magnetisation, no periodic constraint, and finite non-trivial fields.
+- [x] **E5: Add C++ authoring/query API.**
   - Depends on: E2–E4.
   - Expose template creation, instance transforms/overrides, provenance queries,
     and capability diagnostics with API documentation.
-- [ ] **E6: Extend post-processing provenance.**
+- [x] **E6: Extend post-processing provenance.**
   - Depends on: E5.
   - Allow selection and result attribution by template/instance while the legacy
     post-processor continues to consume global elements.
-- [ ] **E7: Add MATLAB/MEX bindings.**
+- [x] **E7: Add MATLAB/MEX bindings.**
   - Depends on: E5 and E6.
   - Preserve all existing entry points and add one documented instanced smoke case.
 
@@ -255,27 +264,89 @@ observable through C++ and MATLAB.
 Milestone result: independent stator and rotor templates reproduce the existing
 RNFoundry-derived machine results while reusing mesh topology across positions.
 
-- [ ] **F1: Freeze generator provenance and tolerances.**
+**Status: complete.** See `mfemm/testing/radial_machine/FIXTURE_PROVENANCE.md`.
+The RNFoundry revision was rechecked and deliberately updated to `f4d42805`, the
+checked-in fixtures were regenerated, and two post-processing bugs were fixed
+(the in-memory series-circuit NaN and the `MagDirFctn` round-trip
+double-quoting). The multi-template AGE coupling is implemented and tested, and
+`generate_tiled_machine_fixture.m` now produces the checked-in
+`data/radial_machine_tiled.json`: a 60-degree pole-pair rotor tile (6 instances)
+and a 10-degree slot tile (36 instances) coupled only through the AGE.
+`Test_radial_machine_tiled_methods.m` compares its winding flux linkage, coil
+flux density, cogging torque, air-gap torque, and vector-potential samples with
+the redraw and sliding fixtures; a three-position sweep passes. The
+winding-flux-linkage tolerance decision is recorded: it is a cancellation-
+dominated quantity compared with an absolute tolerance of `2e-6`.
+
+The AGE and redraw paths are different rotor-motion models and are not expected
+to agree field-for-field. The AGE keeps the rotor and stator meshes fixed and
+applies the **relative** angle (`InnerAngle - OuterAngle`) at the air gap, so the
+solution is expressed with the rotor in its drawn frame; the redraw physically
+redraws the rotor magnet regions. Measurements confirm this: at 13.33 degrees the
+AGE's rotor iron, magnet, and rotor-side gap match the redraw at 0 degrees, while
+its stator-side gap matches the redraw at 13.33 degrees. The stator-side
+observables (winding flux linkage, coil flux density, stator-side vector
+potential) therefore match, which is what F4/F5 compare. `Test_radial_machine_sliding_vs_redraw.m`
+guards both methods in CI and reports the field correlation and shared-contour
+air-gap torque relative error. Two follow-ups remain (see "AGE follow-up"
+below): confirm the relative-angle invariance directly, and settle whether the
+torque should be compared across the two models at all.
+
+- [x] **F1: Freeze generator provenance and tolerances.**
   - Depends on: E5.
   - Record the RNFoundry commit, design/options, xfemm commit, generated files,
     result schema, and justified tolerances.
-- [ ] **F2: Generate comparable machine cases.**
+  - Note: `FIXTURE_PROVENANCE.md` records the RNFoundry revision, the tiled
+    fixture generator and its design, and the winding-flux-linkage tolerance
+    decision (absolute `2e-6` for a cancellation-dominated quantity).
+- [x] **F2: Generate comparable machine cases.**
   - Depends on: F1.
   - Produce conventional redraw, existing AGE/sliding, and instanced variants of
     the checked-in 12-pole, 36-slot design.
-- [ ] **F3: Build independent stator and rotor templates.**
+  - Note: `generate_tiled_machine_fixture.m` produces
+    `data/radial_machine_tiled.json`; the redraw and sliding `.fem` fixtures
+    were regenerated earlier.
+- [x] **F3: Build independent stator and rotor templates.**
   - Depends on: F2.
   - Use a stator slot template and rotor pole/pole-pair template with independent
     counts; connect the domains only through AGE rings.
-- [ ] **F4: Add one-position CI smoke comparison.**
+  - Note: `InstancedMesh::airGapCouplings` now assembles one global AGE from two
+    templates' air-gap seams while keeping their unknowns independent. Verified
+    with hand-authored rotor-pole (4 instances) and stator-slot (8 instances)
+    templates; applying it to the checked-in machine geometry is F4.
+- [x] **F4: Add one-position CI smoke comparison.**
   - Depends on: F3.
   - Compare winding flux linkage, coil flux-density magnitude, torque, topology
     invariants, number of Tangle calls, and solver topology imports.
-- [ ] **F5: Add extended rotor-position sweep.**
+  - Note: `Test_radial_machine_tiled_methods.m` solves the checked-in
+    `radial_machine_tiled.json` (one 60-degree rotor tile repeated six times and
+    one 10-degree slot tile repeated 36 times, coupled through one AGE) and
+    compares the winding flux linkage and coil flux density with the redraw and
+    sliding fixtures. `meshTiledModel` now applies the JSON's per-instance
+    circuit/turn/magnetisation overrides; the C++ `analysis_session_machine`
+    test still covers independent counts and topology reuse. The comparison now
+    also covers cogging torque (weighted stress tensor, 35% relative tolerance),
+    a shared-contour air-gap torque (15% relative tolerance), and vector-
+    potential samples in the meshed air-gap halves (5% relative tolerance after
+    removing the gauge-dependent mean) against the sliding session.
+    `Test_radial_machine_sliding_vs_redraw.m` is the CI guard for the two
+    rotor-motion methods. The redraw and sliding are different rotor-motion
+    models (redrawn rotor geometry versus a fixed mesh with the relative angle
+    applied at the gap), so their rotor-region fields are not expected to agree;
+    the redraw comparison reports those observables without asserting, and the
+    sliding session is used for the torque and vector-potential checks.
+- [x] **F5: Add extended rotor-position sweep.**
   - Depends on: F4.
   - Compare redraw, sliding, and instanced results over all fixture positions;
     record solve time, meshing calls, node/element counts, and peak memory.
-- [ ] **F6: Make fixture regeneration reproducible but optional.**
+  - Note: the tiled case accepts any `PositionIndices` list and reuses the
+    materialised topology across the sweep; a three-position sweep (1, 5, 9)
+    passes the redraw and sliding comparisons. The default CI smoke test uses
+    one position because the tiled model is the full 360-degree machine
+    (~480k elements, ~4 minutes per nonlinear solve). The AGE-angle sweep in
+    `analysis_session_machine` continues to verify that positions neither
+    remesh the templates nor reimport solver topology.
+- [x] **F6: Make fixture regeneration reproducible but optional.**
   - Depends on: F5.
   - Normal CI consumes checked-in fixtures without RNFoundry. Document the explicit
     maintenance command that regenerates and compares them.
@@ -284,38 +355,121 @@ RNFoundry-derived machine results while reusing mesh topology across positions.
 observables meet tolerances, and position sweeps neither remesh templates nor
 reimport solver topology.
 
+## AGE follow-up
+
+The AGE and redraw are different rotor-motion models: the AGE keeps the rotor and
+stator meshes fixed and applies the relative angle at the air gap, while the
+redraw physically redraws the rotor magnet regions. Their rotor-region fields are
+therefore not expected to agree. The measured behaviour is consistent with the
+AGE design: at 13.33 degrees the AGE's rotor iron, magnet, and rotor-side gap
+match the redraw at 0 degrees, while its stator-side gap matches the redraw at
+13.33 degrees. The stator-side observables compared by F4/F5 are unaffected.
+Details and the two torque-integral constructions are in
+`FIXTURE_PROVENANCE.md`.
+
+- [ ] **R1: Confirm the relative-angle invariance directly.** Verify that the
+  AGE solution depends only on `InnerAngle - OuterAngle`, e.g. that
+  `(Delta, 0)` and `(2*Delta, Delta)` give the same field up to the expected
+  frame rotation, and that `(Delta, 0)` and `(0, -Delta)` agree.
+- [ ] **R2: Settle whether torque is comparable across the two models.** The
+  AGE's gap integral and block integral agree with each other, and the tiled and
+  sliding values agree, but the redraw's sampled shared-contour value differs by
+  40-62%. Determine whether that is the redraw's mesh-sensitive sampled contour
+  or a real coupling error, for example by evaluating the same air-gap harmonic
+  torque on a common contour for both models, or by comparing the AGE torque
+  against a coenergy/virtual-work derivative. Either tighten the shared-contour
+  tolerance or document why torque is not compared across the two models.
+
 ## Milestone G — Native compressed solver path
 
 Milestone result: the solver consumes logical instances without storing a fully
 expanded mesh, with the materialized path retained as an oracle.
 
-- [ ] **G1: Add a logical global-index/DOF view.**
+- [x] **G1: Add a logical global-index/DOF view.**
   - Depends on: F4.
   - Map instance-local nodes to DOFs, honor welded seams, and keep unconnected
     instance unknowns independent.
-- [ ] **G2: Build adjacency and ordering from logical instances.**
+  - Note: `cfemm/libfemm/mesh/LogicalMeshView.h/.cpp` stores template geometry
+    once plus compact per-instance metadata and welded-seam maps; logical element
+    connectivity and coordinates are computed on demand. Global node numbering is
+    identical to `InstancedMesh::materialize()`, verified by
+    `logical_mesh_view_test`. The shared weld plan was factored into
+    `InstancedMeshDetail.h` so the view and the materializer cannot diverge.
+- [x] **G2: Build adjacency and ordering from logical instances.**
   - Depends on: G1.
   - Compare matrix dimensions, adjacency, and bandwidth/profile with materialized
     topology; handle disconnected components and explicit PBCs.
-- [ ] **G3: Assemble elements through the logical view.**
+  - Note: `LogicalMeshView::buildAdjacency()` builds a CSR graph from logical
+    element connectivity; the adjacency is checked node-for-node against the
+    materialized mesh and `cuthillMcKeeOrdering()` is checked not to increase
+    bandwidth or profile. The native assembly currently assembles in global node
+    order, so applying the ordering during assembly remains a follow-up.
+- [x] **G3: Assemble elements through the logical view.**
   - Depends on: G2.
   - Support the Stage D/E isotropic magnetostatic scope first and retain a runtime
     materialized debug path.
-- [ ] **G4: Integrate AGE coupling and per-instance sources.**
+  - Note: `FSolver::Static2DNative` (`cfemm/fsolver/native_static2d.cpp`)
+    assembles and solves planar magnetostatics by iterating the view, including
+    circuits, point currents, line boundary conditions, PBC, linear and nonlinear
+    isotropic materials (the Newton-Raphson loop and per-logical-element
+    permeability state are ported from `Static2D`), and constant or functional
+    (`MagDirFctn`) magnetisation. `FSolverAnalysisBackend::solveNative` is the
+    opt-in entry point; `AnalysisSession` exposes `instanceLabelBases()` for
+    per-instance labels and `setNativeInstanced(true)` for a session mode that
+    builds the view instead of materialising. The existing `solve()` path is the
+    retained materialized oracle. Non-planar coordinates, harmonic problems, and
+    incremental previous solutions are rejected so the caller can fall back.
+- [x] **G4: Integrate AGE coupling and per-instance sources.**
   - Depends on: G3.
   - Confirm AGE positioning updates coupling without rebuilding stored topology.
+  - Note: the native path builds AGE quadrature from the view's remapped
+    `airGaps()` and applies requested inner/outer angles through
+    `applyAirGapPositions` (mirroring `positionAirGaps`) without touching stored
+    topology. `tiled_model_airgap_test` solves the two-tile coupled AGE
+    materialized and natively at the default and at a 15-degree relative rotor
+    position; the fields agree and the materialization count is unchanged.
 - [ ] **G5: Run full native/materialized equivalence suite.**
   - Depends on: G4 and F5.
   - Compare sparsity, residual, nodal solution modulo gauge, circuit quantities,
     fields, energy, forces, and torque for every earlier fixture.
-- [ ] **G6: Verify compressed-memory scaling.**
+  - Note: **Partial.** Native/materialized nodal-solution equivalence is checked
+    for a welded linear ring and a nonlinear B-H ring (`native_static2d_test`), for
+    the two-tile AGE machine fixture at two rotor positions
+    (`tiled_model_airgap_test`), and for the checked-in RNFoundry radial-machine
+    tiled fixture (`instanced_solver_benchmark` reports an identical field
+    checksum for both paths). Axisymmetric and harmonic cases are not yet native;
+    they continue to use the materialized path. Comparing energy, force, and
+    torque through the native path is the remaining work.
+- [x] **G6: Verify compressed-memory scaling.**
   - Depends on: G5.
   - Demonstrate stored mesh memory scales with template size plus instance metadata
     rather than logical element count. Keep materialization available for at least
     one release cycle.
+  - Note: `LogicalMeshView::storedByteCount()` counts template geometry plus
+    instance metadata; `expandedByteCount()` counts the equivalent `SolverMesh`.
+    `logical_mesh_view_test` verifies the stored view is smaller and grows more
+    slowly than the expanded mesh as instances are added. Materialization remains
+    the default session path and the test oracle.
 
 **Milestone G exit check:** native and materialized results agree and the measured
 stored-mesh memory shows the intended asymptotic reduction.
+
+**Status:** the compressed representation and the native path (including
+nonlinear materials, functional magnetisation, and AGE) satisfy the exit check
+for the tested fixtures. Axisymmetric/harmonic equivalence and native
+energy/force/torque comparison (G5) remain before the milestone is fully complete.
+
+**Performance harness.** `cfemm/fsolver/test/instanced_solver_benchmark.cpp`
+(built as `instanced_solver_benchmark`) solves the checked-in RNFoundry radial
+machine fixture three ways — `conventional` (redraw `.fem`), `materialized`
+(instanced, expanded), and `native` (compressed `LogicalMeshView`) — and reports
+topology counts, stored/expanded mesh bytes, meshing/view/solve time, bandwidth,
+a field checksum, and process peak RSS. `test/rmbench/benchmark_instanced.sh`
+runs each method in its own process for uncontaminated memory numbers and
+defaults to a 60-degree sector (`--instance-divisor 6`) for quick runs. On that
+sector the native path matches the materialized field checksum exactly, solves at
+comparable speed, and uses roughly a quarter of the stored mesh memory; see
+`docs/instanced-mesh-benchmark.md` for sample numbers.
 
 ## Milestone H — Optional optimisation and extension backlog
 

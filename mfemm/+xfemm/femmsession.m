@@ -27,6 +27,9 @@ classdef femmsession < fpproc
 %     setAGEPosition   - set inner and outer AGE angles in degrees
 %     setFrequency     - set analysis frequency
 %     setTime          - set the evaluation time
+%     setRotationalInstances - mesh one tile and repeat it by rotation
+%     instancedInfo    - identities, instance count, materialisation count
+%     setInstanceOverride - per-instance circuit/turns/magnetisation override
 %     solve            - solve and return compact status/statistics
 %     result           - explicitly return the complete latest trial data
 %     accept           - accept the trial as the next initial state
@@ -41,11 +44,18 @@ classdef femmsession < fpproc
     methods
         function this = femmsession(filename)
             %FEMMSESSION Load FILENAME and create a native analysis session.
+            %   A .fem file is loaded as a normal problem; a .json file is a
+            %   tiled-magnetic model whose tiles are meshed once and repeated.
             narginchk(1, 1);
             this@fpproc();
-            this.sessionHandle = session_interface_mex('new', filename);
+            [~, ~, extension] = fileparts(filename);
+            if strcmpi(extension, '.json')
+                this.sessionHandle = session_interface_mex('newtiled', filename);
+            else
+                this.sessionHandle = session_interface_mex('new', filename);
+                this.FemmProblem = loadfemmfile(filename);
+            end
             this.openfilename = filename;
-            this.FemmProblem = loadfemmfile(filename);
         end
 
         function delete(this)
@@ -89,6 +99,36 @@ classdef femmsession < fpproc
         function setTime(this, time)
             %SETTIME Set the user-defined time associated with the trial.
             session_interface_mex('time', this.sessionHandle, time);
+        end
+
+        function setRotationalInstances(this, centerX, centerY, instanceCount, totalAngle)
+            %SETROTATIONALINSTANCES Mesh one tile and repeat it by rotation.
+            %   SETROTATIONALINSTANCES(CX, CY, N, ANGLE) meshes the loaded
+            %   problem once as a tile and places N instances rotated about
+            %   (CX, CY) so that they cover ANGLE degrees (default 360). The
+            %   tile's matched periodic boundaries become the welded seams.
+            if nargin < 5, totalAngle = 360; end
+            session_interface_mex('instance', this.sessionHandle, centerX, ...
+                                   centerY, instanceCount, totalAngle);
+        end
+
+        function info = instancedInfo(this)
+            %INSTANCEDINFO Return instancing identities and counters.
+            info = session_interface_mex('instanceinfo', this.sessionHandle);
+        end
+
+        function setInstanceOverride(this, instance, sourceLabel, circuit, ...
+                                     magnetisationRotation, currentScale)
+            %SETINSTANCEOVERRIDE Set per-instance physics for one block label.
+            %   SETINSTANCEOVERRIDE(INSTANCE, SOURCELABEL, CIRCUIT, MAGROT, SCALE)
+            %   uses 1-based indices. CIRCUIT 0 leaves circuit membership
+            %   unchanged; NaN MAGROT/SCALE leave those quantities unchanged.
+            if nargin < 6, currentScale = NaN; end
+            if nargin < 5, magnetisationRotation = NaN; end
+            if nargin < 4, circuit = 0; end
+            session_interface_mex('instanceoverride', this.sessionHandle, ...
+                                   instance - 1, sourceLabel - 1, circuit - 1, ...
+                                   magnetisationRotation, currentScale);
         end
 
         function out = solve(this)

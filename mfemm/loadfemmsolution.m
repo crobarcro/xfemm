@@ -1016,7 +1016,15 @@ function [FemmProblem, Solution] = loadfemmsolution(filename, problemonly)
                         FemmProblem.BlockLabels(i).IsExternal = bitand (int32 (FemmProblem.BlockLabels(i).IsExternal), int32 (1));
                         
                         if ~isempty (C{10})
-                            FemmProblem.BlockLabels(i).MagDirFctn = C{10}{1};
+                            % textscan keeps the surrounding quotes, but
+                            % writefemmfile adds its own; strip them so a
+                            % loadfemmfile/writefemmfile round-trip does not
+                            % turn "theta" into ""theta"".
+                            fct = strtrim (C{10}{1});
+                            if numel (fct) >= 2 && fct(1) == '"' && fct(end) == '"'
+                                fct = fct(2:end-1);
+                            end
+                            FemmProblem.BlockLabels(i).MagDirFctn = fct;
                         else
                             FemmProblem.BlockLabels(i).MagDirFctn = '';
                         end

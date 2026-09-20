@@ -68,12 +68,22 @@ void FSolverAnalysisBackend::configure(const ModelDefinition &model,
     // indexes the unfiltered problem.labellist, holes included, so it needs
     // this translation to address m_solver->labellist correctly. -1 marks a
     // raw index that was a hole and has no solver-side counterpart.
-    std::vector<int> rawToSolverLabel(problem.labellist.size(), -1);
-    for (std::size_t rawIdx = 0; rawIdx < problem.labellist.size(); ++rawIdx) {
-        auto label = magneticCopy<CMBlockLabel>(problem.labellist[rawIdx], "block label");
-        if (!label.isHole()) {
-            rawToSolverLabel[rawIdx] = static_cast<int>(m_solver->labellist.size());
-            m_solver->labellist.push_back(std::move(label));
+    std::vector<int> rawToSolverLabel;
+    if (!prepared.labels.empty()) {
+        // An instanced session already provides a per-instance label list whose
+        // indices are exactly PreparedCircuit::labelIndex.
+        m_solver->labellist = prepared.labels;
+        rawToSolverLabel.resize(prepared.labels.size());
+        for (std::size_t i = 0; i < prepared.labels.size(); ++i)
+            rawToSolverLabel[i] = static_cast<int>(i);
+    } else {
+        rawToSolverLabel.assign(problem.labellist.size(), -1);
+        for (std::size_t rawIdx = 0; rawIdx < problem.labellist.size(); ++rawIdx) {
+            auto label = magneticCopy<CMBlockLabel>(problem.labellist[rawIdx], "block label");
+            if (!label.isHole()) {
+                rawToSolverLabel[rawIdx] = static_cast<int>(m_solver->labellist.size());
+                m_solver->labellist.push_back(std::move(label));
+            }
         }
     }
     m_solver->circproplist.clear();
@@ -184,6 +194,33 @@ void FSolverAnalysisBackend::positionAirGaps(const PreparedAnalysis &prepared)
         }
 }
 
+void FSolverAnalysisBackend::synchronizeNative(
+    const ModelDefinition &model, const SolveParameters &parameters,
+    const PreparedAnalysis &prepared, std::shared_ptr<const mesh::LogicalMeshView> view,
+    const std::vector<std::size_t> &labelBases,
+    const std::map<std::string, std::pair<double, double>> &airGapPositions, Dirty)
+{
+    if (!view)
+        throw std::invalid_argument("native synchronize requires a logical view");
+    configure(model, parameters, prepared);
+    // The ordering and bandwidth depend only on the topology, which the session
+    // rebuilds as a new LogicalMeshView. Reuse them whenever the same view is
+    // handed back, so a physics-only update (circuit current, material, AGE
+    // angle) does not redo the adjacency or Cuthill-McKee pass.
+    const bool topologyChanged = (m_nativeView != view) || m_nativeOrdering.empty();
+    m_nativeView = std::move(view);
+    m_nativeLabelBases = labelBases;
+    m_nativeAirGapPositions = airGapPositions;
+    if (topologyChanged) {
+        const auto adjacency = m_nativeView->buildAdjacency();
+        m_nativeOrdering = m_nativeView->cuthillMcKeeOrdering(adjacency);
+        m_nativeBandwidth =
+            static_cast<int>(mesh::LogicalMeshView::bandwidth(adjacency, m_nativeOrdering));
+        ++m_nativeOrderingBuilds;
+    }
+    m_nativeMode = true;
+}
+
 void FSolverAnalysisBackend::synchronize(const ModelDefinition &model,
                                          const SolveParameters &parameters,
                                          const PreparedAnalysis &prepared,
@@ -192,6 +229,7 @@ void FSolverAnalysisBackend::synchronize(const ModelDefinition &model,
 {
     if (!mesh)
         throw std::invalid_argument("FSolver backend requires a mesh");
+    m_nativeMode = false;
     configure(model, parameters, prepared);
     if (topologyIdentity != m_topologyIdentity) {
         const auto meshError = m_solver->LoadMesh(*mesh);
@@ -224,6 +262,43 @@ TrialSolution FSolverAnalysisBackend::solve(const ModelDefinition &model,
     configure(model, parameters, prepared);
     if (parameters.frequency != 0)
         throw std::invalid_argument("FSolverAnalysisBackend currently returns real (zero-frequency) solutions only");
+
+    if (m_nativeMode && m_nativeView) {
+        const std::vector<std::size_t> ordering =
+            m_nativeOrdering.empty() ? m_nativeView->cuthillMcKeeOrdering() : m_nativeOrdering;
+        if (!solveNative(*m_nativeView, m_nativeLabelBases, m_nativeAirGapPositions, ordering,
+                         m_nativeBandwidth))
+            throw std::runtime_error("native compressed solve failed");
+        const std::size_t nodeCount = m_nativeView->nodeCount();
+        std::vector<double> allX;
+        std::vector<double> allY;
+        m_nativeView->allNodeCoordinates(allX, allY);
+        TrialSolution result;
+        result.real.emplace();
+        result.real->nodal.magneticVectorPotential.reserve(nodeCount);
+        result.real->nodal.x.reserve(nodeCount);
+        result.real->nodal.y.reserve(nodeCount);
+        for (std::size_t i = 0; i < nodeCount; ++i) {
+            const std::size_t global = m_nativeNewToOld[i];
+            result.real->nodal.magneticVectorPotential.push_back(m_lastSystem->rhs()[i]);
+            result.real->nodal.x.push_back(allX[global]);
+            result.real->nodal.y.push_back(allY[global]);
+        }
+        for (std::size_t i = 0; i < static_cast<std::size_t>(m_solver->NumCircPropsOrig); ++i) {
+            const auto &constraint = parameters.circuitConstraints.at(CircuitId{i});
+            CComplex current = constraint.kind == CircuitConstraintKind::PrescribedCurrent
+                             ? constraint.value : m_solver->circproplist[i].Amps;
+            std::optional<CComplex> voltage;
+            if (constraint.kind == CircuitConstraintKind::PrescribedVoltage)
+                voltage = constraint.value;
+            result.circuits.push_back({CircuitId{i}, current, CComplex(), voltage});
+            std::optional<double> realVoltage;
+            if (voltage)
+                realVoltage = voltage->re;
+            result.real->circuits.push_back({CircuitId{i}, current.re, 0.0, realVoltage});
+        }
+        return result;
+    }
     m_lastSystem = femm::create_backend<double>(femm::default_backend_kind());
     if (!m_lastSystem)
         throw std::runtime_error("FSolver could not create the linear system backend");
@@ -280,6 +355,54 @@ void FSolverAnalysisBackend::writeSolution(const std::string &ansPath)
     const bool written = m_solver->WriteStatic2D(*m_lastSystem);
     if (!written)
         throw std::runtime_error("FSolver could not export the session solution");
+}
+
+bool FSolverAnalysisBackend::solveNative(
+    const mesh::LogicalMeshView &view, const std::vector<std::size_t> &instanceLabelBase,
+    const std::map<std::string, std::pair<double, double>> &airGapPositions,
+    const std::vector<std::size_t> &nodePermutation, int bandwidth)
+{
+    m_solver->NumNodes = static_cast<int>(view.nodeCount());
+    m_solver->NumEls = static_cast<int>(view.elementCount());
+
+    // Use the supplied Cuthill-McKee ordering (or identity) to band the system.
+    std::vector<std::size_t> permutation = nodePermutation;
+    if (permutation.empty()) {
+        permutation.resize(view.nodeCount());
+        for (std::size_t i = 0; i < permutation.size(); ++i)
+            permutation[i] = i;
+    } else if (permutation.size() != view.nodeCount()) {
+        return false;
+    }
+    if (bandwidth < 0) {
+        const auto adjacency = view.buildAdjacency();
+        bandwidth = static_cast<int>(mesh::LogicalMeshView::bandwidth(adjacency, permutation));
+    }
+    m_nativeNewToOld.assign(view.nodeCount(), 0);
+    for (std::size_t old = 0; old < permutation.size(); ++old)
+        m_nativeNewToOld[permutation[old]] = old;
+
+    m_lastSystem = femm::create_backend<double>(femm::default_backend_kind());
+    if (!m_lastSystem)
+        return false;
+    m_lastSystem->set_precision(m_solver->Precision);
+    if (!m_lastSystem->create(m_solver->NumNodes, bandwidth))
+        return false;
+    if (!m_solver->Static2DNative(view, instanceLabelBase, *m_lastSystem, airGapPositions,
+                                  permutation)) {
+        m_lastSystem.reset();
+        return false;
+    }
+    ++m_solves;
+    ++m_nativeSolves;
+    return true;
+}
+
+const femm::LinearSystemBackend<double> &FSolverAnalysisBackend::nativeSystem() const
+{
+    if (!m_lastSystem)
+        throw std::logic_error("there is no solved field; call solveNative first");
+    return *m_lastSystem;
 }
 
 const FSolver &FSolverAnalysisBackend::solvedSolver() const

@@ -4,6 +4,7 @@ add_library(fsolver STATIC
     fsolver.cpp
     harmonic2d.cpp
     harmonicaxi.cpp
+    native_static2d.cpp
     static2d.cpp
     staticaxi.cpp
     )

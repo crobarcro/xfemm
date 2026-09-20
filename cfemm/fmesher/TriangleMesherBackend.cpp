@@ -13,9 +13,20 @@ void diagnostic(femm::mesh::MeshResult &r, const std::string &s, int code) {
  r.status=femm::mesh::MeshStatus::BackendFailure; r.diagnostics.push_back({femm::mesh::MeshDiagnosticSeverity::Error,s,"Triangle",code});
 }
 }
-femm::mesh::MeshResult TriangleMesherBackend::mesh(femm::FemmProblem &problem,bool periodic,const femm::mesh::MeshingOptions &options){
- femm::mesh::MeshResult result; FMesher legacy(std::shared_ptr<femm::FemmProblem>(&problem,[](femm::FemmProblem*){}));legacy.Verbose=options.verbose;legacy.writePolyFiles=writePolyFiles;if(WarnMessage)legacy.WarnMessage=WarnMessage;if(TriMessage)legacy.TriMessage=TriMessage;
- std::string path=compatibilityPath.empty()?"xfemm-backend.fem":compatibilityPath;int status=periodic?legacy.doPeriodicTriangleWorkflow(path,result.mesh):legacy.doNonPeriodicTriangleWorkflow(path,result.mesh);if(status){diagnostic(result,"Triangle meshing workflow failed",status);return result;}result.status=femm::mesh::MeshStatus::Success;return result;
+femm::mesh::MeshResult TriangleMesherBackend::mesh(femm::FemmProblem &problem,const femm::mesh::MeshingRequest &request){
+ femm::mesh::MeshResult result;
+ if(!request.boundaryMatches.empty()||!request.templates.empty()){
+  result.status=femm::mesh::MeshStatus::Unsupported;
+  result.diagnostics.push_back({femm::mesh::MeshDiagnosticSeverity::Error,
+    "The Triangle backend cannot produce topology-only boundary matches or rotational templates; select the Tangle backend",
+    "Triangle",0});
+  return result;
+ }
+ const bool hasUnsupportedOptions=request.options.minimumAngleDegrees!=0.0||request.options.defaultElementSize!=0.0||request.options.forceMaximumElementArea||request.options.suppressExteriorSteinerPoints||request.options.suppressUnusedVertices;
+ FMesher legacy(std::shared_ptr<femm::FemmProblem>(&problem,[](femm::FemmProblem*){}));legacy.Verbose=request.options.verbose;legacy.writePolyFiles=writePolyFiles;if(WarnMessage)legacy.WarnMessage=WarnMessage;if(TriMessage)legacy.TriMessage=TriMessage;
+ std::string path=compatibilityPath.empty()?"xfemm-backend.fem":compatibilityPath;int status=request.createPeriodicFieldConstraints?legacy.doPeriodicTriangleWorkflow(path,result.mesh):legacy.doNonPeriodicTriangleWorkflow(path,result.mesh);if(status){diagnostic(result,"Triangle meshing workflow failed",status);return result;}
+ if(hasUnsupportedOptions)result.diagnostics.push_back({femm::mesh::MeshDiagnosticSeverity::Warning,"The Triangle backend honours only the verbose meshing option and ignores the rest","Triangle",0});
+ result.status=hasUnsupportedOptions?femm::mesh::MeshStatus::SuccessWithWarnings:femm::mesh::MeshStatus::Success;return result;
 }
 
 bool SolverMeshFileWriter::write(const femm::mesh::SolverMesh &m,const femm::FemmProblem &p,const std::string &path,int(*warn)(const char*,...)){

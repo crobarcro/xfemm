@@ -14,7 +14,28 @@ The recorded comparison quantities are:
 
 The checked-in `.fem` fixtures make both tests self-contained. RNFoundry is
 needed only to run `generate_radial_machine_fixtures` after the source machine
-design changes.
+design changes. See `FIXTURE_PROVENANCE.md` for the pinned RNFoundry revision,
+the recorded design/options, and the generated file list.
+
+## Maintenance: regenerate and compare
+
+RNFoundry is a fixture-generation dependency only; ordinary CI and normal test
+runs consume the checked-in fixtures and never need it. To regenerate the
+fixtures after an RNFoundry or design change, then compare against the current
+xfermm:
+
+```matlab
+addpath('/path/to/xfemm/mfemm');
+addpath('/path/to/xfemm/mfemm/testing/radial_machine');
+generate_radial_machine_fixtures('/path/to/rnfoundry', ...
+    '/path/to/xfemm/mfemm/testing/radial_machine/data');
+Test_radial_machine_static_rotation_methods();   % all ten positions
+Test_radial_machine_static_rotation_methods([1 5 10]); % quicker subset
+```
+
+After regenerating, update the RNFoundry revision in `FIXTURE_PROVENANCE.md`.
+The instanced multi-domain mechanism is covered by the C++ tests
+(`instanced_mesh_airgap`, `analysis_session_machine`), which need no fixtures.
 
 ## Test 1: sliding mesh versus redraw
 
