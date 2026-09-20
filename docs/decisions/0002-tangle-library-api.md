@@ -25,7 +25,7 @@ upstream at any revision, so xfemm cannot simply move the pin.
 
 The required capability is added to the Tangle fork at
 `https://github.com/crobarcro/tangle` on branch `xfemm-library-api` (current
-commit `5ae72ff4dcfe88e496b0e8098f4bb796abd7fee4`):
+commit `b5d51ad8639526a83576b42aee5ce1ef82d96e9b`):
 
 - `MeshOptions` and an overload
   `tangle_mesh_fem(path, const MeshOptions&, Mesh&)` apply caller overrides

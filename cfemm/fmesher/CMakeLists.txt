@@ -19,7 +19,7 @@ set(XFEMM_TANGLE_REPOSITORY https://github.com/crobarcro/tangle.git CACHE STRING
     "Tangle repository used by xfemm. Temporarily the development fork that
      carries the library options and boundary-match API; revert to
      https://github.com/dcm3c/tangle.git once those changes are upstreamed.")
-set(XFEMM_TANGLE_REVISION 5ae72ff4dcfe88e496b0e8098f4bb796abd7fee4 CACHE STRING
+set(XFEMM_TANGLE_REVISION b5d51ad8639526a83576b42aee5ce1ef82d96e9b CACHE STRING
     "Pinned Tangle revision used by xfemm.")
 set(XFEMM_MESHER_BACKEND Triangle CACHE STRING
     "Default xfemm mesher backend (Triangle or Tangle).")

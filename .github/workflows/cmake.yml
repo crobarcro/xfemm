@@ -13,7 +13,7 @@ env:
   # and boundary-match API. Revert both values to dcm3c/tangle and the merged
   # upstream commit once those changes are upstreamed.
   XFEMM_TANGLE_REPOSITORY: https://github.com/crobarcro/tangle.git
-  XFEMM_TANGLE_REVISION: 5ae72ff4dcfe88e496b0e8098f4bb796abd7fee4
+  XFEMM_TANGLE_REVISION: b5d51ad8639526a83576b42aee5ce1ef82d96e9b
 
 jobs:
   build:
@@ -75,7 +75,9 @@ jobs:
     - name: Build the materializer and native view unit tests
       run: >
         cmake --build ${{github.workspace}}/build
-        --target instanced_mesh_test instanced_mesh_hash_test logical_mesh_view_test -j2
+        --target instanced_mesh_test instanced_mesh_hash_test
+        instanced_mesh_airgap_test instanced_mesh_sector_test
+        logical_mesh_view_test -j2
     - name: Run the materializer and native view unit tests under sanitizers
       working-directory: ${{github.workspace}}/build
       run: ctest -R "instanced_mesh|logical_mesh_view" --output-on-failure

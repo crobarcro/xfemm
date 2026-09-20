@@ -14,7 +14,7 @@ function sourcedir = gettanglesourcedir ()
     end
     revision = getenv ('XFEMM_TANGLE_REVISION');
     if isempty (revision)
-        revision = '5ae72ff4dcfe88e496b0e8098f4bb796abd7fee4';
+        revision = 'b5d51ad8639526a83576b42aee5ce1ef82d96e9b';
     end
     sourcedir = getenv ('TANGLE_SOURCE_DIR');
     configured = ~isempty (sourcedir);
