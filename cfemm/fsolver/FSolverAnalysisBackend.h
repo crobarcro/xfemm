@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <vector>
 
 namespace femm {
 
@@ -50,6 +51,10 @@ private:
     std::unique_ptr<femm::LinearSystemBackend<double>> m_lastSystem;
     std::shared_ptr<const mesh::SolverMesh> m_mesh;
     std::uint64_t m_topologyIdentity = 0;
+    // Previous converged nodal field used to seed planar Newton solves.
+    std::uint64_t m_solutionTopologyIdentity = 0;
+    bool m_haveConvergedSolution = false;
+    std::vector<double> m_seedSolution;
     std::size_t m_topologyImports = 0;
     std::size_t m_orderings = 0;
     std::size_t m_couplingRegenerations = 0;
