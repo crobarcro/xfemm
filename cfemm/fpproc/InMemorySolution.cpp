@@ -34,16 +34,13 @@ bool FPProc::OpenDocument(const femm::FemmProblem &problem, const FSolver &solve
     nodeproplist = solver.nodeproplist;
     lineproplist = solver.lineproplist;
     blockproplist.clear();
-    // CMMaterialProp's legacy copy constructor does not preserve the transient
-    // MuMax flag. Avoid vector-growth copies after each explicitly prepared item.
     blockproplist.reserve(solver.blockproplist.size());
     for (const auto &source : solver.blockproplist) {
         blockproplist.push_back(static_cast<const femm::CMMaterialProp &>(source));
         auto &item = blockproplist.back();
+        // MuMax also acts as the DC incremental-permeability flag, so clear it
+        // for ordinary problems after copying the complete material state.
         item.MuMax = problem.PrevType ? source.MuMax : 0.;
-        item.Frequency = source.Frequency;
-        item.mu_fdx = source.mu_fdx;
-        item.mu_fdy = source.mu_fdy;
         item.clearSlopes();
         item.GetSlopes(2. * std::acos(-1.) * Frequency);
         if (item.BHpoints > 0 && item.slope.size() < static_cast<std::size_t>(item.BHpoints))
