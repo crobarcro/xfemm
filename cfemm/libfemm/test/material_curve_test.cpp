@@ -37,6 +37,23 @@ femm::CMMaterialProp curve(std::initializer_list<double> b,
 
 int main()
 {
+    femm::CMMaterialProp material;
+    assert(material.MuMax == 0.);
+    material.MuMax = 123.5;
+    material.Frequency = 50.;
+    material.mu_fdx.re = 2.;
+    material.mu_fdx.im = -0.25;
+    material.mu_fdy.re = 3.;
+    material.mu_fdy.im = 0.5;
+
+    const femm::CMMaterialProp copiedMaterial(material);
+    assert(copiedMaterial.MuMax == material.MuMax);
+    assert(copiedMaterial.Frequency == material.Frequency);
+    assert(copiedMaterial.mu_fdx.re == material.mu_fdx.re);
+    assert(copiedMaterial.mu_fdx.im == material.mu_fdx.im);
+    assert(copiedMaterial.mu_fdy.re == material.mu_fdy.re);
+    assert(copiedMaterial.mu_fdy.im == material.mu_fdy.im);
+
     auto onePoint = curve({0.0}, {{0.0, 0.0}});
     expectInvalid(onePoint, "zero points or at least two");
 
