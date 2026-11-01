@@ -46,7 +46,32 @@ bool FPProc::OpenDocument(const femm::FemmProblem &problem, const FSolver &solve
         if (item.BHpoints > 0 && item.slope.size() < static_cast<std::size_t>(item.BHpoints))
             throw std::runtime_error("could not prepare nonlinear material slopes");
     }
-    circproplist = solver.circproplist;
+
+    // Keep the post-processor's circuit list at the user-visible model level.
+    // FSolver expands series circuits into one internal circuit per winding
+    // block, with Amps multiplied by signed turns, and rewrites each label's
+    // InCircuit to point at that internal entry.  Those expanded circuits are
+    // an assembly detail and must not leak into getcircuitprops()/linkage
+    // calculations.  Copy the original circuit identity/type, but retain the
+    // solve-time state (notably a current changed through AnalysisSession).
+    if (solver.circproplist.size() < problem.circproplist.size())
+        throw std::runtime_error("solver circuit list is shorter than problem circuit list");
+    circproplist.clear();
+    circproplist.reserve(problem.circproplist.size());
+    for (std::size_t i = 0; i < problem.circproplist.size(); ++i) {
+        const auto *source = dynamic_cast<const femm::CMCircuit *>(problem.circproplist[i].get());
+        if (!source)
+            throw std::invalid_argument("magnetic problem contains a non-magnetic circuit property");
+        femm::CMCircuit circuit = *source;
+        const auto &solved = solver.circproplist[i];
+        circuit.Amps = solved.Amps;
+        circuit.dVolts = solved.dVolts;
+        circuit.J = solved.J;
+        circuit.dV = solved.dV;
+        circuit.Case = solved.Case;
+        circuit.OrigCirc = -1;
+        circproplist.push_back(circuit);
+    }
 
     const double centimetresPerSourceUnit[] = {2.54, 0.1, 1., 100., 0.00254, 1.e-04};
     const double coordinateScale = centimetresPerSourceUnit[LengthUnits];
@@ -75,17 +100,34 @@ bool FPProc::OpenDocument(const femm::FemmProblem &problem, const FSolver &solve
     pmeshelem = &meshelem;
 
     for (std::size_t i = 0; i < blocklist.size(); ++i) {
-        const int circuit = blocklist[i].InCircuit;
-        if (circuit < 0) {
+        const int solverCircuit = blocklist[i].InCircuit;
+        if (solverCircuit < 0) {
             blocklist[i].Case = 1;
             blocklist[i].J = 0.;
-        } else if (circproplist[circuit].Case == 0) {
+            continue;
+        }
+        if (static_cast<std::size_t>(solverCircuit) >= solver.circproplist.size())
+            throw std::runtime_error("block label refers to an invalid solver circuit");
+
+        const auto &solvedCircuit = solver.circproplist[solverCircuit];
+        if (solvedCircuit.Case == 0) {
             blocklist[i].Case = 0;
-            blocklist[i].dVolts = circproplist[circuit].dVolts;
+            blocklist[i].dVolts = solvedCircuit.dV;
         } else {
             blocklist[i].Case = 1;
-            blocklist[i].J = circproplist[circuit].J;
+            blocklist[i].J = solvedCircuit.J;
         }
+
+        // Preserve the per-block solved excitation copied above, but restore
+        // the public circuit index expected by FPProc's series-circuit voltage
+        // and flux-linkage routines.  Expanded circuits remember their source
+        // in OrigCirc; ordinary circuits keep their original index directly.
+        const int originalCircuit = solvedCircuit.OrigCirc >= 0
+                                  ? solvedCircuit.OrigCirc : solverCircuit;
+        if (originalCircuit < 0 ||
+            static_cast<std::size_t>(originalCircuit) >= circproplist.size())
+            throw std::runtime_error("solver circuit does not map to a problem circuit");
+        blocklist[i].InCircuit = originalCircuit;
     }
 
     return finalizeSolution();
