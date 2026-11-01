@@ -15,3 +15,9 @@ target_link_libraries(solver_mesh_validator_test PRIVATE femm)
 
 add_test(NAME solver_mesh_validator COMMAND solver_mesh_validator_test)
 set_tests_properties(solver_mesh_validator PROPERTIES LABELS "libfemm;mesh;unit")
+
+add_executable(copy_transform_test copy_transform_test.cpp)
+target_link_libraries(copy_transform_test PRIVATE femm)
+
+add_test(NAME copy_transform COMMAND copy_transform_test)
+set_tests_properties(copy_transform PROPERTIES LABELS "libfemm;geometry;unit;regression")
