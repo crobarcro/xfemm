@@ -15,7 +15,7 @@ jobs:
     name: CMake (${{ matrix.mesher-backend }})
     # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
     # You can convert this to a matrix build if you need cross-platform coverage.
-    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+    # See https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -41,8 +41,8 @@ jobs:
     - name: Test
       working-directory: ${{github.workspace}}/build
       # Execute tests defined by the CMake configuration.
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest -C ${{env.BUILD_TYPE}}
+      # Keep an upper bound on individual tests so a solver regression cannot consume a runner indefinitely.
+      run: ctest -C ${{env.BUILD_TYPE}} --timeout 30 --output-on-failure
 
   petsc:
     name: PETSc linear solver backend
@@ -61,10 +61,10 @@ jobs:
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} -j2
     - name: Test with the legacy backend (default)
       working-directory: ${{github.workspace}}/build
-      run: ctest -C ${{env.BUILD_TYPE}}
+      run: ctest -C ${{env.BUILD_TYPE}} --timeout 30 --output-on-failure
     - name: Test with the PETSc backend
       working-directory: ${{github.workspace}}/build
-      run: XFEMM_SOLVER_BACKEND=petsc ctest -C ${{env.BUILD_TYPE}}
+      run: XFEMM_SOLVER_BACKEND=petsc ctest -C ${{env.BUILD_TYPE}} --timeout 30 --output-on-failure
 
   octave-mex:
     name: GNU Octave MEX interface    
