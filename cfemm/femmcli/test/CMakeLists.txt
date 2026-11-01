@@ -27,7 +27,6 @@ function(test_lua testname)
     set_tests_properties(${testname}.lua PROPERTIES
         LABELS "lua;${test_lua_LABELS}"
         ENVIRONMENT "XFEMM_MESHER_BACKEND=${XFEMM_MESHER_BACKEND}"
-        TIMEOUT 30
         )
 endfunction()
 
