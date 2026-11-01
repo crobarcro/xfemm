@@ -27,6 +27,7 @@ function(test_lua testname)
     set_tests_properties(${testname}.lua PROPERTIES
         LABELS "lua;${test_lua_LABELS}"
         ENVIRONMENT "XFEMM_MESHER_BACKEND=${XFEMM_MESHER_BACKEND}"
+        TIMEOUT 30
         )
 endfunction()
 
@@ -76,7 +77,6 @@ test_lua(femmcli_moverotate_magdir LABELS "magnetics")
 test_lua_check(femmcli_moverotate_magdir fem "femmcli_moverotate_magdir.result.fem")
 test_lua_check(femmcli_matlib fem "femmcli_matlib.result.fem")
 test_lua(femmcli_issue54_zero_flux LABELS "magnetics;solver;postprocessor;regression")
-set_tests_properties(femmcli_issue54_zero_flux.lua PROPERTIES TIMEOUT 30)
 test_lua(femmcli_TorqueBenchmark LABELS "magnetics;postprocessor;fromWiki")
 test_lua_setup(femmcli_TorqueBenchmark "femmcli_TorqueBenchmark.fem")
 test_lua(femmcli_antiperiodicBC_flux LABELS "magnetics;postprocessor")
