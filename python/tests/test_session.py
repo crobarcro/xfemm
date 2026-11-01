@@ -55,3 +55,17 @@ def test_uniform_field_solve_is_in_memory(tmp_path, monkeypatch):
 
     # Solving must not use a hidden legacy solution round trip.
     assert list(tmp_path.iterdir()) == []
+
+
+def test_block_selection_change_rebuilds_stress_tensor_mask():
+    with FemmSession(MODEL) as session:
+        session.solve()
+        session.groupselectblock(3, clearselected=True)
+        selected_force = session.blockintegral(18)
+        session.clearblock()
+        cleared_force = session.blockintegral(18)
+
+    # Temp.fem group 3 is the force-integral selection used by fpproc/main.cpp.
+    # With no selected blocks the weighting mask is zero, so the force must be zero.
+    assert abs(selected_force) > 1e-9
+    np.testing.assert_allclose(cleared_force, 0.0, atol=1e-12)
