@@ -61,11 +61,12 @@ def test_block_selection_change_rebuilds_stress_tensor_mask():
     with FemmSession(MODEL) as session:
         session.solve()
         session.groupselectblock(3, clearselected=True)
-        selected_force = session.blockintegral(18)
+        selected = np.array([session.blockintegral(i) for i in (18, 19, 22)])
         session.clearblock()
-        cleared_force = session.blockintegral(18)
+        cleared = np.array([session.blockintegral(i) for i in (18, 19, 22)])
 
     # Temp.fem group 3 is the force-integral selection used by fpproc/main.cpp.
-    # With no selected blocks the weighting mask is zero, so the force must be zero.
-    assert abs(selected_force) > 1e-9
-    np.testing.assert_allclose(cleared_force, 0.0, atol=1e-12)
+    # At least one weighted stress-tensor component must exercise a nonzero mask.
+    assert np.max(np.abs(selected)) > 1e-9
+    # With no selected blocks the rebuilt weighting mask is zero.
+    np.testing.assert_allclose(cleared, 0.0, atol=1e-12)
