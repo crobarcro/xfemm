@@ -1,0 +1,12 @@
+-- Regression test for the mirrorCopy variant of GitHub issue #65's iterator bug.
+newdocument(0)
+mi_probdef(0, "meters", "planar", 1e-8, 1, 30)
+mi_addnode(0.01, 0)
+mi_addnode(0.02, 0)
+mi_selectnode(0.01, 0)
+mi_selectnode(0.02, 0)
+mi_setnodeprop("<None>", 1)
+mi_clearselected()
+mi_selectgroup(1)
+mi_mirror(0, -1, 0, 1)
+write("SUCCESS\n")
