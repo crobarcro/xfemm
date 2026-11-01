@@ -13,6 +13,12 @@
 
 namespace {
 
+void require(bool condition, const char *message)
+{
+    if (!condition)
+        throw std::runtime_error(message);
+}
+
 void expectInvalid(femm::CMMaterialProp &material, const std::string &messagePart)
 {
     try {
@@ -38,7 +44,7 @@ femm::CMMaterialProp curve(std::initializer_list<double> b,
 int main()
 {
     femm::CMMaterialProp material;
-    assert(material.MuMax == 0.);
+    require(material.MuMax == 0., "MuMax must default to zero");
     material.MuMax = 123.5;
     material.Frequency = 50.;
     material.mu_fdx.re = 2.;
@@ -47,12 +53,14 @@ int main()
     material.mu_fdy.im = 0.5;
 
     const femm::CMMaterialProp copiedMaterial(material);
-    assert(copiedMaterial.MuMax == material.MuMax);
-    assert(copiedMaterial.Frequency == material.Frequency);
-    assert(copiedMaterial.mu_fdx.re == material.mu_fdx.re);
-    assert(copiedMaterial.mu_fdx.im == material.mu_fdx.im);
-    assert(copiedMaterial.mu_fdy.re == material.mu_fdy.re);
-    assert(copiedMaterial.mu_fdy.im == material.mu_fdy.im);
+    require(copiedMaterial.MuMax == material.MuMax, "copy must preserve MuMax");
+    require(copiedMaterial.Frequency == material.Frequency, "copy must preserve Frequency");
+    require(copiedMaterial.mu_fdx.re == material.mu_fdx.re
+            && copiedMaterial.mu_fdx.im == material.mu_fdx.im,
+            "copy must preserve mu_fdx");
+    require(copiedMaterial.mu_fdy.re == material.mu_fdy.re
+            && copiedMaterial.mu_fdy.im == material.mu_fdy.im,
+            "copy must preserve mu_fdy");
 
     auto onePoint = curve({0.0}, {{0.0, 0.0}});
     expectInvalid(onePoint, "zero points or at least two");
