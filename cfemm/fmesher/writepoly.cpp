@@ -43,7 +43,11 @@
 #include <cstdio>
 #include <fstream>
 #include <iomanip>
+#if defined(__APPLE__)
+#include <stdlib.h>  // macOS has no malloc.h
+#else
 #include <malloc.h>
+#endif
 #include <stdexcept>
 #include <string>
 #include <vector>

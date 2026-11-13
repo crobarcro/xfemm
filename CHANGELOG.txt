@@ -16,6 +16,10 @@
 - Fix bug in enforcePSLG() that garbled the geometry in some cases
 - Fix double free in electrostatics and heatflow postprocessor
   (Thanks to Timothy Pearson for the patch!)
+- Build on macOS with AppleClang (sincos, malloc.h, std::ptr_fun)
+- Compile with -ffp-contract=off so Triangle's exact predicates don't hang
+  on arm64 (Apple Silicon, aarch64 Linux)
+- Fix [Solution] regex in validate_solution.cmake (femmcli_femfile.check.ans)
 
 
 ## [2.0] - 2018-07-20
