@@ -22,7 +22,11 @@
 #include<stdio.h>
 #include<math.h>
 #include<algorithm>
+#if defined(__APPLE__)
+#include <stdlib.h>  // macOS has no malloc.h
+#else
 #include <malloc.h>
+#endif
 #include "femmcomplex.h"
 #include "femmconstants.h"
 #include "CElement.h"

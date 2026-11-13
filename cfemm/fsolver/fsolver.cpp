@@ -45,7 +45,11 @@
 #include <iomanip>
 #include <ios>
 #include <iostream>
+#if defined(__APPLE__)
+#include <stdlib.h>  // macOS has no malloc.h
+#else
 #include <malloc.h>
+#endif
 #include <math.h>
 #include <sstream>
 #include <stdio.h>

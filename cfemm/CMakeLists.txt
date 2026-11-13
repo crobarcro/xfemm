@@ -42,6 +42,13 @@ enable_testing()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Triangle's exact geometric predicates assume no fused multiply-add. Clang
+# fuses by default on arm64 (Apple Silicon, aarch64 Linux), which makes the
+# mesher loop forever on some models. Keep floating-point contraction off.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    add_compile_options(-ffp-contract=off)
+endif()
+
 set(GCC_COVERAGE_COMPILE_FLAGS)
 set(GCC_WARNING_FLAGS "-Wall -Wextra -Wpedantic")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
