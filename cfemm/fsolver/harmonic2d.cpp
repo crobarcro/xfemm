@@ -26,11 +26,7 @@
 #include "linsolve/LinearSystemBackend.h"
 
 #include <algorithm>
-#if defined(__APPLE__)
-#include <stdlib.h>  // macOS has no malloc.h
-#else
-#include <malloc.h>
-#endif
+#include <stdlib.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
