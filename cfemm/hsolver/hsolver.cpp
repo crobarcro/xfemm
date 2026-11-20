@@ -42,11 +42,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <cstring>
-#if defined(__APPLE__)
-#include <stdlib.h>  // macOS has no malloc.h
-#else
-#include <malloc.h>
-#endif
+#include <stdlib.h>
 
 // template instantiation:
 #include "../libfemm/feasolver.cpp"
