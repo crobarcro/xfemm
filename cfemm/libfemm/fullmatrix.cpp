@@ -21,11 +21,7 @@
 
 #include <cstdlib>
 #include <math.h>
-#if defined(__APPLE__)
-#include <stdlib.h>  // macOS has no malloc.h
-#else
-#include "malloc.h"
-#endif
+#include <stdlib.h>
 #include "femmcomplex.h"
 #include "fullmatrix.h"
 
