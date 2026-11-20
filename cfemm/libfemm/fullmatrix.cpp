@@ -21,7 +21,7 @@
 
 #include <cstdlib>
 #include <math.h>
-#include "malloc.h"
+#include <stdlib.h>
 #include "femmcomplex.h"
 #include "fullmatrix.h"
 

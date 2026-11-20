@@ -26,7 +26,7 @@
 #include "linsolve/LinearSystemBackend.h"
 
 #include <algorithm>
-#include <malloc.h>
+#include <stdlib.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>

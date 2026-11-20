@@ -42,5 +42,6 @@ foreach(backend Triangle Tangle)
             "${CMAKE_CURRENT_LIST_DIR}/Temp.fem"
             "${CMAKE_CURRENT_LIST_DIR}/../../femmcli/test/femmcli_antiperiodicBC_AGE_TorqueBenchmark.fem")
     set_tests_properties(fmesher_${backend}_backend_solver_mesh PROPERTIES
-        LABELS "magnetics;mesher;${backend}")
+        LABELS "magnetics;mesher;${backend};regression"
+        TIMEOUT 120)
 endforeach()
