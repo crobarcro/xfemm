@@ -55,3 +55,19 @@ def test_uniform_field_solve_is_in_memory(tmp_path, monkeypatch):
 
     # Solving must not use a hidden legacy solution round trip.
     assert list(tmp_path.iterdir()) == []
+
+
+def test_block_selection_change_rebuilds_stress_tensor_mask():
+    with FemmSession(MODEL) as session:
+        session.solve()
+        session.groupselectblock(3, clearselected=True)
+        selected = np.array([session.blockintegral(i) for i in (18, 19, 22)])
+        session.clearblock()
+        cleared = np.array([session.blockintegral(i) for i in (18, 19, 22)])
+
+    # Temp.fem group 3 is the force-integral selection used by fpproc/main.cpp.
+    # Its net weighted-stress result is near equilibrium but still nonzero, which
+    # is enough to detect stale-mask reuse after the selection is cleared.
+    selected_scale = np.max(np.abs(selected))
+    assert selected_scale > 1e-14
+    assert np.max(np.abs(cleared)) < selected_scale * 1e-3

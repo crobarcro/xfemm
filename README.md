@@ -25,6 +25,22 @@ International Conference on Electric Machines (ICEM 2016), September
 
 We would also suggest you cite the original FEMM program.
 
+## License
+
+Except for files and components that carry a separate third-party licence,
+XFEMM is available under the GNU General Public License, version 3, or (at
+your option) any later version (`GPL-3.0-or-later`). See [LICENSE](LICENSE)
+for the complete GPLv3 text and [LICENSING.md](LICENSING.md) for the
+relicensing history, David C. Meeker's additional licence grant, and
+third-party exceptions.
+
+Bundled third-party components retain their own licences. In particular,
+the GPL relicensing does **not** relicense Triangle; see
+[`cfemm/LICENSE-triangle.txt`](cfemm/LICENSE-triangle.txt). The bundled Lua
+sources remain under the terms in
+[`cfemm/LICENSE-Lua.txt`](cfemm/LICENSE-Lua.txt). Files carrying other
+explicit third-party licence notices retain those terms.
+
 ## Installation and Setup
 
 There are two ways to make use of the xfemm project. One is to use it as

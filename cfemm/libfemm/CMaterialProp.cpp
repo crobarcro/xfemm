@@ -85,6 +85,7 @@ CMMaterialProp::CMMaterialProp()
     , WireD(0)
     , mu_fdx()
     , mu_fdy()
+    , MuMax(0.)
     , Frequency(0.)
 {
 }
@@ -93,32 +94,7 @@ CMMaterialProp::~CMMaterialProp()
 {
 }
 
-CMMaterialProp::CMMaterialProp( const CMMaterialProp& other )
-{
-    BlockName = other.BlockName;
-    mu_x = other.mu_x;
-    mu_y = other.mu_y;            // permeabilities, relative
-    BHpoints = other.BHpoints;
-
-    if (other.BHpoints !=(int) other.Bdata.size())
-        std::cerr << "Size difference:" << other.BHpoints << " vs " << other.Bdata.size() << std::endl;
-    Bdata = other.Bdata;
-    Hdata = other.Hdata;
-    slope = other.slope;
-
-    H_c = other.H_c;                // magnetization, A/m
-    Nrg = other.Nrg;
-    J = other.J;
-    Cduct = other.Cduct;            // conductivity of the material, MS/m
-    Lam_d = other.Lam_d;            // lamination thickness, mm
-    Theta_hn = other.Theta_hn;        // hysteresis angle, degrees
-    Theta_hx = other.Theta_hx;        // hysteresis angle, degrees
-    Theta_hy = other.Theta_hy;        // hysteresis angle, degrees
-    NStrands = other.NStrands;            // number of strands per wire
-    WireD = other.WireD;
-    LamFill = other.LamFill;            // lamination fill factor;
-    LamType = other.LamType;            // type of lamination;
-}
+CMMaterialProp::CMMaterialProp( const CMMaterialProp& other ) = default;
 
 void CMMaterialProp::clearSlopes()
 {

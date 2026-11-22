@@ -165,10 +165,10 @@ public:
         py::array_t<std::complex<double>> out(count); auto a=out.mutable_unchecked<1>();
         if(type==2){a(0)=z[0].re;a(1)=z[0].im;} else for(int i=0;i<count;++i)a(i)={z[i].re,z[i].im}; return out;
     }
-    void selectBlock(double x,double y){requirePost();int e=m_post->InTriangle(x,y);if(e>=0)m_post->blocklist[m_post->meshelem[e].lbl].IsSelected=true;}
-    void groupSelectBlock(int group){requirePost();for(auto &label:m_post->blocklist)if(label.InGroup==group)label.IsSelected=true;}
-    void selectAllBlocks(){requirePost();for(auto &label:m_post->blocklist)label.IsSelected=true;}
-    void clearBlock(){requirePost();for(auto &label:m_post->blocklist)label.IsSelected=false;}
+    void selectBlock(double x,double y){requirePost();int e=m_post->InTriangle(x,y);if(e>=0)m_post->blocklist[m_post->meshelem[e].lbl].IsSelected=true;m_post->bHasMask=false;}
+    void groupSelectBlock(int group){requirePost();for(auto &label:m_post->blocklist)if(label.InGroup==group)label.IsSelected=true;m_post->bHasMask=false;}
+    void selectAllBlocks(){requirePost();for(auto &label:m_post->blocklist)label.IsSelected=true;m_post->bHasMask=false;}
+    void clearBlock(){requirePost();for(auto &label:m_post->blocklist)label.IsSelected=false;m_post->bHasMask=false;}
     std::complex<double> blockIntegral(int type){requirePost();if(type>=18&&type<=23)m_post->MakeMask();auto z=m_post->BlockIntegral(type);return {z.re,z.im};}
     py::array_t<double> problemInfo(){requirePost();py::array_t<double> o(4);auto a=o.mutable_unchecked<1>();a(0)=m_post->problemType;a(1)=m_post->Frequency;a(2)=m_post->Depth;a(3)=m_post->LengthConv[m_post->LengthUnits];return o;}
     py::array_t<std::complex<double>> circuitProps(const std::string &name){requirePost();int k=-1;for(std::size_t i=0;i<m_post->circproplist.size();++i)if(m_post->circproplist[i].CircName==name)k=i;if(k<0)throw std::invalid_argument("unknown circuit");py::array_t<std::complex<double>>o(3);auto a=o.mutable_unchecked<1>();auto c=m_post->circproplist[k].Amps,v=m_post->GetVoltageDrop(k),f=m_post->GetFluxLinkage(k);a(0)={c.re,c.im};a(1)={v.re,v.im};a(2)={f.re,f.im};return o;}

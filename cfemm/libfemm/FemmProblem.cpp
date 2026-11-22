@@ -4,6 +4,7 @@
 #include "make_unique.h"
 
 #include <cassert>
+#include <cstddef>
 #include <ctgmath>
 #include <fstream>
 #include <iomanip>
@@ -1670,8 +1671,10 @@ void femm::FemmProblem::mirrorCopy(double x0, double y0, double x1, double y1, f
 
     if (selector==EditMode::EditNodes || selector == EditMode::EditGroup)
     {
-        for (const auto &node: nodelist)
+        const std::size_t nodeCount = nodelist.size();
+        for (std::size_t i = 0; i < nodeCount; ++i)
         {
+            const auto *node = nodelist[i].get();
             if (node->IsSelected)
             {
                 CComplex y (node->x,node->y);
@@ -1689,8 +1692,10 @@ void femm::FemmProblem::mirrorCopy(double x0, double y0, double x1, double y1, f
     }
     if (selector == EditMode::EditLines || selector == EditMode::EditGroup)
     {
-        for (const auto &line: linelist)
+        const std::size_t lineCount = linelist.size();
+        for (std::size_t i = 0; i < lineCount; ++i)
         {
+            const auto *line = linelist[i].get();
             if (line->IsSelected)
             {
                 // copy endpoints
@@ -1725,8 +1730,10 @@ void femm::FemmProblem::mirrorCopy(double x0, double y0, double x1, double y1, f
 
     if (selector == EditMode::EditLabels || selector == EditMode::EditGroup)
     {
-        for (const auto &label: labellist)
+        const std::size_t labelCount = labellist.size();
+        for (std::size_t i = 0; i < labelCount; ++i)
         {
+            const auto *label = labellist[i].get();
             if (label->IsSelected)
             {
                 std::unique_ptr<CBlockLabel> newlabel = label->clone();
@@ -1746,8 +1753,10 @@ void femm::FemmProblem::mirrorCopy(double x0, double y0, double x1, double y1, f
     }
     if (selector == EditMode::EditArcs || selector == EditMode::EditGroup)
     {
-        for (const auto &arc: arclist)
+        const std::size_t arcCount = arclist.size();
+        for (std::size_t i = 0; i < arcCount; ++i)
         {
+            const auto *arc = arclist[i].get();
             if (arc->IsSelected)
             {
                 // copy endpoints
@@ -1794,8 +1803,10 @@ void femm::FemmProblem::rotateCopy(CComplex c, double dt, int ncopies, femm::Edi
 
         if (selector==EditMode::EditNodes || selector == EditMode::EditGroup)
         {
-            for (const auto &node: nodelist)
+            const std::size_t nodeCount = nodelist.size();
+            for (std::size_t i = 0; i < nodeCount; ++i)
             {
+                const auto *node = nodelist[i].get();
                 if (node->IsSelected)
                 {
                     CComplex x (node->x, node->y);
@@ -1813,8 +1824,10 @@ void femm::FemmProblem::rotateCopy(CComplex c, double dt, int ncopies, femm::Edi
 
         if (selector == EditMode::EditLines || selector == EditMode::EditGroup)
         {
-            for (const auto &line: linelist)
+            const std::size_t lineCount = linelist.size();
+            for (std::size_t i = 0; i < lineCount; ++i)
             {
+                const auto *line = linelist[i].get();
                 if (line->IsSelected)
                 {
                     // copy endpoints
@@ -1847,8 +1860,10 @@ void femm::FemmProblem::rotateCopy(CComplex c, double dt, int ncopies, femm::Edi
 
         if (selector == EditMode::EditArcs || selector == EditMode::EditGroup)
         {
-            for (const auto &arc: arclist)
+            const std::size_t arcCount = arclist.size();
+            for (std::size_t i = 0; i < arcCount; ++i)
             {
+                const auto *arc = arclist[i].get();
                 if (arc->IsSelected)
                 {
                     // copy endpoints
@@ -1881,8 +1896,10 @@ void femm::FemmProblem::rotateCopy(CComplex c, double dt, int ncopies, femm::Edi
 
         if (selector == EditMode::EditLabels || selector == EditMode::EditGroup)
         {
-            for (const auto &label: labellist)
+            const std::size_t labelCount = labellist.size();
+            for (std::size_t i = 0; i < labelCount; ++i)
             {
+                const auto *label = labellist[i].get();
                 if (label->IsSelected)
                 {
                     std::unique_ptr<CBlockLabel> newlabel = label->clone();
@@ -2093,8 +2110,10 @@ void femm::FemmProblem::translateCopy(double incx, double incy, int ncopies, fem
 
         if (selector==EditMode::EditNodes || selector == EditMode::EditGroup)
         {
-            for (const auto &node: nodelist)
+            const std::size_t nodeCount = nodelist.size();
+            for (std::size_t i = 0; i < nodeCount; ++i)
             {
+                const auto *node = nodelist[i].get();
                 if (node->IsSelected)
                 {
                     // create copy
@@ -2110,8 +2129,10 @@ void femm::FemmProblem::translateCopy(double incx, double incy, int ncopies, fem
 
         if (selector == EditMode::EditLines || selector == EditMode::EditGroup)
         {
-            for (const auto &line: linelist)
+            const std::size_t lineCount = linelist.size();
+            for (std::size_t i = 0; i < lineCount; ++i)
             {
+                const auto *line = linelist[i].get();
                 if (line->IsSelected)
                 {
                     // copy endpoints
@@ -2140,8 +2161,10 @@ void femm::FemmProblem::translateCopy(double incx, double incy, int ncopies, fem
 
         if (selector == EditMode::EditLabels || selector == EditMode::EditGroup)
         {
-            for (const auto &label: labellist)
+            const std::size_t labelCount = labellist.size();
+            for (std::size_t i = 0; i < labelCount; ++i)
             {
+                const auto *label = labellist[i].get();
                 if (label->IsSelected)
                 {
                     std::unique_ptr<CBlockLabel> newlabel = label->clone();
@@ -2156,8 +2179,10 @@ void femm::FemmProblem::translateCopy(double incx, double incy, int ncopies, fem
 
         if (selector == EditMode::EditArcs || selector == EditMode::EditGroup)
         {
-            for (const auto &arc: arclist)
+            const std::size_t arcCount = arclist.size();
+            for (std::size_t i = 0; i < arcCount; ++i)
             {
+                const auto *arc = arclist[i].get();
                 if (arc->IsSelected)
                 {
                     // copy endpoints

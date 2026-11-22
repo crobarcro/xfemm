@@ -64,3 +64,9 @@ target_link_libraries(tiled_model_json_test PRIVATE femm)
 add_test(NAME tiled_model_json COMMAND tiled_model_json_test)
 set_tests_properties(tiled_model_json PROPERTIES
     LABELS "libfemm;tiled;unit")
+
+add_executable(copy_transform_test copy_transform_test.cpp)
+target_link_libraries(copy_transform_test PRIVATE femm)
+
+add_test(NAME copy_transform COMMAND copy_transform_test)
+set_tests_properties(copy_transform PROPERTIES LABELS "libfemm;geometry;unit;regression")
