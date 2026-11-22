@@ -1,5 +1,6 @@
 #include "AnalysisSession.h"
 #include "FSolverAnalysisBackend.h"
+#include "NativeEquivalence.h"
 
 #include "CBlockLabel.h"
 #include "CCircuit.h"
@@ -107,131 +108,89 @@ InstancedMesh makeRing(std::size_t count)
     return instanced;
 }
 
-std::map<std::pair<long long, long long>, std::size_t> indexByCoordinate(const FSolver &solver)
-{
-    std::map<std::pair<long long, long long>, std::size_t> lookup;
-    for (std::size_t i = 0; i < solver.meshnode.size(); ++i) {
-        const long long x = std::llround(solver.meshnode[i].x * 1e6);
-        const long long y = std::llround(solver.meshnode[i].y * 1e6);
-        lookup[{x, y}] = i;
-    }
-    return lookup;
-}
-
-/** Compare the native field with the materialised field node by node. */
-bool compareNativeToMaterialized(const std::shared_ptr<FSolverAnalysisBackend> &solver,
-                                 AnalysisSession &session, double tolerance)
-{
-    const std::size_t materializedNodes = solver->solvedSolver().NumNodes;
-    const auto materializedLookup = indexByCoordinate(solver->solvedSolver());
-    const auto &materializedSystem = solver->solvedSystem();
-    const std::vector<double> materializedA(materializedSystem.rhs().begin(),
-                                            materializedSystem.rhs().end());
-
-    std::vector<MaterializationDiagnostic> diagnostics;
-    const LogicalMeshView view = LogicalMeshView::build(*session.instancedMesh(), diagnostics);
-    REQUIRE(diagnostics.empty());
-    REQUIRE(view.valid());
-    REQUIRE(view.nodeCount() == materializedNodes);
-
-    REQUIRE(solver->solveNative(view, session.instanceLabelBases(),
-                                session.airGapPositioning()));
-
-    const auto &nativeSystem = solver->nativeSystem();
-    REQUIRE(nativeSystem.dimension() == static_cast<int>(view.nodeCount()));
-
-    double largest = 0.0;
-    for (std::size_t node = 0; node < view.nodeCount(); ++node) {
-        double x = 0.0, y = 0.0;
-        view.nodeCoordinates(node, x, y);
-        const auto found = materializedLookup.find(
-            {std::llround(x * 100.0 * 1e6), std::llround(y * 100.0 * 1e6)});
-        REQUIRE(found != materializedLookup.end());
-        const double nativeValue = nativeSystem.rhs()[node];
-        const double reference = materializedA[found->second];
-        largest = std::max(largest, std::abs(reference));
-        REQUIRE(std::abs(nativeValue - reference) < tolerance * (1.0 + std::abs(reference)));
-    }
-    REQUIRE(largest > 1e-9);
-    return true;
-}
-
-// G3/G5: the native assembly reproduces the materialised linear solver field.
+// G3/G5: the independent native and materialized session pipelines must
+// reproduce the same physical field, regardless of their solver node ordering.
 bool testRingEquivalence()
 {
-    auto solver = std::make_shared<FSolverAnalysisBackend>();
-    AnalysisSession session(ModelDefinition(makeProblem()), solver);
-    session.setInstancedMesh(makeRing(6));
-    session.solve();
-    REQUIRE(solver->solveCount() == 1);
-    REQUIRE(compareNativeToMaterialized(solver, session, 1e-7));
+    auto referenceSolver = std::make_shared<FSolverAnalysisBackend>();
+    auto nativeSolver = std::make_shared<FSolverAnalysisBackend>();
+    AnalysisSession reference(ModelDefinition(makeProblem()), referenceSolver);
+    AnalysisSession native(ModelDefinition(makeProblem()), nativeSolver);
+    auto instanced = makeRing(6);
+    reference.setInstancedMesh(instanced);
+    native.setInstancedMesh(std::move(instanced));
+    native.setNativeInstanced(true);
+
+    xfemm_test::EquivalenceOptions options;
+    options.absoluteTolerance = options.relativeTolerance = 1e-7;
+    const auto comparison = xfemm_test::compareSessionSolutions(reference, native, options);
+    if (!comparison.passed)
+        std::cerr << "linear ring: " << comparison.message << '\n';
+    REQUIRE(comparison.passed);
+    REQUIRE(referenceSolver->solveCount() == 1);
+    REQUIRE(nativeSolver->nativeSolveCount() == 1);
+    REQUIRE(referenceSolver->topologyImportCount() == 1);
     return true;
 }
 
-// G3/G5: the native Newton iteration reproduces a nonlinear materialised solve.
+// G3/G5: the native Newton iteration reproduces the materialized solution.
 bool testNonlinearEquivalence()
 {
-    auto problem = makeProblem();
-    auto *material = dynamic_cast<CMMaterialProp *>(problem->blockproplist[0].get());
-    material->mu_x = material->mu_y = 1000;
-    material->Bdata = {0.0, 0.5, 1.0, 1.5, 2.0};
-    material->Hdata = {0.0, 100.0, 500.0, 2000.0, 10000.0};
-    material->BHpoints = 5;
-    auto *circuit = dynamic_cast<CMCircuit *>(problem->circproplist[0].get());
-    circuit->Amps = 50;
+    auto nonlinearProblem = [] {
+        auto problem = makeProblem();
+        auto *material = dynamic_cast<CMMaterialProp *>(problem->blockproplist[0].get());
+        material->mu_x = material->mu_y = 1000;
+        material->Bdata = {0.0, 0.5, 1.0, 1.5, 2.0};
+        material->Hdata = {0.0, 100.0, 500.0, 2000.0, 10000.0};
+        material->BHpoints = 5;
+        auto *circuit = dynamic_cast<CMCircuit *>(problem->circproplist[0].get());
+        circuit->Amps = 50;
+        return problem;
+    };
 
-    auto solver = std::make_shared<FSolverAnalysisBackend>();
-    AnalysisSession session(ModelDefinition(std::move(problem)), solver);
-    session.setInstancedMesh(makeRing(6));
-    session.solve();
-    REQUIRE(solver->solveCount() == 1);
-    REQUIRE(compareNativeToMaterialized(solver, session, 1e-4));
+    auto referenceSolver = std::make_shared<FSolverAnalysisBackend>();
+    auto nativeSolver = std::make_shared<FSolverAnalysisBackend>();
+    AnalysisSession reference(ModelDefinition(nonlinearProblem()), referenceSolver);
+    AnalysisSession native(ModelDefinition(nonlinearProblem()), nativeSolver);
+    auto instanced = makeRing(6);
+    reference.setInstancedMesh(instanced);
+    native.setInstancedMesh(std::move(instanced));
+    native.setNativeInstanced(true);
+
+    xfemm_test::EquivalenceOptions options;
+    options.absoluteTolerance = options.relativeTolerance = 1e-4;
+    const auto comparison = xfemm_test::compareSessionSolutions(reference, native, options);
+    if (!comparison.passed)
+        std::cerr << "nonlinear ring: " << comparison.message << '\n';
+    REQUIRE(comparison.passed);
+    REQUIRE(referenceSolver->solveCount() == 1);
+    REQUIRE(nativeSolver->nativeSolveCount() == 1);
     return true;
 }
 
-// G3/E: the session-native mode skips materialisation and reuses the view.
+// G3/E: a session-native solve must not materialize, and physics changes must
+// reuse topology-derived ordering until the instance layout changes.
 bool testSessionNativeMode()
 {
-    auto materializedSolver = std::make_shared<FSolverAnalysisBackend>();
-    AnalysisSession materialized(ModelDefinition(makeProblem()), materializedSolver);
-    materialized.setInstancedMesh(makeRing(6));
-    const TrialSolution reference = materialized.solve();
-    REQUIRE(materializedSolver->topologyImportCount() == 1);
-    REQUIRE(reference.real);
-
-    std::map<std::pair<long long, long long>, std::size_t> lookup;
-    for (std::size_t i = 0; i < reference.real->nodal.x.size(); ++i) {
-        lookup[{std::llround(reference.real->nodal.x[i] * 1e6),
-                std::llround(reference.real->nodal.y[i] * 1e6)}] = i;
-    }
-
+    auto referenceSolver = std::make_shared<FSolverAnalysisBackend>();
     auto nativeSolver = std::make_shared<FSolverAnalysisBackend>();
+    AnalysisSession reference(ModelDefinition(makeProblem()), referenceSolver);
     AnalysisSession native(ModelDefinition(makeProblem()), nativeSolver);
-    native.setInstancedMesh(makeRing(6));
+    auto instanced = makeRing(6);
+    reference.setInstancedMesh(instanced);
+    native.setInstancedMesh(std::move(instanced));
     native.setNativeInstanced(true);
-    const TrialSolution trial = native.solve();
+
+    const auto comparison = xfemm_test::compareSessionSolutions(reference, native);
+    if (!comparison.passed)
+        std::cerr << "native-session: " << comparison.message << '\n';
+    REQUIRE(comparison.passed);
+    REQUIRE(referenceSolver->topologyImportCount() == 1);
     REQUIRE(nativeSolver->nativeSolveCount() == 1);
     REQUIRE(native.materializationCount() == 0);
     REQUIRE(native.viewGenerationCount() == 1);
-    REQUIRE(trial.real);
-    REQUIRE(trial.real->nodal.x.size() == reference.real->nodal.x.size());
-
-    double largest = 0.0;
-    for (std::size_t i = 0; i < trial.real->nodal.x.size(); ++i) {
-        const auto found = lookup.find({std::llround(trial.real->nodal.x[i] * 1e6),
-                                        std::llround(trial.real->nodal.y[i] * 1e6)});
-        REQUIRE(found != lookup.end());
-        const double value = trial.real->nodal.magneticVectorPotential[i];
-        const double expected = reference.real->nodal.magneticVectorPotential[found->second];
-        largest = std::max(largest, std::abs(expected));
-        REQUIRE(std::abs(value - expected) < 1e-7 * (1.0 + std::abs(expected)));
-    }
-    REQUIRE(largest > 1e-9);
     REQUIRE(nativeSolver->nativeOrderingBuildCount() == 1);
 
-    // Physics changes reuse both the view and its ordering; only a transform
-    // rebuilds them. Translate the whole ring rigidly so welded seams stay
-    // coincident.
     native.setCircuitCurrent(native.model().circuit("phase"), CComplex(2, 0));
     native.solve();
     REQUIRE(native.viewGenerationCount() == 1);
