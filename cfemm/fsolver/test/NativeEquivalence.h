@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 namespace xfemm_test {
 
@@ -38,6 +39,15 @@ struct EquivalenceResult {
  * in a coordinate map or paired by accident. Future support for truly
  * coincident independent DOFs should use an explicit provenance mapping.
  */
+/** Reuse the G5.1 unambiguous coordinate association for comparing solver
+ * DOF orderings and canonical mesh numbering. Mapping[trial] = reference.
+ * Returns false with a diagnostic on duplicate, missing or invalid nodes.
+ */
+bool associateNodalCoordinates(const femm::RealNodalSolution &reference,
+                               const femm::RealNodalSolution &trial,
+                               double tolerance, std::vector<std::size_t> &mapping,
+                               std::string &message);
+
 EquivalenceResult compareNodalSolutions(const femm::TrialSolution &materialized,
                                          const femm::TrialSolution &native,
                                          const EquivalenceOptions &options = {});
