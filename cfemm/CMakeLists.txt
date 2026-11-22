@@ -42,6 +42,15 @@ enable_testing()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Optional AddressSanitizer/UndefinedBehaviorSanitizer build used by CI to run
+# the instanced-mesh materializer unit suite against memory and UB errors.
+option(XFEMM_ENABLE_SANITIZERS "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+if(XFEMM_ENABLE_SANITIZERS)
+    message(STATUS "Enabling AddressSanitizer and UndefinedBehaviorSanitizer")
+    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
 set(GCC_COVERAGE_COMPILE_FLAGS)
 set(GCC_WARNING_FLAGS "-Wall -Wextra -Wpedantic")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )

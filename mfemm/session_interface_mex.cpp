@@ -7,9 +7,14 @@
 #include "FSolverAnalysisBackend.h"
 #include "FemmReader.h"
 #include "TangleMesherBackend.h"
+#include "TiledModel.h"
+#include "TiledModelJson.h"
+#include "TiledModelMesher.h"
 #include "TriangleMesherBackend.h"
 #include "postproc/fpproc_interface.h"
 
+#include <cmath>
+#include <fstream>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -73,7 +78,113 @@ public:
         return result;
     }
 
+    /**
+     * Create a session from a tiled-model JSON file. The session model is the
+     * shared property set (no tile geometry); each tile is meshed once through
+     * Tangle and assembled into the session's instanced mesh.
+     */
+    static std::unique_ptr<SessionGateway> createTiled(const std::string &filename)
+    {
+        std::ifstream input(filename);
+        if (!input)
+            throw std::runtime_error("could not open tiled model: " + filename);
+        std::ostringstream buffer;
+        buffer << input.rdbuf();
+
+        femm::tiled::TiledModel model;
+        std::vector<femm::tiled::TiledDiagnostic> errors;
+        if (!femm::tiled::loadTiledModelJson(buffer.str(), model, errors))
+            throw std::runtime_error("could not parse tiled model: " +
+                                     (errors.empty() ? filename : errors.front().message));
+        const femm::tiled::TiledValidationResult validation =
+            femm::tiled::validateTiledModel(model);
+        if (!validation.succeeded())
+            throw std::runtime_error("invalid tiled model: " +
+                                     validation.diagnostics.front().message);
+
+        std::unique_ptr<SessionGateway> result(new SessionGateway);
+        std::unique_ptr<femm::FemmProblem> owned = femm::tiled::buildTileProblem(model, 0);
+        owned->nodelist.clear();
+        owned->linelist.clear();
+        owned->arclist.clear();
+        owned->labellist.clear();
+        owned->pathName.clear();
+        result->m_solver = std::make_shared<femm::FSolverAnalysisBackend>();
+        result->m_session.reset(new femm::AnalysisSession(
+            femm::ModelDefinition(std::move(owned)), result->m_solver));
+        result->m_filename = filename;
+
+        fmesher::TangleMesherBackend backend;
+        fmesher::TiledMeshResult meshed = fmesher::meshTiledModel(model, backend);
+        if (!meshed.ok)
+            throw std::runtime_error(
+                "could not mesh tiled model: " +
+                (meshed.diagnostics.empty() ? filename : meshed.diagnostics.front().message));
+        result->m_session->setInstancedMesh(std::move(meshed.instanced));
+        result->m_backendName = "tangle";
+        return result;
+    }
+
     void mesh() { m_session->ensureMesh(); }
+
+    /** Mesh the loaded problem as one tile and repeat it rotationally. */
+    void instanceRotational(double centerX, double centerY, double instanceCount,
+                            double totalAngle)
+    {
+        if (instanceCount < 1 || instanceCount != std::floor(instanceCount))
+            throw std::invalid_argument("instance count must be a positive integer");
+        femm::mesh::MeshingRequest request;
+        femm::mesh::TemplateRequest tmpl;
+        tmpl.centerXMetres = centerX;
+        tmpl.centerYMetres = centerY;
+        tmpl.instanceCount = static_cast<std::size_t>(instanceCount);
+        tmpl.totalAngleDegrees = totalAngle;
+        request.templates.push_back(tmpl);
+        fmesher::TangleMesherBackend backend;
+        // The backend only reads the problem; the const_cast preserves the
+        // read-only contract of the session model.
+        auto result = backend.mesh(
+            const_cast<femm::FemmProblem &>(m_session->model().problem()), request);
+        if (!result.succeeded() || !result.instancedTemplates)
+            throw std::runtime_error("could not build rotational instances");
+        m_session->setInstancedMesh(std::move(*result.instancedTemplates));
+    }
+
+    mxArray *instanceInfo() const
+    {
+        const char *fields[] = {"templateTopologyIdentity", "instanceLayoutIdentity",
+                                "meshTopologyIdentity", "materializationCount",
+                                "instanceCount"};
+        mxArray *out = mxCreateStructMatrix(1, 1, 5, fields);
+        mxSetField(out, 0, "templateTopologyIdentity",
+                   mxCreateDoubleScalar(static_cast<double>(m_session->templateTopologyIdentity())));
+        mxSetField(out, 0, "instanceLayoutIdentity",
+                   mxCreateDoubleScalar(static_cast<double>(m_session->instanceLayoutIdentity())));
+        mxSetField(out, 0, "meshTopologyIdentity",
+                   mxCreateDoubleScalar(static_cast<double>(m_session->meshTopologyIdentity())));
+        mxSetField(out, 0, "materializationCount",
+                   mxCreateDoubleScalar(static_cast<double>(m_session->materializationCount())));
+        const auto &instanced = m_session->instancedMesh();
+        mxSetField(out, 0, "instanceCount",
+                   mxCreateDoubleScalar(instanced ? static_cast<double>(instanced->instances.size())
+                                                  : 0.0));
+        return out;
+    }
+
+    void instanceOverride(double instance, double sourceLabel, double circuit,
+                          double magRotation, double currentScale)
+    {
+        femm::mesh::InstanceRegionOverride override;
+        override.sourceBlockLabel = static_cast<std::size_t>(sourceLabel);
+        if (circuit >= 0)
+            override.circuit = static_cast<std::size_t>(circuit);
+        if (!std::isnan(magRotation))
+            override.magnetisationRotationDegrees = magRotation;
+        if (!std::isnan(currentScale))
+            override.currentScale = currentScale;
+        m_session->addInstanceRegionOverride(static_cast<std::size_t>(instance), override);
+    }
+
     femm::AnalysisSession &session() { return *m_session; }
     const femm::AnalysisSession &session() const { return *m_session; }
     const femm::FSolverAnalysisBackend &solver() const { return *m_solver; }
@@ -222,6 +333,11 @@ try {
         plhs[0] = convertPtr2Mat(SessionGateway::create(stringValue(prhs[1], "filename")).release());
         return;
     }
+    if (command == "newtiled") {
+        if (nrhs != 2 || nlhs != 1) throw std::invalid_argument("newtiled requires one filename and one output");
+        plhs[0] = convertPtr2Mat(SessionGateway::createTiled(stringValue(prhs[1], "filename")).release());
+        return;
+    }
     if (nrhs < 2) throw std::invalid_argument("second input must be a session handle");
     if (command == "delete") { destroyObject<SessionGateway>(prhs[1]); return; }
     SessionGateway *gateway = convertMat2Ptr<SessionGateway>(prhs[1]);
@@ -239,6 +355,14 @@ try {
         else if (kind == "coupled") session.setCircuitCoupled(id);
         else throw std::invalid_argument("constraint must be current, voltage, open, or coupled");
     } else if (command == "age") session.setAirGapAngle(session.model().airGap(stringValue(prhs[2], "AGE name")), scalarValue(prhs[3], "inner angle"), scalarValue(prhs[4], "outer angle"));
+    else if (command == "instance") gateway->instanceRotational(
+        scalarValue(prhs[2], "centerX"), scalarValue(prhs[3], "centerY"),
+        scalarValue(prhs[4], "instanceCount"), scalarValue(prhs[5], "totalAngle"));
+    else if (command == "instanceinfo") plhs[0] = gateway->instanceInfo();
+    else if (command == "instanceoverride") gateway->instanceOverride(
+        scalarValue(prhs[2], "instance"), scalarValue(prhs[3], "sourceLabel"),
+        scalarValue(prhs[4], "circuit"), scalarValue(prhs[5], "magRotation"),
+        scalarValue(prhs[6], "currentScale"));
     else if (command == "solve") { gateway->solve(); if (nlhs) plhs[0] = solveStatusStruct(*gateway); }
     else if (command == "result") plhs[0] = trialStruct(gateway->trial());
     else if (command == "export") gateway->writeSolution(stringValue(prhs[2], "solution path"));

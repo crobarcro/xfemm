@@ -14,6 +14,11 @@ function report = compare_radial_machine_static_results (reference, candidate, v
     options.RelativeTolerance = 0.03;
     options.FluxAbsoluteTolerance = 1e-7;
     options.FluxDensityAbsoluteTolerance = 1e-4;
+    options.TorqueRelativeTolerance = 0.35;
+    options.TorqueAbsoluteTolerance = 0.05;
+    options.AirGapTorqueRelativeTolerance = 0.15;
+    options.AirGapTorqueAbsoluteTolerance = 0.02;
+    options.RandomARelativeTolerance = 0.05;
     options = parse_options (options, varargin{:});
 
     assert (reference.schemaVersion == candidate.schemaVersion, ...
@@ -37,6 +42,22 @@ function report = compare_radial_machine_static_results (reference, candidate, v
             reference.circuitFluxLinkage, candidate.circuitFluxLinkage, ...
             options.RelativeTolerance, options.FluxAbsoluteTolerance, ...
             'FEMM circuit flux linkage');
+    end
+    if isfield (reference, 'torque') && isfield (candidate, 'torque')
+        report.torque = tolerance_check (reference.torque, candidate.torque, ...
+            options.TorqueRelativeTolerance, options.TorqueAbsoluteTolerance, ...
+            'cogging torque');
+    end
+    if isfield (reference, 'airgapTorque') && isfield (candidate, 'airgapTorque')
+        report.airgapTorque = tolerance_check ( ...
+            reference.airgapTorque, candidate.airgapTorque, ...
+            options.AirGapTorqueRelativeTolerance, ...
+            options.AirGapTorqueAbsoluteTolerance, 'air-gap torque');
+    end
+    if isfield (reference, 'randomA') && isfield (candidate, 'randomA')
+        report.randomA = centered_tolerance_check (...
+            reference.randomA, candidate.randomA, ...
+            options.RandomARelativeTolerance, 'vector potential samples');
     end
 
     checks = fieldnames (report);
@@ -80,6 +101,23 @@ function check = tolerance_check (reference, candidate, relativeTolerance, ...
     check.scale = max ([max_or_zero(abs(reference(:))), ...
                         max_or_zero(abs(candidate(:)))]);
     check.limit = absoluteTolerance + relativeTolerance * check.scale;
+    check.relativeError = check.maxAbsoluteError / max (check.scale, eps);
+    check.passed = check.maxAbsoluteError <= check.limit;
+end
+
+
+function check = centered_tolerance_check (reference, candidate, ...
+                                           relativeTolerance, name)
+% Compare sampled fields after removing the (gauge-dependent) mean of each
+% row. This leaves the spatial variation, which is the physical content.
+    assert_same_size (reference, candidate, name);
+    reference = reference - repmat (mean (reference, 2), 1, size (reference, 2));
+    candidate = candidate - repmat (mean (candidate, 2), 1, size (candidate, 2));
+    check.name = name;
+    check.maxAbsoluteError = max_or_zero (abs (candidate(:) - reference(:)));
+    check.scale = max ([max_or_zero(abs(reference(:))), ...
+                        max_or_zero(abs(candidate(:)))]);
+    check.limit = relativeTolerance * check.scale;
     check.relativeError = check.maxAbsoluteError / max (check.scale, eps);
     check.passed = check.maxAbsoluteError <= check.limit;
 end

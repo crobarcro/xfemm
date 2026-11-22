@@ -69,6 +69,33 @@ target_link_libraries(analysis_session_test PRIVATE fsolver)
 add_test(NAME analysis_session COMMAND analysis_session_test)
 set_tests_properties(analysis_session PROPERTIES LABELS "magnetics;solver;unit")
 
+add_executable(analysis_session_instanced_test analysis_session_instanced_test.cpp)
+target_link_libraries(analysis_session_instanced_test PRIVATE fsolver)
+add_test(NAME analysis_session_instanced COMMAND analysis_session_instanced_test)
+set_tests_properties(analysis_session_instanced PROPERTIES
+    LABELS "magnetics;solver;instanced;unit")
+
+add_executable(analysis_session_machine_test analysis_session_machine_test.cpp)
+target_link_libraries(analysis_session_machine_test PRIVATE fsolver)
+add_test(NAME analysis_session_machine COMMAND analysis_session_machine_test)
+set_tests_properties(analysis_session_machine PROPERTIES
+    LABELS "magnetics;solver;instanced;unit")
+
+add_executable(tiled_model_airgap_test tiled_model_airgap_test.cpp)
+target_link_libraries(tiled_model_airgap_test PRIVATE fsolver)
+add_test(NAME tiled_model_airgap COMMAND tiled_model_airgap_test)
+set_tests_properties(tiled_model_airgap PROPERTIES
+    LABELS "solver;Tangle;tiled;instanced;unit")
+
+add_executable(native_static2d_test native_static2d_test.cpp)
+target_link_libraries(native_static2d_test PRIVATE fsolver)
+add_test(NAME native_static2d COMMAND native_static2d_test)
+set_tests_properties(native_static2d PROPERTIES
+    LABELS "magnetics;solver;instanced;native;unit")
+
+add_executable(instanced_solver_benchmark instanced_solver_benchmark.cpp)
+target_link_libraries(instanced_solver_benchmark PRIVATE fsolver)
+
 add_executable(periodic_pbc_without_age_test periodic_pbc_without_age_test.cpp)
 target_link_libraries(periodic_pbc_without_age_test PRIVATE fsolver)
 add_test(NAME periodic_pbc_without_age

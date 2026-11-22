@@ -71,7 +71,12 @@ add_library(femm
     PostProcessor.cpp
     spars.cpp
     stringTools.cpp
+    Json.cpp
+    TiledModel.cpp
+    TiledModelJson.cpp
     linsolve/backend_factory.cpp
+    mesh/InstancedMesh.cpp
+    mesh/LogicalMeshView.cpp
     mesh/SolverMeshValidator.cpp
     )
 if(XFEMM_USE_PETSc)
@@ -90,6 +95,7 @@ target_link_libraries(femm PUBLIC luacomplex)
 if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
     target_compile_options(femm PRIVATE -ffp-contract=off)
 endif()
+
 
 # ---------------------------------------------------------------------------
 # Optional PETSc linear solver backend

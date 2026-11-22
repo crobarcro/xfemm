@@ -22,12 +22,15 @@ function results = radial_machine_fixture_case (method, varargin)
         positions = positions(fixtureIndices);
     end
 
-    results.schemaVersion = 2;
+    results.schemaVersion = 4;
     results.method = method;
     results.positions = positions;
     results.fluxLinkage = [];
     results.circuitFluxLinkage = [];
     results.coilFluxDensity = [];
+    results.torque = [];
+    results.airgapTorque = [];
+    results.randomA = [];
 
     switch lower (method)
         case 'sliding'
@@ -45,7 +48,7 @@ function results = radial_machine_fixture_case (method, varargin)
                          ind, numel (positions), fixtureIndices(ind));
                 session.setAGEPosition (ageName, 30 * positions(ind), 0);
                 session.solve ();
-                results = extract_results (results, ind, problem, session);
+                results = extract_results (results, ind, problem, session, ageName);
             end
 
         case 'redraw'
@@ -59,7 +62,7 @@ function results = radial_machine_fixture_case (method, varargin)
                     problem, 'Quiet', options.Quiet, 'KeepMesh', false);
                 cleanupFiles = onCleanup (@() delete_files (answerFile, problemFile));
                 solution = fpproc (answerFile);
-                results = extract_results (results, ind, problem, solution);
+                results = extract_results (results, ind, problem, solution, '');
                 clear solution cleanupFiles;
             end
 
@@ -71,13 +74,16 @@ function results = radial_machine_fixture_case (method, varargin)
     assert (all (isfinite (results.fluxLinkage(:))));
     assert (all (isfinite (results.circuitFluxLinkage(:))));
     assert (all (isfinite (results.coilFluxDensity(:))));
+    assert (all (isfinite (results.torque(:))));
+    assert (all (isfinite (results.airgapTorque(:))));
+    assert (all (isfinite (results.randomA(:))));
     if ~isempty (options.OutputFile)
         save (options.OutputFile, 'results', '-v7');
     end
 end
 
 
-function results = extract_results (results, positionIndex, problem, solution)
+function results = extract_results (results, positionIndex, problem, solution, ageName)
     circuitNames = {problem.Circuits.Name};
     for circuitIndex = 1:numel (circuitNames)
         props = solution.getcircuitprops (circuitNames{circuitIndex});
@@ -115,6 +121,63 @@ function results = extract_results (results, positionIndex, problem, solution)
     coords = reshape ([problem.BlockLabels(coilIndices).Coords], 2, [])';
     B = solution.getb (coords(:,1), coords(:,2));
     results.coilFluxDensity(positionIndex, :) = sqrt (sum (B.^2, 1));
+
+    % Weighted-stress-tensor torque on the rotor, normalised to the full
+    % machine, matching feasim_RADIAL_SLOTTED.
+    rotorIndices = rotor_label_indices (problem);
+    solution.clearblock ();
+    for labelIndex = rotorIndices
+        label = problem.BlockLabels(labelIndex);
+        solution.selectblock (label.Coords(1), label.Coords(2), false);
+    end
+    results.torque(positionIndex, 1) = ...
+        12 * solution.blockintegral (22) / 2;
+
+    % Air-gap torque on a shared contour. The sliding model exposes the AGE's
+    % own mid-gap Maxwell integral; the redraw has no AGE, so the same Maxwell
+    % stress integral is evaluated from samples on a circle at the AGE's
+    % mid-gap radius and scaled to the full machine.
+    if ~isempty (ageName)
+        results.airgapTorque(positionIndex, 1) = solution.gapintegral (ageName, 0);
+    else
+        results.airgapTorque(positionIndex, 1) = 6 * airgap_maxwell (solution);
+    end
+
+    % Random vector-potential samples in the meshed air-gap halves.
+    [x, y] = radial_machine_sample_points ();
+    A = solution.geta (x, y);
+    results.randomA(positionIndex, :) = A(:)';
+end
+
+
+function torque = airgap_maxwell (solution)
+% Maxwell-stress torque on the AGE mid-gap circle (R = Rmo + g/2), sampled over
+% the 60-degree tile and scaled by the six tiles of the full machine.
+    R = 0.0565 + 2e-3/2;
+    L = 88.9e-3;
+    mu0 = 4*pi*1e-7;
+    N = 720;
+    dth = 60 / N;
+    theta = dth * (0:N-1);
+    x = R * cosd (theta);
+    y = R * sind (theta);
+    B = solution.getb (x, y);
+    Br = B(1,:) .* cosd (theta) + B(2,:) .* sind (theta);
+    Bt = -B(1,:) .* sind (theta) + B(2,:) .* cosd (theta);
+    torque = L * R^2 / mu0 * sum (Br .* Bt) * dth * pi / 180;
+end
+
+
+function indices = rotor_label_indices (problem)
+    indices = [];
+    for labelIndex = 1:numel (problem.BlockLabels)
+        label = problem.BlockLabels(labelIndex);
+        radius = hypot (label.Coords(1), label.Coords(2));
+        if strcmp (label.BlockType, 'NdFeB 40 MGOe') ...
+                || (strcmp (label.BlockType, '1117 Steel') && radius < 0.0565)
+            indices(end+1) = labelIndex; %#ok<AGROW>
+        end
+    end
 end
 
 
