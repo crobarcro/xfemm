@@ -449,14 +449,18 @@ expanded mesh, with the materialized path retained as an oracle.
   - Depends on: G4 and F5.
   - Compare sparsity, residual, nodal solution modulo gauge, circuit quantities,
     fields, energy, forces, and torque for every earlier fixture.
-  - Note: **Partial.** Native/materialized nodal-solution equivalence is checked
-    for a welded linear ring and a nonlinear B-H ring (`native_static2d_test`), for
-    the two-tile AGE machine fixture at two rotor positions
-    (`tiled_model_airgap_test`), and for the checked-in RNFoundry radial-machine
-    tiled fixture (`instanced_solver_benchmark` reports an identical field
-    checksum for both paths). Axisymmetric and harmonic cases are not yet native;
-    they continue to use the materialized path. Comparing energy, force, and
-    torque through the native path is the remaining work.
+  - Note: **Partial; G5.1 delivered in PR #75, G5.2 under validation in
+    PR #77.** The shared test harness compares independent native and materialized
+    AnalysisSession solutions with unambiguous node association and explicit
+    gauge handling. G5.2 adds opt-in capture of the actual constrained sparse
+    matrix and pre-solve RHS, numerical sparsity/coefficients, normalized Kx-b
+    residuals (plus residual agreement), and per-element B/H comparisons for
+    linear/nonlinear welded rings and two AGE rotor positions. A representative-
+    coordinate correction ensures native assembly uses the same welded node
+    geometry as materialization. The checked-in RNFoundry benchmark also
+    compares field checksums. Circuit flux linkage and terminal quantities,
+    energy/coenergy, forces, torque and complete machine/cross-fixture coverage
+    still require G5.3-G5.5. Axisymmetric and harmonic cases remain materialized.
 - [x] **G6: Verify compressed-memory scaling.**
   - Depends on: G1–G4 for the compressed view and native path. Memory scaling
     can be verified independently of the full G5 equivalence suite, which
@@ -477,10 +481,10 @@ the full physics-equivalence requirement has not (G5).
 
 **Status: partial — G1–G4 and G6 complete; G5 outstanding.** The native path
 covers tested planar magnetostatic cases, including nonlinear materials,
-functional magnetisation, per-instance sources and AGE coupling. Existing
-nodal/field checks and the benchmark provide partial equivalence evidence,
-not completion of G5. Native energy/force/torque comparisons and complete
-cross-fixture coverage remain outstanding. Axisymmetric and harmonic cases
+functional magnetisation, per-instance sources and AGE coupling. Merged G5.1 nodal checks and G5.2 matrix/residual/element B-H checks
+(in PR #77) provide partial equivalence evidence, not completion of G5.
+Circuit quantities, energy/coenergy, force/torque and full cross-fixture
+coverage remain outstanding. Axisymmetric and harmonic cases
 continue to use the materialized path, not the native path.
 
 **Performance harness.** `cfemm/fsolver/test/instanced_solver_benchmark.cpp`
