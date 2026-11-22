@@ -47,6 +47,8 @@ public:
     void put(Scalar value, int row, int col, int matrix = 0) override;
     void add_to(Scalar value, int row, int col, int matrix = 0) override;
     Scalar get(int row, int col, int matrix = 0) override;
+    void for_each_matrix_entry(
+        const std::function<void(int, int, Scalar)> &visitor) override;
 
     void set_value(int i, Scalar x) override;
     void constrain_periodic(int a, int b, bool antiperiodic) override;
