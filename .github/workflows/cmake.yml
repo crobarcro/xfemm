@@ -165,9 +165,9 @@ jobs:
         command: >-
           addpath(fullfile(pwd, 'mfemm'));
           mfemm_setup('SessionOnly', true);
-          fprintf('START Test_femmsession\\n');
+          fprintf('START Test_femmsession\n');
           Test_femmsession;
-          fprintf('PASS Test_femmsession\\n');
+          fprintf('PASS Test_femmsession\n');
     - name: Test instanced FEMM session wrapper
       timeout-minutes: 5
       uses: matlab-actions/run-command@v2
@@ -175,6 +175,6 @@ jobs:
         command: >-
           addpath(fullfile(pwd, 'mfemm'));
           mfemm_setup('SessionOnly', true);
-          fprintf('START Test_femmsession_instanced\\n');
+          fprintf('START Test_femmsession_instanced\n');
           Test_femmsession_instanced;
-          fprintf('PASS Test_femmsession_instanced\\n');
+          fprintf('PASS Test_femmsession_instanced\n');
