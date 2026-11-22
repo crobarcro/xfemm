@@ -20,6 +20,7 @@
 #include "femmcomplex.h"
 
 #include <cstddef>
+#include <functional>
 #include <string>
 
 namespace femm {
@@ -125,6 +126,23 @@ public:
     virtual void put(Scalar value, int row, int col, int matrix = 0) = 0;
     virtual void add_to(Scalar value, int row, int col, int matrix = 0) = 0;
     virtual Scalar get(int row, int col, int matrix = 0) = 0;
+
+    /** Enumerate stored upper-triangle entries of the assembled symmetric
+     * matrix. Intended for opt-in diagnostic capture only, never used by
+     * the normal solve. The fallback is quadratic; sparse backends override
+     * it to traverse their own storage in O(nnz).
+     */
+    virtual void for_each_matrix_entry(
+        const std::function<void(int row, int col, Scalar)> &visitor)
+    {
+        for (int i = 0; i < dimension(); ++i)
+            for (int j = i; j < dimension(); ++j) {
+                const Scalar value = get(i, j);
+                if (value != Scalar(0))
+                    visitor(i, j, value);
+            }
+    }
+
 
     /** Impose a Dirichlet value at node i, eliminating the corresponding
      *  row and column (and adjusting the RHS). */
