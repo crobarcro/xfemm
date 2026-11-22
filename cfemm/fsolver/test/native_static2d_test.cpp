@@ -1,6 +1,7 @@
 #include "AnalysisSession.h"
 #include "FSolverAnalysisBackend.h"
 #include "NativeEquivalence.h"
+#include "NativeMatrixFieldEquivalence.h"
 
 #include "CBlockLabel.h"
 #include "CCircuit.h"
@@ -123,9 +124,13 @@ bool testRingEquivalence()
 
     xfemm_test::EquivalenceOptions options;
     options.absoluteTolerance = options.relativeTolerance = 1e-7;
-    const auto comparison = xfemm_test::compareSessionSolutions(reference, native, options);
+    xfemm_test::MatrixFieldOptions diagnostics;
+    diagnostics.nodal = options;
+    diagnostics.maximumRelativeResidual = 1e-4;
+    const auto comparison = xfemm_test::compareMatrixFieldSessions(
+        reference, *referenceSolver, native, *nativeSolver, diagnostics);
     if (!comparison.passed)
-        std::cerr << "linear ring: " << comparison.message << '\n';
+        std::cerr << "linear ring G5.2: " << comparison.message << '\n';
     REQUIRE(comparison.passed);
     REQUIRE(referenceSolver->solveCount() == 1);
     REQUIRE(nativeSolver->nativeSolveCount() == 1);
@@ -159,9 +164,17 @@ bool testNonlinearEquivalence()
 
     xfemm_test::EquivalenceOptions options;
     options.absoluteTolerance = options.relativeTolerance = 1e-4;
-    const auto comparison = xfemm_test::compareSessionSolutions(reference, native, options);
+    xfemm_test::MatrixFieldOptions diagnostics;
+    diagnostics.nodal = options;
+    diagnostics.matrixRelativeTolerance = 1e-3;
+    diagnostics.rhsRelativeTolerance = 1e-3;
+    diagnostics.maximumRelativeResidual = 1e-2;
+    diagnostics.fieldRelativeTolerance = 1e-4;
+    diagnostics.hRelativeTolerance = 1e-3;
+    const auto comparison = xfemm_test::compareMatrixFieldSessions(
+        reference, *referenceSolver, native, *nativeSolver, diagnostics);
     if (!comparison.passed)
-        std::cerr << "nonlinear ring: " << comparison.message << '\n';
+        std::cerr << "nonlinear ring G5.2: " << comparison.message << '\n';
     REQUIRE(comparison.passed);
     REQUIRE(referenceSolver->solveCount() == 1);
     REQUIRE(nativeSolver->nativeSolveCount() == 1);
