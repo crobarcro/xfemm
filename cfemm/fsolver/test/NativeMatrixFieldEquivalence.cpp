@@ -248,9 +248,16 @@ MatrixComparisonResult compareAssemblySnapshots(
                 if (difference > options.matrixAbsoluteTolerance +
                     options.matrixRelativeTolerance *
                         std::max(std::abs(ai->second), std::abs(bi->second))) {
-                    result.message = "matrix coefficient differs at (" +
-                                     std::to_string(key.first) + "," +
-                                     std::to_string(key.second) + ")";
+                    std::ostringstream diagnostic;
+                    diagnostic.precision(17);
+                    diagnostic << "matrix coefficient differs at (" << key.first << ","
+                               << key.second << "): reference=" << ai->second
+                               << " native=" << bi->second
+                               << " absolute_delta=" << difference
+                               << " allowed=" << (options.matrixAbsoluteTolerance +
+                                  options.matrixRelativeTolerance *
+                                  std::max(std::abs(ai->second), std::abs(bi->second)));
+                    result.message = diagnostic.str();
                     return result;
                 }
             }
