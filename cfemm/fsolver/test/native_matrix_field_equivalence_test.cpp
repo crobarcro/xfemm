@@ -76,7 +76,10 @@ int main()
 
     auto wrongCoefficient = b;
     wrongCoefficient.upperTriangle[0].value += 0.25;
+    // This case checks the coefficient diagnostic specifically; the separate
+    // tests above already verify that residual disagreement is rejected.
     options.maximumRelativeResidual = 1;
+    options.residualAgreementTolerance = 1;
     result = xfemm_test::compareAssemblySnapshots(a, wrongCoefficient, mapping, x, y, options);
     if (!require(!result.passed && result.message.find("matrix coefficient") != std::string::npos,
                  "matrix detects changed coefficient", result.message)) return 1;
