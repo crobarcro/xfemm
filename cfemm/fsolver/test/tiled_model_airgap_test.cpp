@@ -1,5 +1,6 @@
 #include "AnalysisSession.h"
 #include "FSolverAnalysisBackend.h"
+#include "NativeEquivalence.h"
 
 #include "TangleMesherBackend.h"
 #include "TiledModel.h"
@@ -140,62 +141,16 @@ int runPipelineChecks(femm::mesh::InstancedMesh &instanced)
  * G4/G5: the native compressed assembly must reproduce the materialised AGE
  * solve, including after the AGE is repositioned without remeshing.
  */
-int compareNative(femm::AnalysisSession &session,
-                  const std::shared_ptr<femm::FSolverAnalysisBackend> &solver,
-                  const std::string &label)
+int compareNative(femm::AnalysisSession &materialized,
+                  femm::AnalysisSession &native, const std::string &label)
 {
-    const auto &materializedSystem = solver->solvedSystem();
-    const std::size_t materializedNodes = solver->solvedSolver().NumNodes;
-    const std::vector<double> reference(materializedSystem.rhs().begin(),
-                                        materializedSystem.rhs().end());
-    // Tangle's synchronised seam splitting can place a welded node a few
-    // nanometres from the representative, so match coordinates at a
-    // 1e-3 cm (1e-5 m) tolerance rather than exact equality.
-    std::map<std::pair<long long, long long>, std::size_t> lookup;
-    for (std::size_t i = 0; i < solver->solvedSolver().meshnode.size(); ++i) {
-        lookup[{std::llround(solver->solvedSolver().meshnode[i].x * 1e3),
-                std::llround(solver->solvedSolver().meshnode[i].y * 1e3)}] = i;
-    }
-
-    std::vector<MaterializationDiagnostic> diagnostics;
-    const LogicalMeshView view = LogicalMeshView::build(*session.instancedMesh(), diagnostics);
-    if (!view.valid())
-        return fail(label + ": logical view is invalid");
-    if (view.nodeCount() != materializedNodes)
-        return fail(label + ": node count differs");
-    if (!solver->solveNative(view, session.instanceLabelBases(), session.airGapPositioning()))
-        return fail(label + ": native solve failed");
-
-    const auto canonical = session.mesh();
-    for (std::size_t node = 0; node < view.nodeCount(); ++node) {
-        double x = 0.0, y = 0.0;
-        view.nodeCoordinates(node, x, y);
-        if (std::abs(x - canonical->nodes[node].x) > 1e-6 ||
-            std::abs(y - canonical->nodes[node].y) > 1e-6) {
-            std::cerr << "view/materialised coordinate mismatch at " << node << ": view=" << x
-                      << "," << y << " mesh=" << canonical->nodes[node].x << ","
-                      << canonical->nodes[node].y << '\n';
-            return fail(label + ": view coordinates differ from the materialised mesh");
-        }
-    }
-
-    const auto &native = solver->nativeSystem();
-    double largest = 0.0;
-    for (std::size_t node = 0; node < view.nodeCount(); ++node) {
-        double x = 0.0, y = 0.0;
-        view.nodeCoordinates(node, x, y);
-        const auto found =
-            lookup.find({std::llround(x * 100.0 * 1e3), std::llround(y * 100.0 * 1e3)});
-        if (found == lookup.end())
-            return fail(label + ": node is missing from the materialised mesh");
-        const double nativeValue = native.rhs()[node];
-        const double referenceValue = reference[found->second];
-        largest = std::max(largest, std::abs(referenceValue));
-        if (!(std::abs(nativeValue - referenceValue) < 1e-6 * (1.0 + std::abs(referenceValue))))
-            return fail(label + ": native field differs from the materialised field");
-    }
-    if (largest <= 1e-9)
-        return fail(label + ": trivial field");
+    xfemm_test::EquivalenceOptions options;
+    options.absoluteTolerance = options.relativeTolerance = 1e-6;
+    // The native and materialized paths are solving the same meshed geometry,
+    // including AGE constraints; this is not a redraw-vs-sliding comparison.
+    const auto result = xfemm_test::compareSessionSolutions(materialized, native, options);
+    if (!result.passed)
+        return fail(label + ": " + result.message);
     return 0;
 }
 
@@ -231,6 +186,20 @@ int main()
     femm::AnalysisSession session(femm::ModelDefinition(std::move(sessionModel)), solver);
     session.setInstancedMesh(std::move(meshed.instanced));
 
+    // An independent native session exercises the full native solve path,
+    // rather than reconfiguring the materialized solver after a reference run.
+    std::unique_ptr<femm::FemmProblem> nativeModel = femm::tiled::buildTileProblem(model, 0);
+    nativeModel->nodelist.clear();
+    nativeModel->linelist.clear();
+    nativeModel->arclist.clear();
+    nativeModel->labellist.clear();
+    nativeModel->pathName.clear();
+    auto nativeSolver = std::make_shared<femm::FSolverAnalysisBackend>();
+    femm::AnalysisSession nativeSession(femm::ModelDefinition(std::move(nativeModel)),
+                                        nativeSolver);
+    nativeSession.setInstancedMesh(std::move(nativeInstanced));
+    nativeSession.setNativeInstanced(true);
+
     session.synchronize();
     const auto mesh = session.mesh();
     if (!mesh || mesh->airGaps.size() != 1)
@@ -239,43 +208,23 @@ int main()
         return fail("session did not build one label set per instance");
     const std::size_t materializations = session.materializationCount();
 
-    session.solve();
-    if (const int status = compareNative(session, solver, "native-default"))
+    if (const int status = compareNative(session, nativeSession, "native-default"))
         return status;
+    if (nativeSolver->nativeOrderingBuildCount() != 1)
+        return fail("native ordering was not built exactly once");
 
-    // A relative rotor position updates the AGE coupling without remeshing the
-    // stored templates; the native path must track it.
+    // A relative rotor position updates AGE coupling without remeshing either
+    // stored template or rebuilding native adjacency/order.
     session.setAirGapAngle(session.model().airGap("gap"), 15.0, 0.0);
-    session.solve();
-    if (const int status = compareNative(session, solver, "native-angle"))
+    nativeSession.setAirGapAngle(nativeSession.model().airGap("gap"), 15.0, 0.0);
+    if (const int status = compareNative(session, nativeSession, "native-angle"))
         return status;
     if (session.materializationCount() != materializations)
         return fail("changing the AGE angle rematerialised the mesh");
-
-    // Session-native mode must reuse the topology-derived ordering across a
-    // physics-only AGE angle change.
-    {
-        std::unique_ptr<femm::FemmProblem> nativeModel = femm::tiled::buildTileProblem(model, 0);
-        nativeModel->nodelist.clear();
-        nativeModel->linelist.clear();
-        nativeModel->arclist.clear();
-        nativeModel->labellist.clear();
-        nativeModel->pathName.clear();
-        auto nativeSolver = std::make_shared<femm::FSolverAnalysisBackend>();
-        femm::AnalysisSession nativeSession(femm::ModelDefinition(std::move(nativeModel)),
-                                            nativeSolver);
-        nativeSession.setInstancedMesh(std::move(nativeInstanced));
-        nativeSession.setNativeInstanced(true);
-        nativeSession.solve();
-        if (nativeSolver->nativeOrderingBuildCount() != 1)
-            return fail("native ordering was not built exactly once");
-        nativeSession.setAirGapAngle(nativeSession.model().airGap("gap"), 15.0, 0.0);
-        nativeSession.solve();
-        if (nativeSolver->nativeOrderingBuildCount() != 1)
-            return fail("AGE angle change rebuilt the native ordering");
-        if (nativeSession.viewGenerationCount() != 1)
-            return fail("AGE angle change rebuilt the native view");
-    }
+    if (nativeSolver->nativeOrderingBuildCount() != 1)
+        return fail("AGE angle change rebuilt the native ordering");
+    if (nativeSession.viewGenerationCount() != 1)
+        return fail("AGE angle change rebuilt the native view");
 
     for (double angle : {15.0, 30.0}) {
         session.setAirGapAngle(session.model().airGap("gap"), angle, 0.0);
