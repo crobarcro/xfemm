@@ -55,6 +55,13 @@ public:
     {
         return m_system.Get(row, col);
     }
+    void for_each_matrix_entry(
+        const std::function<void(int, int, double)> &visitor) override
+    {
+        for (int row = 0; row < m_system.n; ++row)
+            for (const CEntry *entry = m_system.M[row]; entry; entry = entry->next)
+                visitor(row, entry->c, entry->x);
+    }
 
     void set_value(int i, double x) override { m_system.SetValue(i, x); }
     void constrain_periodic(int a, int b, bool antiperiodic) override
