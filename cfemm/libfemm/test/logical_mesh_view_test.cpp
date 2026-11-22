@@ -221,6 +221,14 @@ bool testViewMatchesMaterialization()
 {
     REQUIRE(compareAgainstMaterialization(makeRing(45.0, 8)));
 
+    // A seam can be geometrically within the weld tolerance but not bitwise
+    // coincident. Both the bulk nodal array and each element MUST use the
+    // first global representative, not the later instance-local coordinate.
+    auto nearlyAligned = makeRing(45.0, 8);
+    nearlyAligned.templates[0].localMesh.nodes[2].x += 2e-8;
+    nearlyAligned.templates[0].localMesh.nodes[3].x += 2e-8;
+    REQUIRE(compareAgainstMaterialization(nearlyAligned));
+
     // Independent translated instances keep distinct unknowns.
     InstancedMesh translated;
     translated.templates.push_back(makeSquareTemplate());
