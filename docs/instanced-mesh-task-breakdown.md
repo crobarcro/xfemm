@@ -455,7 +455,8 @@ expanded mesh, with the materialized path retained as an oracle.
     gauge handling. G5.2 adds opt-in capture of the actual constrained sparse
     matrix and pre-solve RHS, numerical sparsity/coefficients, normalized Kx-b
     residuals (plus residual agreement), and per-element B/H comparisons for
-    linear/nonlinear welded rings and two AGE rotor positions. A representative-
+    linear/nonlinear welded rings, ordinary periodic and antiperiodic constraints,
+    and two AGE rotor positions. A representative-
     coordinate correction ensures native assembly uses the same welded node
     geometry as materialization. The checked-in RNFoundry benchmark also
     compares field checksums. Circuit flux linkage and terminal quantities,
