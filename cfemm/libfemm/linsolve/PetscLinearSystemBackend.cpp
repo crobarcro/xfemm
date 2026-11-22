@@ -304,6 +304,25 @@ Scalar PetscLinearSystemBackend<Scalar>::get(int row, int col, int matrix)
 }
 
 template <typename Scalar>
+void PetscLinearSystemBackend<Scalar>::for_each_matrix_entry(
+    const std::function<void(int, int, Scalar)> &visitor)
+{
+    PetscImpl &impl = *m_impl;
+    assemble(impl);
+    for (PetscInt row = 0; row < impl.n; ++row) {
+        const PetscInt *columns = nullptr;
+        const PetscScalar *values = nullptr;
+        PetscInt count = 0;
+        MatGetRow(impl.A, row, &count, &columns, &values);
+        for (PetscInt k = 0; k < count; ++k)
+            if (columns[k] >= row)
+                visitor(static_cast<int>(row), static_cast<int>(columns[k]),
+                        from_petsc<Scalar>(values[k]));
+        MatRestoreRow(impl.A, row, &count, &columns, &values);
+    }
+}
+
+template <typename Scalar>
 void PetscLinearSystemBackend<Scalar>::set_value(int i, Scalar x)
 {
     PetscImpl &impl = *m_impl;
