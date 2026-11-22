@@ -886,6 +886,9 @@ int FSolver::Static2DNative(const femm::mesh::LogicalMeshView &view,
         for (std::size_t j = 0; j < nodeCount; ++j)
             vOld[j] = L.solution()[j];
 
+        if (staticAssemblyObserver)
+            staticAssemblyObserver(L);
+
         femm::SolveOptions options;
         options.warm_start = iteration > 0;
         if (L.solve(options).converged == false)
