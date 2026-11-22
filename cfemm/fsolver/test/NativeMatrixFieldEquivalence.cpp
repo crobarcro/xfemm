@@ -236,6 +236,7 @@ MatrixComparisonResult compareAssemblySnapshots(
             std::set<IndexPair> keys;
             for (const auto &e : a) keys.insert(e.first);
             for (const auto &e : b) keys.insert(e.first);
+            std::string firstMismatchedCoefficient;
             for (const auto &key : keys) {
                 const auto ai = a.find(key), bi = b.find(key);
                 if (ai == a.end() || bi == b.end()) {
@@ -245,25 +246,37 @@ MatrixComparisonResult compareAssemblySnapshots(
                 const double difference = std::abs(ai->second - bi->second);
                 result.maximumMatrixDifference =
                     std::max(result.maximumMatrixDifference, difference);
+                const double magnitude = std::max(std::abs(ai->second),
+                                                   std::abs(bi->second));
+                result.maximumRelativeMatrixDifference =
+                    std::max(result.maximumRelativeMatrixDifference,
+                             difference / std::max(magnitude, 1e-30));
                 if (difference > options.matrixAbsoluteTolerance +
-                    options.matrixRelativeTolerance *
-                        std::max(std::abs(ai->second), std::abs(bi->second))) {
-                    std::ostringstream diagnostic;
-                    diagnostic.precision(17);
-                    diagnostic << "matrix coefficient differs at (" << key.first << ","
-                               << key.second << "): reference=" << ai->second
-                               << " native=" << bi->second
-                               << " absolute_delta=" << difference
-                               << " allowed=" << (options.matrixAbsoluteTolerance +
-                                  options.matrixRelativeTolerance *
-                                  std::max(std::abs(ai->second), std::abs(bi->second)));
-                    result.message = diagnostic.str();
-                    return result;
+                    options.matrixRelativeTolerance * magnitude) {
+                    ++result.coefficientMismatches;
+                    if (firstMismatchedCoefficient.empty()) {
+                        std::ostringstream diagnostic;
+                        diagnostic.precision(17);
+                        diagnostic << "first at (" << key.first << "," << key.second
+                                   << "): reference=" << ai->second
+                                   << " native=" << bi->second
+                                   << " delta=" << difference
+                                   << " allowed=" << (options.matrixAbsoluteTolerance +
+                                      options.matrixRelativeTolerance * magnitude);
+                        firstMismatchedCoefficient = diagnostic.str();
+                    }
                 }
             }
-            if (result.sparsityMismatches) {
-                result.message = "numerical matrix sparsity differs in " +
-                                 std::to_string(result.sparsityMismatches) + " entries";
+            if (result.sparsityMismatches || result.coefficientMismatches) {
+                std::ostringstream diagnostic;
+                diagnostic.precision(17);
+                diagnostic << "matrix coefficient/sparsity differs:"
+                           << " coefficient_mismatches=" << result.coefficientMismatches
+                           << " sparsity_mismatches=" << result.sparsityMismatches
+                           << " max_absolute_delta=" << result.maximumMatrixDifference
+                           << " max_relative_delta=" << result.maximumRelativeMatrixDifference
+                           << " " << firstMismatchedCoefficient;
+                result.message = diagnostic.str();
                 return result;
             }
         }
