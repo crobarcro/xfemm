@@ -259,6 +259,22 @@ TrialSolution FSolverAnalysisBackend::solve(const ModelDefinition &model,
     // future dirty-flag based reuse can be introduced without changing the API.
     ++m_operatorAssemblies;
     ++m_rightHandSideAssemblies;
+    m_assemblySnapshot = StaticAssemblySnapshot{};
+    if (m_captureStaticAssembly) {
+        m_solver->staticAssemblyObserver = [this](femm::LinearSystemBackend<double> &system) {
+            ++m_assemblySnapshot.capturedIterations;
+            m_assemblySnapshot.dimension = system.dimension();
+            m_assemblySnapshot.upperTriangle.clear();
+            m_assemblySnapshot.rhs.assign(system.rhs().begin(), system.rhs().end());
+            system.for_each_matrix_entry([this](int row, int col, double value) {
+                if (col < row)
+                    throw std::logic_error("assembly enumeration must use upper triangle");
+                m_assemblySnapshot.upperTriangle.push_back({row, col, value});
+            });
+        };
+    } else {
+        m_solver->staticAssemblyObserver = {};
+    }
     configure(model, parameters, prepared);
     if (parameters.frequency != 0)
         throw std::invalid_argument("FSolverAnalysisBackend currently returns real (zero-frequency) solutions only");
