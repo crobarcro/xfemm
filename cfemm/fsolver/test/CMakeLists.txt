@@ -81,14 +81,25 @@ add_test(NAME analysis_session_machine COMMAND analysis_session_machine_test)
 set_tests_properties(analysis_session_machine PROPERTIES
     LABELS "magnetics;solver;instanced;unit")
 
+# Shared G5.1 test harness. No production solver dependencies on test utilities.
+add_library(native_equivalence STATIC NativeEquivalence.cpp)
+target_link_libraries(native_equivalence PUBLIC fsolver)
+target_include_directories(native_equivalence PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_executable(native_equivalence_harness_test native_equivalence_harness_test.cpp)
+target_link_libraries(native_equivalence_harness_test PRIVATE native_equivalence)
+add_test(NAME native_equivalence_harness COMMAND native_equivalence_harness_test)
+set_tests_properties(native_equivalence_harness PROPERTIES
+    LABELS "magnetics;solver;instanced;native;unit")
+
 add_executable(tiled_model_airgap_test tiled_model_airgap_test.cpp)
-target_link_libraries(tiled_model_airgap_test PRIVATE fsolver)
+target_link_libraries(tiled_model_airgap_test PRIVATE native_equivalence)
 add_test(NAME tiled_model_airgap COMMAND tiled_model_airgap_test)
 set_tests_properties(tiled_model_airgap PROPERTIES
     LABELS "solver;Tangle;tiled;instanced;unit")
 
 add_executable(native_static2d_test native_static2d_test.cpp)
-target_link_libraries(native_static2d_test PRIVATE fsolver)
+target_link_libraries(native_static2d_test PRIVATE native_equivalence)
 add_test(NAME native_static2d COMMAND native_static2d_test)
 set_tests_properties(native_static2d PROPERTIES
     LABELS "magnetics;solver;instanced;native;unit")
