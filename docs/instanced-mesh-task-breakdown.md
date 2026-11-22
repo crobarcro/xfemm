@@ -6,6 +6,23 @@ Tasks are ordered by dependency, not merely grouped by topic. Complete a task on
 when its deliverables and checks are in the same reviewed change; do not mark an
 epic complete until all of its exit checks pass.
 
+## Current delivery status (PR #64)
+
+**Delivered in PR #64:** Milestones **A–F** and tasks **G1–G4 and G6**.
+All tasks in A–F are checked complete below; the compressed native path's
+logical view, ordering/adjacency, native planar magnetostatic assembly,
+AGE/per-instance source integration, and compressed-memory scaling have their
+respective focused checks.
+
+**Outstanding: G5 — full native/materialized equivalence suite.** Existing
+fixtures establish partial native/materialized agreement, but the full
+cross-fixture checks of sparsity, residual, nodal results (modulo gauge),
+circuit quantities, fields, energy, force, and torque are **not complete**.
+Native energy/force/torque comparison remains to be implemented/validated;
+axisymmetric and harmonic cases still use the materialized path. Thus
+**Milestone G as a whole is not complete**, despite G6's independently
+verified memory-scaling result. Milestone H remains future work.
+
 ## Tracker conventions
 
 - Status uses Markdown checkboxes: `[ ]` ready/not started, `[x]` complete.
@@ -441,7 +458,9 @@ expanded mesh, with the materialized path retained as an oracle.
     they continue to use the materialized path. Comparing energy, force, and
     torque through the native path is the remaining work.
 - [x] **G6: Verify compressed-memory scaling.**
-  - Depends on: G5.
+  - Depends on: G1–G4 for the compressed view and native path. Memory scaling
+    can be verified independently of the full G5 equivalence suite, which
+    remains outstanding.
   - Demonstrate stored mesh memory scales with template size plus instance metadata
     rather than logical element count. Keep materialization available for at least
     one release cycle.
@@ -451,13 +470,18 @@ expanded mesh, with the materialized path retained as an oracle.
     slowly than the expanded mesh as instances are added. Materialization remains
     the default session path and the test oracle.
 
-**Milestone G exit check:** native and materialized results agree and the measured
-stored-mesh memory shows the intended asymptotic reduction.
+**Milestone G exit check (NOT YET MET):** full native/materialized equivalence
+across the required fixtures and observables **and** demonstrated compressed
+stored-mesh memory scaling. The memory-scaling part has been verified (G6);
+the full physics-equivalence requirement has not (G5).
 
-**Status:** the compressed representation and the native path (including
-nonlinear materials, functional magnetisation, and AGE) satisfy the exit check
-for the tested fixtures. Axisymmetric/harmonic equivalence and native
-energy/force/torque comparison (G5) remain before the milestone is fully complete.
+**Status: partial — G1–G4 and G6 complete; G5 outstanding.** The native path
+covers tested planar magnetostatic cases, including nonlinear materials,
+functional magnetisation, per-instance sources and AGE coupling. Existing
+nodal/field checks and the benchmark provide partial equivalence evidence,
+not completion of G5. Native energy/force/torque comparisons and complete
+cross-fixture coverage remain outstanding. Axisymmetric and harmonic cases
+continue to use the materialized path, not the native path.
 
 **Performance harness.** `cfemm/fsolver/test/instanced_solver_benchmark.cpp`
 (built as `instanced_solver_benchmark`) solves the checked-in RNFoundry radial
