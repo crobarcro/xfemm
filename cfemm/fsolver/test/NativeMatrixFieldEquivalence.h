@@ -24,6 +24,10 @@ struct MatrixFieldOptions {
      */
     double sparsityThreshold = 1e-13;
     double maximumRelativeResidual = 1e-5;
+    /** Difference between reference and native normalized equation residuals,
+     * even when both satisfy an AGE-specific absolute residual cap.
+     */
+    double residualAgreementTolerance = 1e-5;
     double fieldAbsoluteTolerance = 1e-6; // tesla
     double fieldRelativeTolerance = 1e-5;
     double hAbsoluteTolerance = 1e-3;     // ampere/metre
