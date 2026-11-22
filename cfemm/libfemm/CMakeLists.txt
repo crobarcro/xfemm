@@ -71,7 +71,12 @@ add_library(femm
     PostProcessor.cpp
     spars.cpp
     stringTools.cpp
+    Json.cpp
+    TiledModel.cpp
+    TiledModelJson.cpp
     linsolve/backend_factory.cpp
+    mesh/InstancedMesh.cpp
+    mesh/LogicalMeshView.cpp
     mesh/SolverMeshValidator.cpp
     )
 if(XFEMM_USE_PETSc)

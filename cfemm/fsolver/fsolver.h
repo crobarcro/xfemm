@@ -32,7 +32,9 @@
 #ifndef FSOLVER_H
 #define FSOLVER_H
 
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 #include "feasolver.h"
 #include "linsolve/LinearSystemBackend.h"
@@ -42,6 +44,7 @@
 #include "CMaterialProp.h"
 #include "CNode.h"
 #include "CPointProp.h"
+#include "mesh/LogicalMeshView.h"
 #include "mesh/SolverMesh.h"
 
 namespace femm {
@@ -95,6 +98,21 @@ public:
     bool LoadAGEsFromSolution(FILE* fp);
     bool LoadProblemFile();
     int Static2D(femm::LinearSystemBackend<double> &L);
+    /**
+     * Assemble and solve a planar, linear, isotropic magnetostatic problem by
+     * iterating a compact logical instanced view instead of a fully expanded
+     * mesh. Per-instance region attributes are resolved with instanceLabelBase,
+     * whose entry i is the first solver label index of instance i (the same
+     * base used by AnalysisSession::remapInstancedRegions). Returns non-zero on
+     * success. Nonlinear materials, functional magnetisation, non-planar
+     * coordinates, and incremental previous solutions are rejected.
+     */
+    int Static2DNative(const femm::mesh::LogicalMeshView &view,
+                       const std::vector<std::size_t> &instanceLabelBase,
+                       femm::LinearSystemBackend<double> &L,
+                       const std::map<std::string, std::pair<double, double>>
+                           &airGapPositions = {},
+                       const std::vector<std::size_t> &nodePermutation = {});
     /**
      * @brief WriteStatic2D
      * @param L

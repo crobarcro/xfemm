@@ -6,11 +6,13 @@
 #include "CCircuit.h"
 #include "CMaterialProp.h"
 #include "MesherBackend.h"
+#include "TriangleMesherBackend.h"
 
 #include <cassert>
 #include <cmath>
 #include <memory>
 #include <stdexcept>
+#include <string>
 
 namespace {
 
@@ -51,11 +53,12 @@ public:
 
 class RecordingMesher final : public fmesher::MesherBackend {
 public:
-    femm::mesh::MeshResult mesh(femm::FemmProblem &, bool periodic,
-                                const femm::mesh::MeshingOptions &) override
+    const char *name() const override { return "Recording"; }
+    femm::mesh::MeshResult mesh(femm::FemmProblem &,
+                                const femm::mesh::MeshingRequest &request) override
     {
         ++calls;
-        lastPeriodic = periodic;
+        lastPeriodic = request.createPeriodicFieldConstraints;
         femm::mesh::MeshResult result;
         result.status = femm::mesh::MeshStatus::Success;
         // Marker two selects the first point property (SolverMesh.h: a node
@@ -74,8 +77,9 @@ public:
 
 class HoleRegionMesher final : public fmesher::MesherBackend {
 public:
-    femm::mesh::MeshResult mesh(femm::FemmProblem &, bool,
-                                const femm::mesh::MeshingOptions &) override
+    const char *name() const override { return "HoleRegion"; }
+    femm::mesh::MeshResult mesh(femm::FemmProblem &,
+                                const femm::mesh::MeshingRequest &) override
     {
         femm::mesh::MeshResult result;
         result.status = femm::mesh::MeshStatus::Success;
@@ -159,6 +163,16 @@ std::unique_ptr<femm::FemmProblem> makeProblem()
 
 int main()
 {
+    {
+        // Tangle is the default session backend; Triangle stays explicitly
+        // injectable for compatibility and baseline generation.
+        auto solver = std::make_shared<femm::FSolverAnalysisBackend>();
+        femm::AnalysisSession defaultSession(femm::ModelDefinition(makeProblem()), solver);
+        assert(std::string(defaultSession.mesherBackendName()) == "Tangle");
+        defaultSession.setMesher(std::make_shared<fmesher::TriangleMesherBackend>());
+        assert(std::string(defaultSession.mesherBackendName()) == "Triangle");
+    }
+
     {
         auto solver = std::make_shared<femm::FSolverAnalysisBackend>();
         auto mesher = std::make_shared<HoleRegionMesher>();

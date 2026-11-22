@@ -1,9 +1,21 @@
 function sourcedir = gettanglesourcedir ()
 %GETTANGLESOURCEDIR Locate the pinned Tangle sources used by MEX builds.
 % TANGLE_SOURCE_DIR can name an existing checkout for offline builds. Otherwise
-% the exact revision is cached in the system temporary directory.
+% the exact revision is cached in the system temporary directory. The repository
+% and revision can be overridden with the XFEMM_TANGLE_REPOSITORY and
+% XFEMM_TANGLE_REVISION environment variables so CI pins one version everywhere.
 
-    revision = 'a808c624ec0584569e43593662f54890b602c6af';
+    % Development fork carrying the library options and boundary-match API.
+    % Revert to https://github.com/dcm3c/tangle.git once those changes are
+    % upstreamed, updating the revision to the merged upstream commit.
+    repository = getenv ('XFEMM_TANGLE_REPOSITORY');
+    if isempty (repository)
+        repository = 'https://github.com/crobarcro/tangle.git';
+    end
+    revision = getenv ('XFEMM_TANGLE_REVISION');
+    if isempty (revision)
+        revision = 'b5d51ad8639526a83576b42aee5ce1ef82d96e9b';
+    end
     sourcedir = getenv ('TANGLE_SOURCE_DIR');
     configured = ~isempty (sourcedir);
     if ~configured
@@ -21,8 +33,9 @@ function sourcedir = gettanglesourcedir ()
         rmdir (sourcedir, 's');
     end
     quoted = shellquote (sourcedir);
-    command = sprintf (['git clone --quiet https://github.com/dcm3c/tangle.git %s', ...
-                       ' && git -C %s checkout --quiet %s'], quoted, quoted, revision);
+    command = sprintf (['git clone --quiet %s %s', ...
+                       ' && git -C %s checkout --quiet %s'], ...
+                       repository, quoted, quoted, revision);
     [status, output] = system (command);
     if status ~= 0 || ~checkout_matches (sourcedir, revision, required)
         error ('xfemm:tangle:FetchFailed', ...
