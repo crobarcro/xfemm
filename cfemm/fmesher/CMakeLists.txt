@@ -85,6 +85,11 @@ else()
         add_library(triangle STATIC
             triangle/triangle.c
             )
+        # Triangle's exact predicates rely on separate floating-point multiply
+        # and add operations; contraction can invalidate their error bounds.
+        if(CMAKE_C_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
+            target_compile_options(triangle PRIVATE -ffp-contract=off)
+        endif()
         # a bit of a dirty hack to make the link line nicer:
         add_library(Triangle::triangle-api ALIAS triangle)
         target_include_directories(triangle PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/triangle> $<INSTALL_INTERFACE:include>)

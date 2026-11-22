@@ -42,7 +42,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <cstring>
-#include <malloc.h>
+#include <stdlib.h>
 
 // template instantiation:
 #include "../libfemm/feasolver.cpp"

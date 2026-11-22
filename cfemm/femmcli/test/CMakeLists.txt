@@ -86,6 +86,11 @@ test_lua_setup(femmcli_antiperiodicBC_flux "femmcli_antiperiodicBC_flux.fem")
 test_lua(femmcli_antiperiodicBC_AGE_TorqueBenchmark LABELS "magnetics;postprocessor;fromWiki")
 test_lua_setup(femmcli_antiperiodicBC_AGE_TorqueBenchmark "femmcli_antiperiodicBC_AGE_TorqueBenchmark.fem")
 
+# These two hung forever on arm64 when libfemm was built with floating-point
+# contraction; fail fast instead of waiting for ctest's default timeout.
+set_tests_properties(femmcli_TorqueBenchmark.lua femmcli_antiperiodicBC_AGE_TorqueBenchmark.lua
+    PROPERTIES TIMEOUT 120)
+
 ### electrostatics tests:
 test_lua(femmcli_epproc LABELS "electrostatics;postprocessor")
 test_lua_setup(femmcli_epproc "femmcli_epproc.fee")
