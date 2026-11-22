@@ -64,6 +64,16 @@ int main()
     if (!require(!result.passed && result.message.find("residual") != std::string::npos,
                  "residual detects perturbed RHS", result.message)) return 1;
 
+    // Agreement is checked separately from the allowed absolute residual:
+    // two inaccurately solved systems must not pass merely because both lie
+    // below the same loose solver-residual cap.
+    options.maximumRelativeResidual = 1;
+    options.residualAgreementTolerance = 1e-6;
+    result = xfemm_test::compareAssemblySnapshots(a, wrongRhs, mapping, x, y, options);
+    if (!require(!result.passed && result.message.find("disagree") != std::string::npos,
+                 "residual disagreement is detected", result.message)) return 1;
+    options.residualAgreementTolerance = 1e-5;
+
     auto wrongCoefficient = b;
     wrongCoefficient.upperTriangle[0].value += 0.25;
     options.maximumRelativeResidual = 1;
