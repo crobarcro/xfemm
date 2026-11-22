@@ -82,7 +82,7 @@ set_tests_properties(analysis_session_machine PROPERTIES
     LABELS "magnetics;solver;instanced;unit")
 
 # Shared G5.1 test harness. No production solver dependencies on test utilities.
-add_library(native_equivalence STATIC NativeEquivalence.cpp)
+add_library(native_equivalence STATIC NativeEquivalence.cpp NativeMatrixFieldEquivalence.cpp)
 target_link_libraries(native_equivalence PUBLIC fsolver)
 target_include_directories(native_equivalence PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
