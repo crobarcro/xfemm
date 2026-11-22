@@ -38,7 +38,9 @@ struct MatrixComparisonResult {
     std::string message;
     std::size_t numericNonzeros = 0;
     std::size_t sparsityMismatches = 0;
+    std::size_t coefficientMismatches = 0;
     double maximumMatrixDifference = 0;
+    double maximumRelativeMatrixDifference = 0;
     double maximumRhsDifference = 0;
     double referenceRelativeResidual = 0;
     double nativeRelativeResidual = 0;
