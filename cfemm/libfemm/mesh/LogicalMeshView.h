@@ -52,12 +52,12 @@ public:
     std::size_t edgeCount() const;
 
     void nodeCoordinates(MeshIndex node, double &x, double &y) const;
-    /** Fill x/y with every global node coordinate in global node order. */
+    /** Fill canonical first-encounter coordinates of all welded global nodes. */
     void allNodeCoordinates(std::vector<double> &x, std::vector<double> &y) const;
     /** Raw template boundary marker of a global node (see SolverMesh::Node). */
     std::int32_t nodeBoundaryMarker(MeshIndex node) const;
     std::array<MeshIndex, 3> elementNodes(MeshIndex element) const;
-    /** Element corner coordinates in metres, computed without reverse provenance. */
+    /** Element corner coordinates in metres, using canonical welded nodes. */
     void elementCoordinates(MeshIndex element, double x[3], double y[3]) const;
     /** Raw template boundary markers of the three element sides. */
     std::array<std::int32_t, 3> elementEdgeMarkers(MeshIndex element) const;
