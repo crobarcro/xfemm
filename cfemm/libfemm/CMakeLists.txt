@@ -84,6 +84,12 @@ target_include_directories(femm
     $<INSTALL_INTERFACE:include>
     )
 target_link_libraries(femm PUBLIC luacomplex)
+# libfemm's geometry code (FemmProblem, CNode, ...) computes the coordinates
+# that the mesher hands to Triangle; keep multiply-adds unfused here too
+# (see fmesher/CMakeLists.txt).
+if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
+    target_compile_options(femm PRIVATE -ffp-contract=off)
+endif()
 
 # ---------------------------------------------------------------------------
 # Optional PETSc linear solver backend

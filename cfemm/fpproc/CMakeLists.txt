@@ -44,7 +44,8 @@ add_test(NAME a3_2_mesher_differential
         ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/a3_2_periodic.fem
         ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/a3_2_antiperiodic.fem)
 set_tests_properties(a3_2_mesher_differential PROPERTIES
-    LABELS "magnetics;mesher;solver;postprocessor;Triangle;Tangle;differential")
+    LABELS "magnetics;mesher;solver;postprocessor;Triangle;Tangle;differential;regression"
+    TIMEOUT 120)
 
 add_executable(a3_3_age_differential_test
     test/a3_3_age_differential_test.cpp)
@@ -54,4 +55,5 @@ add_test(NAME a3_3_age_differential
         ${CMAKE_CURRENT_SOURCE_DIR}/../femmcli/test/femmcli_antiperiodicBC_AGE_TorqueBenchmark.fem
         ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/a3_2_periodic.fem)
 set_tests_properties(a3_3_age_differential PROPERTIES
-    LABELS "magnetics;airgap;mesher;solver;postprocessor;Triangle;Tangle;differential")
+    LABELS "magnetics;airgap;mesher;solver;postprocessor;Triangle;Tangle;differential;regression"
+    TIMEOUT 120)

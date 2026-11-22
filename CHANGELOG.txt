@@ -17,8 +17,9 @@
 - Fix double free in electrostatics and heatflow postprocessor
   (Thanks to Timothy Pearson for the patch!)
 - Build on macOS with AppleClang (sincos, malloc.h, std::ptr_fun)
-- Disable floating-point contraction for the bundled Triangle library to
-  preserve its exact predicates on arm64 (Apple Silicon, aarch64 Linux)
+- Disable floating-point contraction for the bundled Triangle library and
+  for libfemm (which computes Triangle's input coordinates), so the mesher
+  does not hang on arm64 (Apple Silicon, aarch64 Linux)
 - Fix [Solution] regex in validate_solution.cmake (femmcli_femfile.check.ans)
 
 
