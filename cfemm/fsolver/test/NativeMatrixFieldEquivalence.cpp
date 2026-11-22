@@ -206,7 +206,9 @@ MatrixComparisonResult compareAssemblySnapshots(
         result.numericNonzeros = a.size();
         result.referenceRelativeResidual = relativeResidual(reference, referenceSolution);
         result.nativeRelativeResidual = relativeResidual(native, nativeSolution);
-        if (!std::isfinite(result.referenceRelativeResidual) ||
+        if (!std::isfinite(options.residualAgreementTolerance) ||
+            options.residualAgreementTolerance < 0 ||
+            !std::isfinite(result.referenceRelativeResidual) ||
             !std::isfinite(result.nativeRelativeResidual) ||
             result.referenceRelativeResidual > options.maximumRelativeResidual ||
             result.nativeRelativeResidual > options.maximumRelativeResidual) {
@@ -215,6 +217,16 @@ MatrixComparisonResult compareAssemblySnapshots(
               << " (materialized=" << result.referenceRelativeResidual
               << ", native=" << result.nativeRelativeResidual << ")";
             result.message = s.str();
+            return result;
+        }
+        if (std::abs(result.referenceRelativeResidual - result.nativeRelativeResidual) >
+            options.residualAgreementTolerance) {
+            std::ostringstream explanation;
+            explanation << "native/materialized normalized residuals disagree: reference="
+                        << result.referenceRelativeResidual
+                        << " native=" << result.nativeRelativeResidual
+                        << " allowed_difference=" << options.residualAgreementTolerance;
+            result.message = explanation.str();
             return result;
         }
 
