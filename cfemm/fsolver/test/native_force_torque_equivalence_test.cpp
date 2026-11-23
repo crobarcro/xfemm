@@ -151,7 +151,7 @@ void biasedCoilForce()
         const auto &refA = fixture.refBackend->solvedSystem().rhs();
         const auto &nativeA = fixture.nativeBackend->solvedSystem().rhs();
         const auto ordering = view->cuthillMcKeeOrdering();
-        std::cerr << "biased coil G5.4 per-node diagnostic: " << result.message << '\\n';
+        std::cerr << "biased coil G5.4 per-node diagnostic: " << result.message << '\n';
         for (std::size_t i = 0; i < view->nodeCount(); ++i) {
             double x = 0, y = 0;
             view->nodeCoordinates(i, x, y);
@@ -161,7 +161,7 @@ void biasedCoilForce()
             std::cerr << "logical=" << i << " xy=" << x << "," << y
                       << " raw_marker=" << view->nodeBoundaryMarker(i)
                       << " reference=" << (j < m.size() ? refA[j] : -999.)
-                      << " native=" << nativeA[ordering[i]] << '\\n';
+                      << " native=" << nativeA[ordering[i]] << '\n';
         }
     }
     check(result.passed, "biased coil: " + result.message);
