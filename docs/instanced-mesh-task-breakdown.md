@@ -468,10 +468,13 @@ expanded mesh, with the materialized path retained as an oracle.
     nonzero three-phase-current experiment. The materialized PETSc backend
     also fails to converge on the **zero-current** reference at a shifted
     5-degree AGE angle when using the current CG+ILU defaults (issue #81).
-    G5.5 therefore explicitly requests a GMRES KSP for its machine CTest,
-    retaining the normal PETSc defaults for other tests and comparing all
-    assembled matrix/residual/field quantities without looser tolerances.
-    The default backend robustness issue remains open. An **opt-in** --full flag tests
+    PETSc CG+ILU, GMRES+ILU and BiCGStab+ILU (including a 6000-iteration
+    diagnostic) did not converge for every required position; issue #81
+    records this independently of the field equivalence results. G5.5
+    currently evaluates a test-only sparse-LU/preonly PETSc configuration
+    with unchanged physical tolerances, leaving production PETSc defaults
+    untouched. If the PETSc full sweep does not pass, keep G5.5 open;
+    do not silently skip the machine or relax residual checks. An **opt-in** --full flag tests
     the complete 360-degree 6+36 tile machine; full machine sweeps are deliberately not part of
     every-build CI due to runtime. Confirm both modes before declaring G5
     complete. Axisymmetric and harmonic cases remain materialized only.
