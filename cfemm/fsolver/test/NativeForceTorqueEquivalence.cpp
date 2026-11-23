@@ -148,7 +148,9 @@ ForceTorqueResult compareForceTorqueSessions(
     femm::FSolverAnalysisBackend &referenceSolver,
     femm::AnalysisSession &nativeSession,
     femm::FSolverAnalysisBackend &nativeSolver,
-    const ForceTorqueOptions &options)
+    const ForceTorqueOptions &options,
+    femm::TrialSolution *referenceOutput,
+    femm::TrialSolution *nativeOutput)
 {
     try {
         validate(options);
@@ -209,6 +211,10 @@ ForceTorqueResult compareForceTorqueSessions(
                 throw std::runtime_error("air-gap torque is trivial");
         }
 
+        // G5.5 can verify constitutive H, including Lua magnetisation,
+        // without invoking another solve or assuming native DOF ordering.
+        if (referenceOutput) *referenceOutput = referenceTrial;
+        if (nativeOutput) *nativeOutput = nativeTrial;
         result.passed = true;
         std::ostringstream summary;
         summary.precision(12);
