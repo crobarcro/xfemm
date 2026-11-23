@@ -100,14 +100,13 @@ target_link_libraries(native_machine_g5_5_test PRIVATE native_equivalence)
 add_test(NAME native_machine_g5_5
     COMMAND native_machine_g5_5_test
       "${CMAKE_CURRENT_LIST_DIR}/../../../mfemm/testing/radial_machine/data/radial_machine_tiled.json")
-# The full nonlinear AGE machine exposes solver-convergence problems with the
-# default PETSc real-backend CG+ILU. Exercise BiCGStab (as already supported by this PETSc backend) and
-# allow more Krylov iterations at the *same residual tolerance*; report the
-# actual KSP reason for diagnostics.
-# Other PETSc tests retain their defaults. See issue #81.
+# The full nonlinear AGE machine exposes PETSc iterative-convergence problems
+# with the default CG+ILU. Use a direct sparse LU solve as an independent
+# machine-equivalence oracle, leaving production KSP defaults untouched.
+# PETSc iterative solver robustness is separately tracked in issue #81.
 set_tests_properties(native_machine_g5_5 PROPERTIES
     TIMEOUT 600
-    ENVIRONMENT "PETSC_OPTIONS=-ksp_type bcgs -ksp_max_it 6000 -ksp_converged_reason"
+    ENVIRONMENT "PETSC_OPTIONS=-ksp_type preonly -pc_type lu -ksp_converged_reason"
     LABELS "magnetics;solver;postprocessor;instanced;native;AGE;RNFoundry;machine;G5.5")
 
 add_executable(native_force_torque_equivalence_test native_force_torque_equivalence_test.cpp)
