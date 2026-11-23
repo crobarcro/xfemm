@@ -457,15 +457,19 @@ expanded mesh, with the materialized path retained as an oracle.
     G5.5 adds one integrated RNFoundry-derived radial machine fixture:
     nonlinear B-H steel, Lua-driven alternating permanent magnets, signed
     three-phase coil turns, and sliding AGE; a 60-degree 1+6 tile sector
-    runs a three-position/phase-excitation native-vs-materialized sweep under
-    CTest. Each run checks G5.1–G5.4 quantities appropriate to the physical
+    runs a three-position **zero-current cogging** native-vs-materialized
+    sweep under CTest (matching the checked-in reference fixture). Each run checks G5.1–G5.4 quantities appropriate to the physical
     selection, plus explicit element H calculated by two independent FPProc
     oracles using the fixture's actual Lua magnetization directions and
     nonlinear B-H law. G5.2's simpler H evaluator remains disabled only
     for this Lua fixture (its element B comparison stays enabled).
     Native solves never materialize a mesh or rebuild topology/ordering
-    during this sweep. An **opt-in** --full flag tests the complete 360-degree
-    6+36 tile machine; full machine sweeps are deliberately not part of
+    during this sweep. An **opt-in** --excited mode retains an additional
+    nonzero three-phase-current experiment; the materialized PETSc backend
+    failed to converge in that separate machine case at 5 degrees, so its
+    failure is not masked by dropping residual tolerances or conflated with
+    the checked-in zero-current reference. An **opt-in** --full flag tests
+    the complete 360-degree 6+36 tile machine; full machine sweeps are deliberately not part of
     every-build CI due to runtime. Confirm both modes before declaring G5
     complete. Axisymmetric and harmonic cases remain materialized only.
 - [x] **G6: Verify compressed-memory scaling.**
