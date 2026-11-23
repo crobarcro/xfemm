@@ -9,6 +9,7 @@
  */
 #include "AnalysisSession.h"
 #include "FSolverAnalysisBackend.h"
+#include "FemmReader.h"
 #include "NativeForceTorqueEquivalence.h"
 #include "fpproc.h"
 #include "NativeEquivalence.h"
@@ -64,6 +65,16 @@ void sectorise(tiled::TiledModel &model, unsigned divisor)
         if (override.turnScale.size() > count) override.turnScale.resize(count);
         if (override.magDir.size() > count) override.magDir.resize(count);
     }
+}
+
+std::unique_ptr<FemmProblem> readConventional(const std::string &path)
+{
+    auto problem = std::make_unique<FemmProblem>(FileType::MagneticsFile);
+    auto borrowed = std::shared_ptr<FemmProblem>(problem.get(), [](FemmProblem *) {});
+    MagneticsReader reader(borrowed, std::cerr);
+    if (reader.parse(path) != F_FILE_OK)
+        throw std::runtime_error("could not parse original, independent .fem machine: " + path);
+    return problem;
 }
 
 std::unique_ptr<FemmProblem> sessionProblem(const tiled::TiledModel &model)
@@ -196,7 +207,135 @@ double compareMachineH(const FemmProblem &problem, const FSolver &geometry,
     return maxError;
 }
 
-void runMachine(const std::string &path, bool full, bool onePosition, bool excited)
+// Independently meshed FEMM sliding model versus the expanded and native
+// instanced models. These are different meshes, so compare *physical*
+// quantities, not node numbering or constrained assembly patterns. Tolerances
+// are copied from compare_radial_machine_static_results.m (milestone F).
+struct IndependentMachineSamples {
+    std::vector<double> coilB;
+    std::vector<double> airGapA;
+    double airGapTorque = 0.;
+};
+
+double pointA(FPProc &post, double x, double y)
+{
+    CMPointVals value;
+    check(post.GetPointValues(x, y, value),
+          "invalid air-gap sample at (" + std::to_string(x) + ", " +
+          std::to_string(y) + ")");
+    check(std::isfinite(value.A.re) && std::isfinite(value.A.im) &&
+          std::abs(value.A.im) < 1e-10, "nonfinite/complex air-gap A sample");
+    return value.A.re;
+}
+
+double pointB(FPProc &post, double x, double y)
+{
+    CMPointVals value;
+    check(post.GetPointValues(x, y, value),
+          "invalid coil sample at (" + std::to_string(x) + ", " +
+          std::to_string(y) + ")");
+    const double magnitude = std::hypot(value.B1.re, value.B2.re);
+    check(std::isfinite(magnitude) &&
+          std::isfinite(value.B1.im) && std::isfinite(value.B2.im) &&
+          std::abs(value.B1.im) < 1e-10 && std::abs(value.B2.im) < 1e-10,
+          "nonfinite/complex coil B sample");
+    return magnitude;
+}
+
+IndependentMachineSamples measureIndependentMachine(
+    FPProc &post, const tiled::TiledModel &model, const std::string &gap)
+{
+    IndependentMachineSamples result;
+    // Physically identical coil positions on the first six stator slots of
+    // the pinned 60-degree model, in slot-major/layer-minor order.
+    check(model.tiles.size() == 2, "expected two machine tiles for sampled B");
+    const auto &stator = model.tiles[1];
+    std::vector<std::pair<double, double>> coils;
+    for (const auto &label : stator.geometry.labels)
+        if (label.name == "coil1" || label.name == "coil2")
+            coils.emplace_back(label.x, label.y);
+    check(coils.size() == 2, "missing paired stator coil sample labels");
+    const double pi = std::acos(-1.0);
+    for (int slot = 0; slot < 6; ++slot) {
+        const double angle = slot * 10. * pi / 180.;
+        for (const auto &label : coils) {
+            const double x = label.first * std::cos(angle) -
+                             label.second * std::sin(angle);
+            const double y = label.first * std::sin(angle) +
+                             label.second * std::cos(angle);
+            result.coilB.push_back(pointB(post, x, y));
+        }
+    }
+    // Both sides of the AGE; never sample the unmeshed gap between arcs.
+    // Fixed sampling makes a regression reproducible. Subtract the spatial
+    // mean before comparing A because its gauge can differ by a constant.
+    for (double radius : {0.05690, 0.05815})
+        for (double degrees : {3., 7., 13., 19., 27., 35., 44., 53.}) {
+            const double theta = degrees * pi / 180.;
+            result.airGapA.push_back(
+                pointA(post, radius * std::cos(theta), radius * std::sin(theta)));
+        }
+    check(post.gapDCTorqueIntegral(gap, result.airGapTorque) ==
+              FPProcError::NoError &&
+              std::isfinite(result.airGapTorque),
+          "independent FEMM air-gap torque integral failed");
+    return result;
+}
+
+void compareSamples(const std::string &name, const std::vector<double> &original,
+                    const std::vector<double> &instanced, double rel, double abs,
+                    bool removeMean)
+{
+    check(!original.empty() && original.size() == instanced.size(),
+          name + " sample dimensions differ");
+    const auto mean = [](const std::vector<double> &v) {
+        double sum = 0.;
+        for (double x : v) sum += x;
+        return sum / v.size();
+    };
+    const double originalMean = removeMean ? mean(original) : 0.;
+    const double instancedMean = removeMean ? mean(instanced) : 0.;
+    double difference = 0., scale = 0.;
+    for (std::size_t i = 0; i < original.size(); ++i) {
+        const double a = original[i] - originalMean;
+        const double b = instanced[i] - instancedMean;
+        check(std::isfinite(a) && std::isfinite(b), name + " nonfinite comparison");
+        difference = std::max(difference, std::abs(a - b));
+        scale = std::max(scale, std::max(std::abs(a), std::abs(b)));
+    }
+    const double limit = abs + rel * scale;
+    std::cout << "G5.5 original/sliding vs instanced " << name
+              << " delta=" << difference << " limit=" << limit << "\n";
+    check(scale > 1e-12, name + " signal is trivial");
+    check(difference <= limit, name + " differs from original FEMM machine: delta=" +
+          std::to_string(difference) + " limit=" + std::to_string(limit));
+}
+
+void compareIndependentMachine(
+    const IndependentMachineSamples &original,
+    const IndependentMachineSamples &instanced)
+{
+    compareSamples("coil B magnitude (T)", original.coilB, instanced.coilB,
+                   0.03, 1e-4, false);
+    compareSamples("mean-removed air-gap A (Wb/m)", original.airGapA,
+                   instanced.airGapA, 0.05, 0., true);
+    // The original is a 60-degree sector. Both oracles are also sectors, so
+    // compare torque without the x6 full-machine normalization.
+    const double scale = std::max(std::abs(original.airGapTorque),
+                                  std::abs(instanced.airGapTorque));
+    const double difference = std::abs(original.airGapTorque - instanced.airGapTorque);
+    const double limit = 0.02 / 6. + 0.15 * scale;
+    check(std::isfinite(scale) && std::isfinite(difference) && scale > 1e-8,
+          "trivial/nonfinite independent air-gap torque");
+    std::cout << "G5.5 original/sliding vs instanced AGE torque_Nm delta="
+              << difference << " limit=" << limit << "\n";
+    check(difference <= limit,
+          "original FEMM vs instanced AGE torque differs: delta=" +
+          std::to_string(difference) + " limit=" + std::to_string(limit));
+}
+
+void runMachine(const std::string &path, const std::string &originalPath,
+                bool full, bool onePosition, bool excited)
 {
     tiled::TiledModel model;
     std::vector<tiled::TiledDiagnostic> diagnostics;
@@ -224,6 +363,24 @@ void runMachine(const std::string &path, bool full, bool onePosition, bool excit
           "machine template instance count differs");
 
     Machine fixture(model, std::move(meshed.instanced));
+    // The conventional model is independently drawn in RNFoundry and meshed
+    // through Tangle, not expanded from the instanced templates.
+    auto originalBackend = std::make_shared<FSolverAnalysisBackend>();
+    AnalysisSession original(ModelDefinition(readConventional(originalPath)),
+                             std::make_shared<fmesher::TangleMesherBackend>(),
+                             originalBackend);
+    const auto originalGap = [&]() {
+        for (const auto &property : original.model().problem().lineproplist) {
+            const auto *magnetic = dynamic_cast<const CMBoundaryProp *>(property.get());
+            if (magnetic && (magnetic->BdryFormat == 6 || magnetic->BdryFormat == 7))
+                return magnetic->BdryName;
+        }
+        throw std::runtime_error("original RNFoundry model has no AGE");
+    }();
+    const auto originalMesh = original.ensureMesh();
+    check(originalMesh && !originalMesh->airGaps.empty() &&
+          !originalMesh->elements.empty(),
+          "independently meshed RNFoundry sliding machine is empty");
     fixture.reference.synchronize();
     fixture.native.synchronize();
     const auto expanded = fixture.reference.mesh();
@@ -284,6 +441,14 @@ void runMachine(const std::string &path, bool full, bool onePosition, bool excit
             fixture.reference.model().airGap(gap), state.angle, 0.);
         fixture.native.setAirGapAngle(
             fixture.native.model().airGap(gap), state.angle, 0.);
+        // Even in PETSc runs, failure of an independently meshed .fem solve
+        // must fail CTest; no backend or solver-failure fallback.
+        original.setAirGapAngle(original.model().airGap(originalGap), state.angle, 0.);
+        const TrialSolution originalTrial = original.solve();
+        check(originalTrial.real &&
+              originalTrial.real->nodal.magneticVectorPotential.size() ==
+                  originalMesh->nodes.size(),
+              "original non-instanced machine returned an invalid solution");
 
         xfemm_test::ForceTorqueOptions options;
         options.airGapBoundary = gap;
@@ -329,6 +494,28 @@ void runMachine(const std::string &path, bool full, bool onePosition, bool excit
               field.matrix.numericNonzeros > 0 &&
               field.nodal.matchedNodes == expanded->nodes.size(),
               "machine comparison omitted elements, matrix entries or nodes");
+        // Cross-check the original .fem machine against the materialized
+        // template mesh and the independently solved native field. These
+        // paths intentionally do not have node-for-node mesh equivalence.
+        // --full and --excited alter the physical problem relative to the
+        // pinned 60-degree zero-current sliding reference, so this external
+        // *physics* comparison is performed only for default CI mode.
+        if (!full && !excited) {
+            FPProc originalPost, referencePost;
+            check(originalPost.OpenDocument(original.model().problem(),
+                                            originalBackend->solvedSolver(),
+                          originalTrial.real->nodal.magneticVectorPotential),
+                  "could not postprocess the independently meshed .fem machine");
+            xfemm_test::prepareCircuitPostprocessor(
+                referencePost, fixture.reference.model().problem(),
+                fixture.referenceBackend->solvedSolver(),
+                fixture.referenceBackend->solvedSolver(),
+                referenceTrial.real->nodal.magneticVectorPotential);
+            const auto external = measureIndependentMachine(originalPost, model,
+                                                           originalGap);
+            const auto expanded = measureIndependentMachine(referencePost, model, gap);
+            compareIndependentMachine(external, expanded);
+        }
         // Complement generic G5.2 B with element H evaluated using the
         // actual Lua magnetisation and constitutive laws.
         const double maximumHError = compareMachineH(
@@ -364,7 +551,8 @@ void runMachine(const std::string &path, bool full, bool onePosition, bool excit
           "machine fixture compared a trivial field/circuit linkage");
     check(maximumTorque > 1e-8, "machine AGE torque was trivial across all positions");
     check(fixture.nativeBackend->nativeSolveCount() == states.size() &&
-          fixture.referenceBackend->solveCount() == states.size(),
+          fixture.referenceBackend->solveCount() == states.size() &&
+          originalBackend->solveCount() == states.size(),
           "G5.5 performed extra or missing physics solves");
     std::cout << "G5.5 PASS fixture=RNFoundry-f4d42805"
               << " sector_divisor=" << (full ? 1 : 6)
@@ -380,12 +568,12 @@ void runMachine(const std::string &path, bool full, bool onePosition, bool excit
 
 int main(int argc, char **argv)
 {
-    if (argc < 2 || argc > 5) {
-        std::cerr << "usage: native_machine_g5_5_test tiled_machine.json [--full] [--single] [--excited]\n";
+    if (argc < 3 || argc > 6) {
+        std::cerr << "usage: native_machine_g5_5_test tiled_machine.json original_sliding.fem [--full] [--single] [--excited]\n";
         return 2;
     }
     bool full = false, single = false, excited = false;
-    for (int i = 2; i < argc; ++i) {
+    for (int i = 3; i < argc; ++i) {
         const std::string arg(argv[i]);
         if (arg == "--full") full = true;
         else if (arg == "--single") single = true;
@@ -396,7 +584,7 @@ int main(int argc, char **argv)
         }
     }
     try {
-        runMachine(argv[1], full, single, excited);
+        runMachine(argv[1], argv[2], full, single, excited);
         return 0;
     } catch (const std::exception &e) {
         std::cerr << "G5.5 FAILED: " << e.what() << "\n";
