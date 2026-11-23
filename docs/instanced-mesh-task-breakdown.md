@@ -449,19 +449,18 @@ expanded mesh, with the materialized path retained as an oracle.
   - Depends on: G4 and F5.
   - Compare sparsity, residual, nodal solution modulo gauge, circuit quantities,
     fields, energy, forces, and torque for every earlier fixture.
-  - Note: **Partial; G5.1 delivered in PR #75, G5.2 under validation in
-    PR #77.** The shared test harness compares independent native and materialized
-    AnalysisSession solutions with unambiguous node association and explicit
-    gauge handling. G5.2 adds opt-in capture of the actual constrained sparse
-    matrix and pre-solve RHS, numerical sparsity/coefficients, normalized Kx-b
-    residuals (plus residual agreement), and per-element B/H comparisons for
-    linear/nonlinear welded rings, ordinary periodic and antiperiodic constraints,
-    and two AGE rotor positions. A representative-
-    coordinate correction ensures native assembly uses the same welded node
-    geometry as materialization. The checked-in RNFoundry benchmark also
-    compares field checksums. Circuit flux linkage and terminal quantities,
-    energy/coenergy, forces, torque and complete machine/cross-fixture coverage
-    still require G5.3-G5.5. Axisymmetric and harmonic cases remain materialized.
+  - Note: **Partial; G5.1 and G5.2 merged (#75/#77), G5.3 in
+    progress.** G5.1 establishes independent native/materialized nodal field
+    comparison and the shared association harness. G5.2 captures and compares
+    the actual constrained sparse matrices, RHS and normalized residuals,
+    including nonlinear/periodic/AGE fixtures and per-element B/H. G5.3 uses
+    independent solved fields with the existing FPProc postprocessor on a
+    test-only common expanded mesh to compare actual user-visible circuit
+    flux linkage, magnetic energy and coenergy. It handles solver-expanded
+    series circuits, signed/opposing turns, zero-current sensing circuits
+    and nonlinear B-H materials. G5.4 force/torque and G5.5 complete
+    machine/cross-fixture coverage remain. Axisymmetric and harmonic
+    cases still use the materialized path.
 - [x] **G6: Verify compressed-memory scaling.**
   - Depends on: G1–G4 for the compressed view and native path. Memory scaling
     can be verified independently of the full G5 equivalence suite, which
@@ -483,9 +482,9 @@ the full physics-equivalence requirement has not (G5).
 **Status: partial — G1–G4 and G6 complete; G5 outstanding.** The native path
 covers tested planar magnetostatic cases, including nonlinear materials,
 functional magnetisation, per-instance sources and AGE coupling. Merged G5.1 nodal checks and G5.2 matrix/residual/element B-H checks
-(in PR #77) provide partial equivalence evidence, not completion of G5.
-Circuit quantities, energy/coenergy, force/torque and full cross-fixture
-coverage remain outstanding. Axisymmetric and harmonic cases
+provide partial equivalence evidence. G5.3 circuit flux linkage and magnetic
+energy/coenergy comparisons are in progress. Force/torque and full
+cross-fixture coverage remain outstanding. Axisymmetric and harmonic cases
 continue to use the materialized path, not the native path.
 
 **Performance harness.** `cfemm/fsolver/test/instanced_solver_benchmark.cpp`
