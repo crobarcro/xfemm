@@ -313,7 +313,9 @@ MatrixFieldResult compareMatrixFieldSessions(
     femm::FSolverAnalysisBackend &referenceSolver,
     femm::AnalysisSession &nativeSession,
     femm::FSolverAnalysisBackend &nativeSolver,
-    const MatrixFieldOptions &options)
+    const MatrixFieldOptions &options,
+    femm::TrialSolution *referenceOutput,
+    femm::TrialSolution *nativeOutput)
 {
     if (referenceSession.nativeInstanced() || !nativeSession.nativeInstanced() ||
         !referenceSession.instancedMesh() || !nativeSession.instancedMesh())
@@ -428,6 +430,11 @@ MatrixFieldResult compareMatrixFieldSessions(
                             std::to_string(result.maximumHError));
         }
 
+        // Expose copies only when a follow-on diagnostic needs the actual
+        // solver-ordered vectors. G5.3 uses these for an independent
+        // post-processor pass without re-solving or borrowing native values.
+        if (referenceOutput) *referenceOutput = reference;
+        if (nativeOutput) *nativeOutput = native;
         result.passed = true;
         std::ostringstream s;
         s << "PASS " << result.nodal.message << " | " << result.matrix.message
