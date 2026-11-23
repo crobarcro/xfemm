@@ -13,14 +13,24 @@ bool FPProc::OpenDocument(const femm::FemmProblem &problem, const FSolver &solve
 {
     if (solution.dimension() != solver.NumNodes)
         throw std::invalid_argument("solution and solver node counts differ");
-    return OpenDocument(problem, solver,
-                        std::vector<double>(solution.rhs().begin(), solution.rhs().end()));
+    return openDocumentPotentials(problem, solver, solution.rhs().data(),
+                                  solution.rhs().size());
 }
 
 bool FPProc::OpenDocument(const femm::FemmProblem &problem, const FSolver &solver,
                           const std::vector<double> &nodalPotential)
 {
-    if (nodalPotential.size() != static_cast<std::size_t>(solver.NumNodes))
+    return openDocumentPotentials(problem, solver, nodalPotential.data(),
+                                  nodalPotential.size());
+}
+
+bool FPProc::openDocumentPotentials(const femm::FemmProblem &problem,
+                                   const FSolver &solver,
+                                   const double *nodalPotential,
+                                   std::size_t nodeCount)
+{
+    if (nodeCount != static_cast<std::size_t>(solver.NumNodes) ||
+        (nodeCount && !nodalPotential))
         throw std::invalid_argument("nodal potential and solver node counts differ");
 
     NewDocument();
