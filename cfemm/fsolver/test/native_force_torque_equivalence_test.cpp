@@ -25,6 +25,7 @@ using namespace femm;
 using namespace femm::mesh;
 
 const double pi = std::acos(-1.0);
+const double coilOffsetX = 0.5; // metres; creates nonzero torque about global origin
 
 void check(bool condition, const std::string &label)
 {
@@ -64,12 +65,14 @@ std::unique_ptr<FemmProblem> coilProblem()
     label->BlockTypeName = "coil";
     label->InCircuit = 0;
     label->Turns = 4;
+    label->x = coilOffsetX;
     p->labellist.push_back(std::move(label));
     auto background = std::make_unique<CMBlockLabel>();
     background->BlockType = 1;
     background->BlockTypeName = "air";
     background->InCircuit = -1;
     background->Turns = 0;
+    background->x = coilOffsetX + 0.6;
     p->labellist.push_back(std::move(background));
     return p;
 }
@@ -77,7 +80,8 @@ std::unique_ptr<FemmProblem> coilProblem()
 // A magnetically driven central coil, an annular air buffer, and an outer
 // Dirichlet rectangle imposing A=B_x*y. The two air rings isolate the coil
 // from the boundary and allow a valid FEMM weighted-stress mask.
-// The coil is centred, so self-field Lorentz force cancels by symmetry;
+// The coil is centred within its own air buffer but offset from the global
+// origin, so self-field force cancels while both force and torque are nonzero;
 // the imposed uniform field creates an independent nonzero force prediction.
 InstancedMesh biasedCoil()
 {
@@ -85,10 +89,10 @@ InstancedMesh biasedCoil()
     for (double half : {0.25, 0.75, 1.25}) {
         const int markerBottom = half == 1.25 ? 2 : 0;
         const int markerTop = half == 1.25 ? 3 : 0;
-        mesh.nodes.push_back({-half, -half, markerBottom});
-        mesh.nodes.push_back({ half, -half, markerBottom});
-        mesh.nodes.push_back({ half,  half, markerTop});
-        mesh.nodes.push_back({-half,  half, markerTop});
+        mesh.nodes.push_back({coilOffsetX-half, -half, markerBottom});
+        mesh.nodes.push_back({coilOffsetX+half, -half, markerBottom});
+        mesh.nodes.push_back({coilOffsetX+half,  half, markerTop});
+        mesh.nodes.push_back({coilOffsetX-half,  half, markerTop});
     }
     mesh.elements.push_back({{{0, 1, 2}}, 1});
     mesh.elements.push_back({{{0, 2, 3}}, 1});
@@ -193,6 +197,12 @@ void biasedCoilForce()
           std::to_string(result.reference.lorentzFy));
     check(std::abs(result.reference.lorentzFx) < 0.03,
           "biased coil: unexpected lateral Lorentz force");
+    // The coil centre is offset by +0.5 m in x, creating a known torque
+    // about the common global origin without changing the uniform field.
+    const double expectedTorque = coilOffsetX * expectedFy;
+    check(std::abs(result.reference.lorentzTorque - expectedTorque) < 0.03,
+          "biased coil: wrong analytical torque: " +
+          std::to_string(result.reference.lorentzTorque));
     check(std::abs(result.reference.stressFy) > 1e-5 ||
           std::abs(result.reference.stressFx) > 1e-5,
           "biased coil: weighted stress reported a vacuous zero");
