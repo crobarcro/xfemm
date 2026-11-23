@@ -67,7 +67,9 @@ ForceTorqueResult compareForceTorqueSessions(
     femm::FSolverAnalysisBackend &referenceSolver,
     femm::AnalysisSession &nativeSession,
     femm::FSolverAnalysisBackend &nativeSolver,
-    const ForceTorqueOptions &options = {});
+    const ForceTorqueOptions &options = {},
+    femm::TrialSolution *referenceOutput = nullptr,
+    femm::TrialSolution *nativeOutput = nullptr);
 
 } // namespace xfemm_test
 
