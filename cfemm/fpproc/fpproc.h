@@ -288,6 +288,12 @@ public:
     /** Load a solved static magnetic analysis without serializing an .ans file. */
     bool OpenDocument(const femm::FemmProblem &problem, const FSolver &solver,
                       const femm::LinearSystemBackend<double> &solution);
+    /** Read a mapped native nodal field on a test-only expanded mesh. The
+     * coordinates, labels and circuit state come from the given FSolver;
+     * the vector contains potentials in exactly its solver-node order.
+     */
+    bool OpenDocument(const femm::FemmProblem &problem, const FSolver &solver,
+                      const std::vector<double> &nodalPotential);
     /** Prepare derived post-processing state after an in-memory solution import. */
     bool finalizeSolution();
     /** Freeze the currently loaded solution (selection and contour state are excluded). */
@@ -305,6 +311,10 @@ public:
 
 private:
 
+    bool openDocumentPotentials(const femm::FemmProblem &problem,
+                                const FSolver &solver,
+                                const double *nodalPotential,
+                                std::size_t nodeCount);
     void copySolutionFrom(const FPProc &source);
 
     char warnBuf [1028];

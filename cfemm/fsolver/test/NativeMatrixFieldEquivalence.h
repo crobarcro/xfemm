@@ -87,7 +87,9 @@ MatrixFieldResult compareMatrixFieldSessions(
     femm::FSolverAnalysisBackend &referenceSolver,
     femm::AnalysisSession &nativeSession,
     femm::FSolverAnalysisBackend &nativeSolver,
-    const MatrixFieldOptions &options = {});
+    const MatrixFieldOptions &options = {},
+    femm::TrialSolution *referenceOutput = nullptr,
+    femm::TrialSolution *nativeOutput = nullptr);
 
 } // namespace xfemm_test
 

@@ -13,6 +13,25 @@ bool FPProc::OpenDocument(const femm::FemmProblem &problem, const FSolver &solve
 {
     if (solution.dimension() != solver.NumNodes)
         throw std::invalid_argument("solution and solver node counts differ");
+    return openDocumentPotentials(problem, solver, solution.rhs().data(),
+                                  solution.rhs().size());
+}
+
+bool FPProc::OpenDocument(const femm::FemmProblem &problem, const FSolver &solver,
+                          const std::vector<double> &nodalPotential)
+{
+    return openDocumentPotentials(problem, solver, nodalPotential.data(),
+                                  nodalPotential.size());
+}
+
+bool FPProc::openDocumentPotentials(const femm::FemmProblem &problem,
+                                   const FSolver &solver,
+                                   const double *nodalPotential,
+                                   std::size_t nodeCount)
+{
+    if (nodeCount != static_cast<std::size_t>(solver.NumNodes) ||
+        (nodeCount && !nodalPotential))
+        throw std::invalid_argument("nodal potential and solver node counts differ");
 
     NewDocument();
     Frequency = solver.Frequency;
@@ -82,7 +101,7 @@ bool FPProc::OpenDocument(const femm::FemmProblem &problem, const FSolver &solve
     for (std::size_t i = 0; i < solver.meshnode.size(); ++i) {
         meshnode[i].x = solver.meshnode[i].x / coordinateScale;
         meshnode[i].y = solver.meshnode[i].y / coordinateScale;
-        meshnode[i].A = solution.rhs()[i];
+        meshnode[i].A = nodalPotential[i];
     }
 
     meshelem.resize(solver.meshele.size());
