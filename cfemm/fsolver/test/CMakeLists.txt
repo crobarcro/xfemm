@@ -100,8 +100,13 @@ target_link_libraries(native_machine_g5_5_test PRIVATE native_equivalence)
 add_test(NAME native_machine_g5_5
     COMMAND native_machine_g5_5_test
       "${CMAKE_CURRENT_LIST_DIR}/../../../mfemm/testing/radial_machine/data/radial_machine_tiled.json")
+# Shifted nonlinear AGE matrices expose non-SPD preconditioning under the
+# current PETSc real-backend default (CG + ILU). This one machine regression
+# explicitly requests GMRES + the same ILU preconditioner; other PETSc tests
+# retain their normal defaults. Default CG failure is tracked in issue #81.
 set_tests_properties(native_machine_g5_5 PROPERTIES
     TIMEOUT 600
+    ENVIRONMENT "PETSC_OPTIONS=-ksp_type gmres"
     LABELS "magnetics;solver;postprocessor;instanced;native;AGE;RNFoundry;machine;G5.5")
 
 add_executable(native_force_torque_equivalence_test native_force_torque_equivalence_test.cpp)
