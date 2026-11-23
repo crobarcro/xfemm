@@ -311,6 +311,10 @@ public:
 
 private:
 
+    bool openDocumentPotentials(const femm::FemmProblem &problem,
+                                const FSolver &solver,
+                                const double *nodalPotential,
+                                std::size_t nodeCount);
     void copySolutionFrom(const FPProc &source);
 
     char warnBuf [1028];
