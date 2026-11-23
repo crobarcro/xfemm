@@ -449,18 +449,24 @@ expanded mesh, with the materialized path retained as an oracle.
   - Depends on: G4 and F5.
   - Compare sparsity, residual, nodal solution modulo gauge, circuit quantities,
     fields, energy, forces, and torque for every earlier fixture.
-  - Note: **Partial; G5.1–G5.3 merged (#75/#77/#78), G5.4 in
-    validation (PR #79).** G5.1 compares nodal A with explicit gauge
-    handling. G5.2 compares the constrained sparse matrix, pre-solve
-    RHS/residual, and per-element B/H on linear/nonlinear and periodic/AGE
-    fixtures. G5.3 compares real circuit flux linkage (including series,
-    signed turns, passive sensing circuits), magnetic energy and coenergy
-    on the same solved mesh. G5.4 adds test-only FPProc Lorentz force and
-    torque, independently solved weighted-stress masks, and AGE torque,
-    including a biased-coil force prediction and the established sine-angle
-    analytical torque benchmark. The actual native solver still avoids
-    expanded mesh storage. G5.5 full machine/cross-fixture coverage remains.
-    Axisymmetric and harmonic cases are not native-supported.
+  - Note: **Partial; G5.1–G5.4 merged (#75/#77/#78/#79), G5.5 under
+    validation.** The G5.1–G5.4 CTest fixtures cover nodal A/gauge, sparse
+    matrices/RHS/residuals, B/H, nonlinear and periodic models, actual
+    series/opposing/passive circuit linkage, energy/coenergy, Lorentz and
+    weighted-stress force/torque, and independent analytical coil/AGE loads.
+    G5.5 adds one integrated RNFoundry-derived radial machine fixture:
+    nonlinear B-H steel, Lua-driven alternating permanent magnets, signed
+    three-phase coil turns, and sliding AGE; a 60-degree 1+6 tile sector
+    runs a three-position/phase-excitation native-vs-materialized sweep under
+    CTest. Each run checks the G5.1–G5.4 quantities appropriate to its
+    physical selection and verifies no native mesh materialization or
+    topology rebuild. Because the G5.2 H oracle does not evaluate Lua
+    MagDirFctn, this fixture explicitly checks element B but skips its
+    constituent H comparison; H remains checked by the earlier non-Lua
+    fixtures. An **opt-in** --full flag tests the complete 360-degree
+    6+36 tile machine; full machine sweeps are deliberately not part of
+    every-build CI due to runtime. Confirm both modes before declaring G5
+    complete. Axisymmetric and harmonic cases remain materialized only.
 - [x] **G6: Verify compressed-memory scaling.**
   - Depends on: G1–G4 for the compressed view and native path. Memory scaling
     can be verified independently of the full G5 equivalence suite, which
@@ -481,9 +487,9 @@ the full physics-equivalence requirement has not (G5).
 
 **Status: partial — G1–G4 and G6 complete; G5 outstanding.** The native path
 covers tested planar magnetostatic cases, including nonlinear materials,
-functional magnetisation, per-instance sources and AGE coupling. Merged G5.1–G5.3 cover nodal A, matrix/residual, element B/H, circuit
-linkage, energy and coenergy. G5.4 force/torque equivalence is being validated
-in PR #79; the complete G5.5 cross-fixture/machine coverage is still open. Axisymmetric and harmonic cases
+functional magnetisation, per-instance sources and AGE coupling. Merged G5.1–G5.4 cover nodal A, matrix/residual, element B/H, circuit
+linkage, energy/coenergy and force/torque. G5.5 adds machine-wide integrated
+coverage, with its full 360-degree multi-position validation still opt-in. Axisymmetric and harmonic cases
 continue to use the materialized path, not the native path.
 
 **Performance harness.** `cfemm/fsolver/test/instanced_solver_benchmark.cpp`
