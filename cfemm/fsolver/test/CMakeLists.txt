@@ -92,6 +92,18 @@ add_test(NAME native_equivalence_harness COMMAND native_equivalence_harness_test
 set_tests_properties(native_equivalence_harness PROPERTIES
     LABELS "magnetics;solver;instanced;native;unit")
 
+# G5.5 RNFoundry-derived full-physics cross-fixture check. A 60-degree
+# machine sector runs on every build; the complete 360-degree sweep can be
+# invoked explicitly with --full, using the same test executable.
+add_executable(native_machine_g5_5_test native_machine_g5_5_test.cpp)
+target_link_libraries(native_machine_g5_5_test PRIVATE native_equivalence)
+add_test(NAME native_machine_g5_5
+    COMMAND native_machine_g5_5_test
+      "${CMAKE_CURRENT_LIST_DIR}/../../../mfemm/testing/radial_machine/data/radial_machine_tiled.json")
+set_tests_properties(native_machine_g5_5 PROPERTIES
+    TIMEOUT 600
+    LABELS "magnetics;solver;postprocessor;instanced;native;AGE;RNFoundry;machine;G5.5")
+
 add_executable(native_force_torque_equivalence_test native_force_torque_equivalence_test.cpp)
 target_link_libraries(native_force_torque_equivalence_test PRIVATE native_equivalence)
 add_test(NAME native_force_torque_equivalence
