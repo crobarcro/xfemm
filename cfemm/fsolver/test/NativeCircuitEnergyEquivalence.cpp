@@ -146,10 +146,9 @@ std::vector<double> nativeInReferenceOrder(const femm::TrialSolution &reference,
 
 } // namespace
 
-CircuitEnergyMeasurements measureCircuitEnergy(
-    const femm::FemmProblem &problem,
-    const FSolver &expandedGeometry,
-    const FSolver &driveState,
+void prepareCircuitPostprocessor(
+    FPProc &postprocessor, const femm::FemmProblem &problem,
+    const FSolver &expandedGeometry, const FSolver &driveState,
     const std::vector<double> &potentials)
 {
     if (problem.problemType != femm::ProblemType::PLANAR || problem.Frequency != 0)
@@ -158,11 +157,20 @@ CircuitEnergyMeasurements measureCircuitEnergy(
         potentials.size() != static_cast<std::size_t>(expandedGeometry.NumNodes))
         throw std::invalid_argument("post-processor potential and mesh lengths differ");
 
-    FPProc postprocessor;
     if (!postprocessor.OpenDocument(problem, expandedGeometry, potentials))
         throw std::runtime_error("FPProc could not load the solved field");
     configureUserCircuits(postprocessor, problem, driveState);
+}
 
+CircuitEnergyMeasurements measureCircuitEnergy(
+    const femm::FemmProblem &problem,
+    const FSolver &expandedGeometry,
+    const FSolver &driveState,
+    const std::vector<double> &potentials)
+{
+    FPProc postprocessor;
+    prepareCircuitPostprocessor(postprocessor, problem, expandedGeometry,
+                                driveState, potentials);
     CircuitEnergyMeasurements result;
     result.circuits.reserve(problem.circproplist.size());
     for (std::size_t i = 0; i < problem.circproplist.size(); ++i) {
@@ -194,7 +202,9 @@ CircuitEnergyResult compareCircuitEnergySessions(
     femm::FSolverAnalysisBackend &referenceSolver,
     femm::AnalysisSession &nativeSession,
     femm::FSolverAnalysisBackend &nativeSolver,
-    const CircuitEnergyOptions &options)
+    const CircuitEnergyOptions &options,
+    femm::TrialSolution *referenceOutput,
+    femm::TrialSolution *nativeOutput)
 {
     if (!std::isfinite(options.fluxAbsoluteTolerance) ||
         !std::isfinite(options.fluxRelativeTolerance) ||
@@ -266,6 +276,8 @@ CircuitEnergyResult compareCircuitEnergySessions(
                      std::abs(result.reference.coenergy)) <= options.minimumSignal)
             return failure("energy and coenergy are both trivial");
 
+        if (referenceOutput) *referenceOutput = referenceTrial;
+        if (nativeOutput) *nativeOutput = nativeTrial;
         result.passed = true;
         std::ostringstream summary;
         summary << "PASS circuits=" << result.reference.circuits.size()

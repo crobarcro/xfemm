@@ -82,7 +82,7 @@ set_tests_properties(analysis_session_machine PROPERTIES
     LABELS "magnetics;solver;instanced;unit")
 
 # Shared G5.1 test harness. No production solver dependencies on test utilities.
-add_library(native_equivalence STATIC NativeEquivalence.cpp NativeMatrixFieldEquivalence.cpp NativeCircuitEnergyEquivalence.cpp)
+add_library(native_equivalence STATIC NativeEquivalence.cpp NativeMatrixFieldEquivalence.cpp NativeCircuitEnergyEquivalence.cpp NativeForceTorqueEquivalence.cpp)
 target_link_libraries(native_equivalence PUBLIC fsolver fpproc)
 target_include_directories(native_equivalence PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
@@ -91,6 +91,14 @@ target_link_libraries(native_equivalence_harness_test PRIVATE native_equivalence
 add_test(NAME native_equivalence_harness COMMAND native_equivalence_harness_test)
 set_tests_properties(native_equivalence_harness PROPERTIES
     LABELS "magnetics;solver;instanced;native;unit")
+
+add_executable(native_force_torque_equivalence_test native_force_torque_equivalence_test.cpp)
+target_link_libraries(native_force_torque_equivalence_test PRIVATE native_equivalence)
+add_test(NAME native_force_torque_equivalence
+    COMMAND native_force_torque_equivalence_test
+            "${CMAKE_CURRENT_LIST_DIR}/../../femmcli/test/femmcli_antiperiodicBC_AGE_TorqueBenchmark.fem")
+set_tests_properties(native_force_torque_equivalence PROPERTIES
+    LABELS "magnetics;solver;postprocessor;instanced;native;AGE;unit")
 
 add_executable(native_circuit_energy_equivalence_test native_circuit_energy_equivalence_test.cpp)
 target_link_libraries(native_circuit_energy_equivalence_test PRIVATE native_equivalence)
