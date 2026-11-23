@@ -10,6 +10,8 @@
 #include "AnalysisSession.h"
 #include "FSolverAnalysisBackend.h"
 #include "NativeForceTorqueEquivalence.h"
+#include "fpproc.h"
+#include "NativeEquivalence.h"
 #include "TangleMesherBackend.h"
 #include "TiledModel.h"
 #include "TiledModelJson.h"
@@ -127,6 +129,73 @@ std::vector<std::size_t> indicesForBlock(const AnalysisSession &session, int blo
     return selected;
 }
 
+/** G5.2's generic H calculator intentionally rejects functional magnet
+ * directions. Complete the *machine* H check with FPProc::GetH, which evaluates
+ * both Lua magnetisation functions at the actual element centroid and uses
+ * the same nonlinear B-H law as normal postprocessing. Each FPProc is built
+ * independently from the supplied reference/native nodal vector; no re-solve.
+ */
+double compareMachineH(const FemmProblem &problem, const FSolver &geometry,
+                       const FSolver &nativeDrive,
+                       const TrialSolution &reference, const TrialSolution &native,
+                       double coordinateTolerance)
+{
+    check(reference.real && native.real, "missing real machine trial field");
+    std::vector<std::size_t> nativeToReference;
+    std::string reason;
+    check(xfemm_test::associateNodalCoordinates(
+        reference.real->nodal, native.real->nodal, coordinateTolerance,
+        nativeToReference, reason), "machine H DOF association failed: " + reason);
+    std::vector<double> reordered(reference.real->nodal.magneticVectorPotential.size());
+    check(nativeToReference.size() == reordered.size(), "machine H DOF count changed");
+    for (std::size_t i = 0; i < nativeToReference.size(); ++i)
+        reordered[nativeToReference[i]] = native.real->nodal.magneticVectorPotential[i];
+
+    FPProc referencePost, nativePost;
+    xfemm_test::prepareCircuitPostprocessor(
+        referencePost, problem, geometry, geometry,
+        reference.real->nodal.magneticVectorPotential);
+    xfemm_test::prepareCircuitPostprocessor(
+        nativePost, problem, geometry, nativeDrive, reordered);
+    referencePost.d_ShiftH = true;
+    nativePost.d_ShiftH = true;
+    check(!referencePost.meshelem.empty() &&
+          referencePost.meshelem.size() == nativePost.meshelem.size(),
+          "machine postprocessed H element counts differ");
+
+    double maxError = 0., referenceScale = 0.;
+    for (std::size_t i = 0; i < referencePost.meshelem.size(); ++i) {
+        const auto &r = referencePost.meshelem[i];
+        const auto &n = nativePost.meshelem[i];
+        check(std::isfinite(r.magdir) && std::isfinite(n.magdir) &&
+              std::abs(r.magdir - n.magdir) < 1e-9,
+              "machine Lua magnetisation orientation differs at element " +
+              std::to_string(i));
+        double hxReference = 0, hyReference = 0;
+        double hxNative = 0, hyNative = 0;
+        referencePost.GetH(r.B1.re, r.B2.re, hxReference, hyReference,
+                           static_cast<int>(i));
+        nativePost.GetH(n.B1.re, n.B2.re, hxNative, hyNative,
+                        static_cast<int>(i));
+        check(std::isfinite(hxReference) && std::isfinite(hyReference) &&
+              std::isfinite(hxNative) && std::isfinite(hyNative),
+              "non-finite functional/nonlinear machine H at element " +
+              std::to_string(i));
+        referenceScale = std::max(referenceScale,
+                                  std::hypot(hxReference, hyReference));
+        maxError = std::max(maxError,
+                            std::hypot(hxNative - hxReference,
+                                       hyNative - hyReference));
+    }
+    check(referenceScale > 1., "machine H oracle produced only trivial values");
+    const double allowed = 1. + 1e-4 * referenceScale;
+    check(maxError <= allowed,
+          "machine postprocessed H disagreement: error=" + std::to_string(maxError) +
+          " limit=" + std::to_string(allowed) +
+          " scale=" + std::to_string(referenceScale));
+    return maxError;
+}
+
 void runMachine(const std::string &path, bool full, bool onePosition)
 {
     tiled::TiledModel model;
@@ -236,9 +305,11 @@ void runMachine(const std::string &path, bool full, bool onePosition)
             options.selectedLabels = coils;
         }
 
+        TrialSolution referenceTrial, nativeTrial;
         const auto result = xfemm_test::compareForceTorqueSessions(
             fixture.reference, *fixture.referenceBackend,
-            fixture.native, *fixture.nativeBackend, options);
+            fixture.native, *fixture.nativeBackend, options,
+            &referenceTrial, &nativeTrial);
         check(result.passed, "machine G5.5 angle=" + std::to_string(state.angle) +
                              " degrees: " + result.message);
 
@@ -247,6 +318,12 @@ void runMachine(const std::string &path, bool full, bool onePosition)
               field.matrix.numericNonzeros > 0 &&
               field.nodal.matchedNodes == expanded->nodes.size(),
               "machine comparison omitted elements, matrix entries or nodes");
+        // Complement generic G5.2 B with element H evaluated using the
+        // actual Lua magnetisation and constitutive laws.
+        const double maximumHError = compareMachineH(
+            fixture.reference.model().problem(), fixture.referenceBackend->solvedSolver(),
+            fixture.nativeBackend->solvedSolver(), referenceTrial, nativeTrial,
+            options.baseline.field.nodal.coordinateTolerance);
         solvedElements = field.comparedElements;
         check(result.baseline.reference.circuits.size() == 3,
               "not all original three phase windings compared");
@@ -265,6 +342,7 @@ void runMachine(const std::string &path, bool full, bool onePosition)
                   << " currents_A=(" << state.ia << "," << state.ib << "," << state.ic
                   << ") A_max_delta=" << field.nodal.maxAbsoluteError
                   << " B_max_delta_T=" << field.maximumBError
+                  << " H_max_delta_A_per_m=" << maximumHError
                   << " nnz=" << field.matrix.numericNonzeros
                   << " max_flux_delta_Wb=" << result.baseline.maximumFluxDifference
                   << " max_force_delta_N=" << result.maximumForceDifference
