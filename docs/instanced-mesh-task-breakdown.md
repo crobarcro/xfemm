@@ -481,10 +481,12 @@ expanded mesh, with the materialized path retained as an oracle.
     PETSc CG+ILU, GMRES+ILU and BiCGStab+ILU (including a 6000-iteration
     diagnostic) did not converge for every required position; issue #81
     records this independently of the field equivalence results. G5.5
-    currently evaluates a test-only sparse-LU/preonly PETSc configuration
-    with unchanged physical tolerances, leaving production PETSc defaults
-    untouched. If the PETSc full sweep does not pass, keep G5.5 open;
-    do not silently skip the machine or relax residual checks. An **opt-in** --full flag tests
+    now explicitly tests the **default PETSc configuration**, without
+    a per-CTest LU override, solver-failure fallback, or relaxed numerical
+    thresholds. An independent conventional FEM solve (same solver backend)
+    distinguishes failure in the source model from failure introduced by
+    template-derived meshing. If any solver or parity test fails, keep
+    G5.5 and CI red until the regression is fixed. An **opt-in** --full flag tests
     the complete 360-degree 6+36 tile machine; full machine sweeps are deliberately not part of
     every-build CI due to runtime. Confirm both modes before declaring G5
     complete. Axisymmetric and harmonic cases remain materialized only.
