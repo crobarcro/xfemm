@@ -8,6 +8,7 @@
 #include <vector>
 
 class FSolver;
+class FPProc;
 namespace femm { class FemmProblem; }
 
 namespace xfemm_test {
@@ -54,6 +55,15 @@ struct CircuitEnergyResult {
  * with the original user circuit before GetFluxLinkage: otherwise instanced
  * series coils can incorrectly report zero flux linkage.
  */
+/** Build a postprocessor over an independently supplied field; circuit
+ * membership and per-label drives come from driveState. The expanded mesh is
+ * shared only between G5 test oracles, never stored by the native solver.
+ */
+void prepareCircuitPostprocessor(
+    FPProc &postprocessor, const femm::FemmProblem &problem,
+    const FSolver &expandedGeometry, const FSolver &driveState,
+    const std::vector<double> &potentials);
+
 CircuitEnergyMeasurements measureCircuitEnergy(
     const femm::FemmProblem &problem,
     const FSolver &expandedGeometry,
@@ -69,7 +79,9 @@ CircuitEnergyResult compareCircuitEnergySessions(
     femm::FSolverAnalysisBackend &referenceSolver,
     femm::AnalysisSession &nativeSession,
     femm::FSolverAnalysisBackend &nativeSolver,
-    const CircuitEnergyOptions &options = {});
+    const CircuitEnergyOptions &options = {},
+    femm::TrialSolution *referenceOutput = nullptr,
+    femm::TrialSolution *nativeOutput = nullptr);
 
 } // namespace xfemm_test
 
