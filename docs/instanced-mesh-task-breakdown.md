@@ -458,12 +458,13 @@ expanded mesh, with the materialized path retained as an oracle.
     nonlinear B-H steel, Lua-driven alternating permanent magnets, signed
     three-phase coil turns, and sliding AGE; a 60-degree 1+6 tile sector
     runs a three-position/phase-excitation native-vs-materialized sweep under
-    CTest. Each run checks the G5.1–G5.4 quantities appropriate to its
-    physical selection and verifies no native mesh materialization or
-    topology rebuild. Because the G5.2 H oracle does not evaluate Lua
-    MagDirFctn, this fixture explicitly checks element B but skips its
-    constituent H comparison; H remains checked by the earlier non-Lua
-    fixtures. An **opt-in** --full flag tests the complete 360-degree
+    CTest. Each run checks G5.1–G5.4 quantities appropriate to the physical
+    selection, plus explicit element H calculated by two independent FPProc
+    oracles using the fixture's actual Lua magnetization directions and
+    nonlinear B-H law. G5.2's simpler H evaluator remains disabled only
+    for this Lua fixture (its element B comparison stays enabled).
+    Native solves never materialize a mesh or rebuild topology/ordering
+    during this sweep. An **opt-in** --full flag tests the complete 360-degree
     6+36 tile machine; full machine sweeps are deliberately not part of
     every-build CI due to runtime. Confirm both modes before declaring G5
     complete. Axisymmetric and harmonic cases remain materialized only.
