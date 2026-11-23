@@ -34,6 +34,7 @@ void check(bool condition, const std::string &label)
 std::unique_ptr<FemmProblem> coilProblem()
 {
     auto p = std::make_unique<FemmProblem>(FileType::MagneticsFile);
+    p->LengthUnits = femm::LengthMeters; // Dimensions and depth are specified in metres.
     p->Depth = 0.15;
     p->Precision = 1e-9;
 
