@@ -15,6 +15,7 @@
 #include <cmath>
 #include <iostream>
 #include <memory>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -90,18 +91,29 @@ InstancedMesh biasedCoil()
     }
     mesh.elements.push_back({{{0, 1, 2}}, 1});
     mesh.elements.push_back({{{0, 2, 3}}, 1});
-    for (int layer = 0; layer < 2; ++layer) {
-        const int a = 4 * layer;
-        const int b = a + 4;
-        for (int i = 0; i < 4; ++i) {
-            const int j = (i + 1) % 4;
+    for (MeshIndex layer = 0; layer < 2; ++layer) {
+        const MeshIndex a = 4 * layer;
+        const MeshIndex b = a + 4;
+        for (MeshIndex i = 0; i < 4; ++i) {
+            const MeshIndex j = (i + 1) % 4;
             mesh.elements.push_back({{{a+i, b+i, b+j}}, 2});
             mesh.elements.push_back({{{a+i, b+j, a+j}}, 2});
         }
     }
-    for (int i = 0; i < 4; ++i)
-        mesh.edges.push_back({static_cast<MeshIndex>(8+i),
-                              static_cast<MeshIndex>(8+(i+1)%4), 0});
+    // Cuthill--McKee in the materialized solver uses the supplied edge list
+    // to determine its bandwidth. A hand-authored mesh must contain *all*
+    // triangle edges, not only boundary segments; otherwise SetValue can
+    // silently miss out-of-band couplings for nonzero Dirichlet conditions.
+    std::set<std::pair<MeshIndex, MeshIndex>> edges;
+    for (const auto &element : mesh.elements) {
+        for (std::size_t side = 0; side < 3; ++side) {
+            const auto a = element.nodes[side];
+            const auto b = element.nodes[(side + 1) % 3];
+            edges.insert(std::minmax(a, b));
+        }
+    }
+    for (const auto &edge : edges)
+        mesh.edges.push_back({edge.first, edge.second, 0});
 
     MeshTemplate templateMesh;
     templateMesh.localMesh = std::move(mesh);
