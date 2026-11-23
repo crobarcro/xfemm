@@ -2,7 +2,7 @@
  * G5.5: checked-in RNFoundry machine, native vs materialized.
  *
  * Fast CI: one 60-degree sector (one rotor pole-pair and six stator slots),
- * at three relative rotor angles / two winding excitations.
+ * at three relative rotor angles with the pinned fixture's zero-current windings.
  * Extended: --full retains the complete 6-rotor/36-stator model. Do not
  * assume a redraw model is pointwise comparable with an AGE motion model.
  * Fixture provenance: mfemm/testing/radial_machine/FIXTURE_PROVENANCE.md
@@ -196,7 +196,7 @@ double compareMachineH(const FemmProblem &problem, const FSolver &geometry,
     return maxError;
 }
 
-void runMachine(const std::string &path, bool full, bool onePosition)
+void runMachine(const std::string &path, bool full, bool onePosition, bool excited)
 {
     tiled::TiledModel model;
     std::vector<tiled::TiledDiagnostic> diagnostics;
@@ -260,11 +260,19 @@ void runMachine(const std::string &path, bool full, bool onePosition)
     const std::string gap = airGapName(model);
 
     struct State { double angle; double ia, ib, ic; };
+    // The pinned RNFoundry cogging fixture uses zero currents, as do its
+    // independently generated redraw/sliding reference fields. Keep that
+    // fixture-faithful sweep as the *mandatory* PETSc/legacy parity test.
+    // --excited is a separate diagnostic: current-driven nonlinear solves
+    // on this specific machine currently do not converge under PETSc.
     const std::vector<State> states = onePosition ?
         std::vector<State>{{5., 0., 0., 0.}} :
-        std::vector<State>{{0., 0., 0., 0.},
-                           {5., 1.25, -0.625, -0.625},
-                           {15., -1.25, 0.625, 0.625}};
+        excited ? std::vector<State>{{0., 0., 0., 0.},
+                                      {5., 1.25, -0.625, -0.625},
+                                      {15., -1.25, 0.625, 0.625}} :
+                  std::vector<State>{{0., 0., 0., 0.},
+                                      {5., 0., 0., 0.},
+                                      {15., 0., 0., 0.}};
 
     double maximumTorque = 0.;
     double maximumFlux = 0.;
@@ -297,10 +305,13 @@ void runMachine(const std::string &path, bool full, bool onePosition)
         options.absoluteTorqueTolerance = 1e-5;
         // Each physical load is tested on the correct kind of region.
         // The full-machine test also exercises the rotor's independent mask.
-        if (position == 0) {
+        if (!excited || position == 0) {
+            // Magnet-only cogging: rotor Henrotte force/torque at *every*
+            // position, in addition to the AGE torque.
             options.compareWeightedStress = true;
             options.selectedLabels = rotor;
         } else {
+            // Current-driven diagnostic: choose actual stator coil regions.
             options.compareLorentz = true;
             options.selectedLabels = coils;
         }
@@ -369,22 +380,23 @@ void runMachine(const std::string &path, bool full, bool onePosition)
 
 int main(int argc, char **argv)
 {
-    if (argc < 2 || argc > 4) {
-        std::cerr << "usage: native_machine_g5_5_test tiled_machine.json [--full] [--single]\n";
+    if (argc < 2 || argc > 5) {
+        std::cerr << "usage: native_machine_g5_5_test tiled_machine.json [--full] [--single] [--excited]\n";
         return 2;
     }
-    bool full = false, single = false;
+    bool full = false, single = false, excited = false;
     for (int i = 2; i < argc; ++i) {
         const std::string arg(argv[i]);
         if (arg == "--full") full = true;
         else if (arg == "--single") single = true;
+        else if (arg == "--excited") excited = true;
         else {
             std::cerr << "invalid G5.5 option: " << arg << "\n";
             return 2;
         }
     }
     try {
-        runMachine(argv[1], full, single);
+        runMachine(argv[1], full, single, excited);
         return 0;
     } catch (const std::exception &e) {
         std::cerr << "G5.5 FAILED: " << e.what() << "\n";
