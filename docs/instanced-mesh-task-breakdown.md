@@ -463,6 +463,16 @@ expanded mesh, with the materialized path retained as an oracle.
     oracles using the fixture's actual Lua magnetization directions and
     nonlinear B-H law. G5.2's simpler H evaluator remains disabled only
     for this Lua fixture (its element B comparison stays enabled).
+    Independently **read and remesh** the RNFoundry sliding `.fem` fixture
+    via the normal non-instanced solver on the same 0/5/15-degree sweep.
+    CTest fails on either solver failure, invalid samples, or materialized/
+    original field deviations. Checks use the milestone F criteria: coil
+    |B| (3% plus 1e-4 T), air-gap A after gauge-mean removal (5%),
+    and AGE torque (15% plus sector-scaled 0.02/6 N m).
+    These compare actual physics on independently meshed models rather than
+    mistakenly requiring identical mesh coordinates, matrix sparsity, or
+    raw gauge-dependent nodal A. The native path must separately agree with
+    materialized as in G5.1-G5.4; no fallback or skip for PETSc errors.
     Native solves never materialize a mesh or rebuild topology/ordering
     during this sweep. An **opt-in** --excited mode retains an additional
     nonzero three-phase-current experiment. The materialized PETSc backend
