@@ -9,6 +9,7 @@
 #include "CMaterialProp.h"
 #include "CPointProp.h"
 #include "mesh/InstancedMesh.h"
+#include "mesh/LogicalMeshView.h"
 
 #include <algorithm>
 #include <cmath>
@@ -144,6 +145,25 @@ void biasedCoilForce()
     auto result = xfemm_test::compareForceTorqueSessions(
         fixture.reference, *fixture.refBackend,
         fixture.native, *fixture.nativeBackend, opt);
+    if (!result.passed) {
+        const auto view = fixture.native.logicalView();
+        const auto &m = fixture.refBackend->solvedSolver().meshnode;
+        const auto &refA = fixture.refBackend->solvedSystem().rhs();
+        const auto &nativeA = fixture.nativeBackend->solvedSystem().rhs();
+        const auto ordering = view->cuthillMcKeeOrdering();
+        std::cerr << "biased coil G5.4 per-node diagnostic: " << result.message << '\\n';
+        for (std::size_t i = 0; i < view->nodeCount(); ++i) {
+            double x = 0, y = 0;
+            view->nodeCoordinates(i, x, y);
+            std::size_t j = 0;
+            for (; j < m.size(); ++j)
+                if (std::hypot(m[j].x / 100. - x, m[j].y / 100. - y) < 1e-8) break;
+            std::cerr << "logical=" << i << " xy=" << x << "," << y
+                      << " raw_marker=" << view->nodeBoundaryMarker(i)
+                      << " reference=" << (j < m.size() ? refA[j] : -999.)
+                      << " native=" << nativeA[ordering[i]] << '\\n';
+        }
+    }
     check(result.passed, "biased coil: " + result.message);
     check(fixture.native.materializationCount() == 0,
           "biased coil: native solver materialized a mesh");
