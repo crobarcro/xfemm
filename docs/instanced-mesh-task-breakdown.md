@@ -465,10 +465,13 @@ expanded mesh, with the materialized path retained as an oracle.
     for this Lua fixture (its element B comparison stays enabled).
     Native solves never materialize a mesh or rebuild topology/ordering
     during this sweep. An **opt-in** --excited mode retains an additional
-    nonzero three-phase-current experiment; the materialized PETSc backend
-    failed to converge in that separate machine case at 5 degrees, so its
-    failure is not masked by dropping residual tolerances or conflated with
-    the checked-in zero-current reference. An **opt-in** --full flag tests
+    nonzero three-phase-current experiment. The materialized PETSc backend
+    also fails to converge on the **zero-current** reference at a shifted
+    5-degree AGE angle when using the current CG+ILU defaults (issue #81).
+    G5.5 therefore explicitly requests a GMRES KSP for its machine CTest,
+    retaining the normal PETSc defaults for other tests and comparing all
+    assembled matrix/residual/field quantities without looser tolerances.
+    The default backend robustness issue remains open. An **opt-in** --full flag tests
     the complete 360-degree 6+36 tile machine; full machine sweeps are deliberately not part of
     every-build CI due to runtime. Confirm both modes before declaring G5
     complete. Axisymmetric and harmonic cases remain materialized only.
