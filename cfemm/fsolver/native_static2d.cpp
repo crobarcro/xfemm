@@ -238,14 +238,17 @@ int FSolver::Static2DNative(const femm::mesh::LogicalMeshView &view,
     std::vector<std::array<double, 3>> elementX(elementCount);
     std::vector<std::array<double, 3>> elementY(elementCount);
     std::vector<std::array<int, 3>> elementNodes(elementCount);
+    std::vector<double> canonicalX, canonicalY;
+    view.allNodeCoordinates(canonicalX, canonicalY);
+    // Match materialization's first welded-node representative exactly.
+    // Using each instance's independently transformed seam coordinates can
+    // perturb the stiffness of very small elements despite identical topology.
+    // Cache these shared coordinates once, not once per element/Newton step.
     for (std::size_t e = 0; e < elementCount; ++e) {
         const auto nodes = view.elementNodes(e);
-        double x[3];
-        double y[3];
-        view.elementCoordinates(e, x, y);
         for (int k = 0; k < 3; ++k) {
-            elementX[e][k] = x[k] * 100.0;
-            elementY[e][k] = y[k] * 100.0;
+            elementX[e][k] = canonicalX[nodes[k]] * 100.0;
+            elementY[e][k] = canonicalY[nodes[k]] * 100.0;
             elementNodes[e][k] = mapped(nodes[k]);
         }
     }
@@ -885,6 +888,9 @@ int FSolver::Static2DNative(const femm::mesh::LogicalMeshView &view,
 
         for (std::size_t j = 0; j < nodeCount; ++j)
             vOld[j] = L.solution()[j];
+
+        if (staticAssemblyObserver)
+            staticAssemblyObserver(L);
 
         femm::SolveOptions options;
         options.warm_start = iteration > 0;

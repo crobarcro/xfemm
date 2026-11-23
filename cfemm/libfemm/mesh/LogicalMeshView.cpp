@@ -218,13 +218,20 @@ void LogicalMeshView::allNodeCoordinates(std::vector<double> &x, std::vector<dou
 {
     x.assign(m_nodeCount, 0.0);
     y.assign(m_nodeCount, 0.0);
+    std::vector<char> assigned(m_nodeCount, 0);
+    // Materialization uses the *first* instance/local-node occurrence of a
+    // welded vertex. Do not overwrite that representative with coordinates
+    // from subsequent seam partners (which can differ by a few nanometres).
     for (std::size_t i = 0; i < m_instances.size(); ++i) {
         const auto &localMesh = m_templates[m_instances[i].templateIndex].localMesh;
         const auto &transform = m_instances[i].transform;
         for (MeshIndex local = 0; local < localMesh.nodes.size(); ++local) {
             const MeshIndex global = nodeFor(i, local);
+            if (assigned[global])
+                continue;
             transform.applyPoint(localMesh.nodes[local].x, localMesh.nodes[local].y, x[global],
                                  y[global]);
+            assigned[global] = 1;
         }
     }
 }
@@ -260,15 +267,13 @@ std::array<MeshIndex, 3> LogicalMeshView::elementNodes(MeshIndex element) const
 
 void LogicalMeshView::elementCoordinates(MeshIndex element, double x[3], double y[3]) const
 {
-    const ElementProvenance provenance = elementProvenance(element);
-    const auto &local =
-        m_templates[provenance.templateIndex].localMesh.elements[provenance.localElement];
-    const auto &transform = m_instances[provenance.instanceIndex].transform;
-    for (std::size_t k = 0; k < 3; ++k) {
-        const auto &node =
-            m_templates[provenance.templateIndex].localMesh.nodes[local.nodes[k]];
-        transform.applyPoint(node.x, node.y, x[k], y[k]);
-    }
+    // Use canonical global welded-node coordinates, not the local transform
+    // of a seam partner. The materialized solver assembles with those same
+    // first-encounter representatives, and their sub-micron differences are
+    // enough to perturb stiffness entries in tiny Tangle triangles.
+    const auto nodes = elementNodes(element);
+    for (std::size_t k = 0; k < 3; ++k)
+        nodeCoordinates(nodes[k], x[k], y[k]);
 }
 
 std::array<std::int32_t, 3> LogicalMeshView::elementEdgeMarkers(MeshIndex element) const

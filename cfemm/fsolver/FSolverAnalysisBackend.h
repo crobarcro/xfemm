@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <vector>
 
 namespace femm {
 
@@ -31,6 +32,23 @@ public:
                            Dirty rebuilt) override;
     TrialSolution solve(const ModelDefinition &, const SolveParameters &,
                         const PreparedAnalysis &) override;
+
+    /** Test/diagnostic-only snapshot of the most recently assembled real
+     * static system, BEFORE solve() modifies its RHS to hold the solution.
+     * Matrix entries are stored once for the upper triangle, in backend DOF
+     * numbering after Dirichlet, periodic and AGE constraints.
+     */
+    struct StaticAssemblySnapshot {
+        struct Entry { int row = 0; int column = 0; double value = 0; };
+        int dimension = 0;
+        std::size_t capturedIterations = 0;
+        std::vector<Entry> upperTriangle;
+        std::vector<double> rhs;
+    };
+
+    /** Disabled by default. Captures the last nonlinear assembly as well. */
+    void setStaticAssemblyCapture(bool enabled) { m_captureStaticAssembly = enabled; }
+    const StaticAssemblySnapshot &staticAssemblySnapshot() const { return m_assemblySnapshot; }
 
     /** Write the most recently solved field in the legacy .ans format. */
     void writeSolution(const std::string &ansPath);
@@ -74,6 +92,8 @@ private:
     void configure(const ModelDefinition &, const SolveParameters &,
                    const PreparedAnalysis &);
     void positionAirGaps(const PreparedAnalysis &);
+    bool m_captureStaticAssembly = false;
+    StaticAssemblySnapshot m_assemblySnapshot;
     std::unique_ptr<FSolver> m_solver;
     std::unique_ptr<femm::LinearSystemBackend<double>> m_lastSystem;
     std::shared_ptr<const mesh::SolverMesh> m_mesh;

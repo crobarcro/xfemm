@@ -115,6 +115,25 @@ bool validOptions(const EquivalenceOptions &options)
 
 } // namespace
 
+bool associateNodalCoordinates(const femm::RealNodalSolution &reference,
+                               const femm::RealNodalSolution &trial,
+                               double tolerance, std::vector<std::size_t> &mapping,
+                               std::string &message)
+{
+    if (!finite(tolerance) || tolerance <= 0) {
+        message = "coordinate tolerance must be finite and positive";
+        return false;
+    }
+    if (reference.x.size() != trial.x.size()) {
+        message = "reference and trial node counts differ";
+        return false;
+    }
+    if (!validCoordinates(reference, tolerance, message) ||
+        !validCoordinates(trial, tolerance, message))
+        return false;
+    return nodeAssociation(reference, trial, tolerance, mapping, message);
+}
+
 EquivalenceResult compareNodalSolutions(const femm::TrialSolution &materialized,
                                          const femm::TrialSolution &native,
                                          const EquivalenceOptions &options)

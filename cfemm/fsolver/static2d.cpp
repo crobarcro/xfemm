@@ -945,6 +945,9 @@ int FSolver::Static2D(femm::LinearSystemBackend<double> &L)
             V_old[j]=L.solution()[j];
         }
 
+        if (staticAssemblyObserver)
+            staticAssemblyObserver(L);
+
         femm::SolveOptions opts;
         opts.warm_start = (Iter > 0);
         if (L.solve(opts).converged==false)

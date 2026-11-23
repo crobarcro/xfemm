@@ -32,6 +32,7 @@
 #ifndef FSOLVER_H
 #define FSOLVER_H
 
+#include <functional>
 #include <map>
 #include <string>
 #include <utility>
@@ -97,6 +98,11 @@ public:
     bool LoadPBCFromSolution(FILE* fp);
     bool LoadAGEsFromSolution(FILE* fp);
     bool LoadProblemFile();
+    /** Optional diagnostic probe at the completed static linear-system assembly,
+     * immediately before each solve iteration. Disabled in normal execution.
+     * The observer must not modify the assembled system.
+     */
+    std::function<void(femm::LinearSystemBackend<double> &)> staticAssemblyObserver;
     int Static2D(femm::LinearSystemBackend<double> &L);
     /**
      * Assemble and solve a planar, linear, isotropic magnetostatic problem by

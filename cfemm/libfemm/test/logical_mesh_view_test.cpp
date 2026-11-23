@@ -157,6 +157,17 @@ bool compareAgainstMaterialization(const InstancedMesh &instanced)
             REQUIRE(view.elementFor(i, e) == result.provenance.elementMap[i][e]);
     }
 
+    // Bulk coordinates must use the same first-encounter welded representatives
+    // as single-node lookup and as the materialized mesh.
+    std::vector<double> allX, allY;
+    view.allNodeCoordinates(allX, allY);
+    REQUIRE(allX.size() == mesh.nodes.size());
+    REQUIRE(allY.size() == mesh.nodes.size());
+    for (std::size_t n = 0; n < mesh.nodes.size(); ++n) {
+        REQUIRE(std::abs(allX[n] - mesh.nodes[n].x) < 1e-12);
+        REQUIRE(std::abs(allY[n] - mesh.nodes[n].y) < 1e-12);
+    }
+
     for (MeshIndex n = 0; n < mesh.nodes.size(); ++n) {
         const NodeProvenance provenance = view.nodeProvenance(n);
         REQUIRE(provenance.templateIndex == result.provenance.nodeProvenance[n].templateIndex);
@@ -175,6 +186,12 @@ bool compareAgainstMaterialization(const InstancedMesh &instanced)
         REQUIRE(provenance.localElement == result.provenance.elementProvenance[e].localElement);
         const auto nodes = view.elementNodes(e);
         REQUIRE(nodes == mesh.elements[e].nodes);
+        double elementX[3], elementY[3];
+        view.elementCoordinates(e, elementX, elementY);
+        for (std::size_t k = 0; k < 3; ++k) {
+            REQUIRE(std::abs(elementX[k] - mesh.nodes[nodes[k]].x) < 1e-12);
+            REQUIRE(std::abs(elementY[k] - mesh.nodes[nodes[k]].y) < 1e-12);
+        }
         REQUIRE(view.elementRegionAttribute(e) == mesh.elements[e].regionAttribute);
         REQUIRE(view.elementInstance(e) == result.provenance.elementProvenance[e].instanceIndex);
     }
@@ -203,6 +220,14 @@ bool compareAgainstMaterialization(const InstancedMesh &instanced)
 bool testViewMatchesMaterialization()
 {
     REQUIRE(compareAgainstMaterialization(makeRing(45.0, 8)));
+
+    // A seam can be geometrically within the weld tolerance but not bitwise
+    // coincident. Both the bulk nodal array and each element MUST use the
+    // first global representative, not the later instance-local coordinate.
+    auto nearlyAligned = makeRing(45.0, 8);
+    nearlyAligned.templates[0].localMesh.nodes[2].x += 2e-8;
+    nearlyAligned.templates[0].localMesh.nodes[3].x += 2e-8;
+    REQUIRE(compareAgainstMaterialization(nearlyAligned));
 
     // Independent translated instances keep distinct unknowns.
     InstancedMesh translated;

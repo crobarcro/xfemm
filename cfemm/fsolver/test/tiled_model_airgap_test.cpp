@@ -1,6 +1,7 @@
 #include "AnalysisSession.h"
 #include "FSolverAnalysisBackend.h"
 #include "NativeEquivalence.h"
+#include "NativeMatrixFieldEquivalence.h"
 
 #include "TangleMesherBackend.h"
 #include "TiledModel.h"
@@ -142,13 +143,27 @@ int runPipelineChecks(femm::mesh::InstancedMesh &instanced)
  * solve, including after the AGE is repositioned without remeshing.
  */
 int compareNative(femm::AnalysisSession &materialized,
-                  femm::AnalysisSession &native, const std::string &label)
+                  femm::FSolverAnalysisBackend &referenceSolver,
+                  femm::AnalysisSession &native,
+                  femm::FSolverAnalysisBackend &nativeSolver,
+                  const std::string &label)
 {
-    xfemm_test::EquivalenceOptions options;
-    options.absoluteTolerance = options.relativeTolerance = 1e-6;
-    // The native and materialized paths are solving the same meshed geometry,
-    // including AGE constraints; this is not a redraw-vs-sliding comparison.
-    const auto result = xfemm_test::compareSessionSolutions(materialized, native, options);
+    xfemm_test::MatrixFieldOptions options;
+    options.nodal.absoluteTolerance = options.nodal.relativeTolerance = 1e-6;
+    // The legacy PCG and PETSc preconditioners have different stopping
+    // conventions: measured true K*x-b residuals at the shifted AGE angle are
+    // ~3.2e-4 (legacy) and ~1.04e-3 (PETSc), and agree across both paths.
+    // Retain an independent conservative bound AND a much tighter native-
+    // versus-materialized residual agreement requirement.
+    options.maximumRelativeResidual = 2e-3;
+    options.residualAgreementTolerance = 1e-5;
+    options.matrixRelativeTolerance = 1e-5;
+    options.fieldRelativeTolerance = 1e-4;
+    options.hRelativeTolerance = 1e-4;
+    // Identical AGE coupling mesh at default and shifted angles: compare its
+    // full constrained matrix and field, not redraw-vs-sliding discretizations.
+    const auto result = xfemm_test::compareMatrixFieldSessions(
+        materialized, referenceSolver, native, nativeSolver, options);
     if (!result.passed)
         return fail(label + ": " + result.message);
     return 0;
@@ -208,7 +223,7 @@ int main()
         return fail("session did not build one label set per instance");
     const std::size_t materializations = session.materializationCount();
 
-    if (const int status = compareNative(session, nativeSession, "native-default"))
+    if (const int status = compareNative(session, *solver, nativeSession, *nativeSolver, "native-default"))
         return status;
     if (nativeSolver->nativeOrderingBuildCount() != 1)
         return fail("native ordering was not built exactly once");
@@ -217,7 +232,7 @@ int main()
     // stored template or rebuilding native adjacency/order.
     session.setAirGapAngle(session.model().airGap("gap"), 15.0, 0.0);
     nativeSession.setAirGapAngle(nativeSession.model().airGap("gap"), 15.0, 0.0);
-    if (const int status = compareNative(session, nativeSession, "native-angle"))
+    if (const int status = compareNative(session, *solver, nativeSession, *nativeSolver, "native-angle"))
         return status;
     if (session.materializationCount() != materializations)
         return fail("changing the AGE angle rematerialised the mesh");

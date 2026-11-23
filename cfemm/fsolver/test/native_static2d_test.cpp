@@ -1,6 +1,7 @@
 #include "AnalysisSession.h"
 #include "FSolverAnalysisBackend.h"
 #include "NativeEquivalence.h"
+#include "NativeMatrixFieldEquivalence.h"
 
 #include "CBlockLabel.h"
 #include "CCircuit.h"
@@ -123,9 +124,13 @@ bool testRingEquivalence()
 
     xfemm_test::EquivalenceOptions options;
     options.absoluteTolerance = options.relativeTolerance = 1e-7;
-    const auto comparison = xfemm_test::compareSessionSolutions(reference, native, options);
+    xfemm_test::MatrixFieldOptions diagnostics;
+    diagnostics.nodal = options;
+    diagnostics.maximumRelativeResidual = 1e-4;
+    const auto comparison = xfemm_test::compareMatrixFieldSessions(
+        reference, *referenceSolver, native, *nativeSolver, diagnostics);
     if (!comparison.passed)
-        std::cerr << "linear ring: " << comparison.message << '\n';
+        std::cerr << "linear ring G5.2: " << comparison.message << '\n';
     REQUIRE(comparison.passed);
     REQUIRE(referenceSolver->solveCount() == 1);
     REQUIRE(nativeSolver->nativeSolveCount() == 1);
@@ -159,13 +164,77 @@ bool testNonlinearEquivalence()
 
     xfemm_test::EquivalenceOptions options;
     options.absoluteTolerance = options.relativeTolerance = 1e-4;
-    const auto comparison = xfemm_test::compareSessionSolutions(reference, native, options);
+    xfemm_test::MatrixFieldOptions diagnostics;
+    diagnostics.nodal = options;
+    diagnostics.matrixRelativeTolerance = 1e-3;
+    diagnostics.rhsRelativeTolerance = 1e-3;
+    diagnostics.maximumRelativeResidual = 1e-2;
+    diagnostics.fieldRelativeTolerance = 1e-4;
+    diagnostics.hRelativeTolerance = 1e-3;
+    const auto comparison = xfemm_test::compareMatrixFieldSessions(
+        reference, *referenceSolver, native, *nativeSolver, diagnostics);
     if (!comparison.passed)
-        std::cerr << "nonlinear ring: " << comparison.message << '\n';
+        std::cerr << "nonlinear ring G5.2: " << comparison.message << '\n';
     REQUIRE(comparison.passed);
     REQUIRE(referenceSolver->solveCount() == 1);
     REQUIRE(nativeSolver->nativeSolveCount() == 1);
     return true;
+}
+
+/** Two triangles with ordinary PBC, independent of an air-gap coupling.
+ * This checks the constrained matrix and RHS for both sign conventions.
+ */
+InstancedMesh makePeriodicSquare(bool antiperiodic)
+{
+    SolverMesh mesh;
+    mesh.nodes = {{0., 0., 2}, {1., 0., 0}, {1., 1., 0}, {0., 1., 0}};
+    mesh.elements = {{{{0, 1, 2}}, 1}, {{{0, 2, 3}}, 1}};
+    mesh.edges = {{0, 1, 0}, {1, 2, 0}, {2, 3, 0}, {3, 0, 0}, {0, 2, 0}};
+    mesh.periodicConstraints.push_back({
+        1, 3, antiperiodic ? SolverMesh::Periodicity::Antiperiodic
+                          : SolverMesh::Periodicity::Periodic
+    });
+    MeshTemplate square;
+    square.localMesh = std::move(mesh);
+    InstancedMesh instanced;
+    instanced.templates.push_back(std::move(square));
+    instanced.instances.push_back({});
+    return instanced;
+}
+
+bool testOrdinaryPeriodicEquivalence(bool antiperiodic)
+{
+    auto referenceSolver = std::make_shared<FSolverAnalysisBackend>();
+    auto nativeSolver = std::make_shared<FSolverAnalysisBackend>();
+    AnalysisSession reference(ModelDefinition(makeProblem()), referenceSolver);
+    AnalysisSession native(ModelDefinition(makeProblem()), nativeSolver);
+    const auto instanced = makePeriodicSquare(antiperiodic);
+    reference.setInstancedMesh(instanced);
+    native.setInstancedMesh(instanced);
+    native.setNativeInstanced(true);
+    xfemm_test::MatrixFieldOptions options;
+    options.nodal.absoluteTolerance = options.nodal.relativeTolerance = 1e-7;
+    options.maximumRelativeResidual = 1e-4;
+    const auto comparison = xfemm_test::compareMatrixFieldSessions(
+        reference, *referenceSolver, native, *nativeSolver, options);
+    if (!comparison.passed)
+        std::cerr << (antiperiodic ? "antiperiodic" : "periodic")
+                  << " PBC G5.2: " << comparison.message << '\n';
+    REQUIRE(comparison.passed);
+    REQUIRE(reference.mesh()->periodicConstraints.size() == 1);
+    REQUIRE(native.logicalView()->periodicConstraints().size() == 1);
+    REQUIRE(comparison.matrix.numericNonzeros > 0);
+    return true;
+}
+
+bool testPeriodicEquivalence()
+{
+    return testOrdinaryPeriodicEquivalence(false);
+}
+
+bool testAntiperiodicEquivalence()
+{
+    return testOrdinaryPeriodicEquivalence(true);
 }
 
 // G3/E: a session-native solve must not materialize, and physics changes must
@@ -213,6 +282,8 @@ int main()
     const std::vector<std::pair<std::string, bool (*)()>> tests = {
         {"ring-equivalence", testRingEquivalence},
         {"nonlinear-equivalence", testNonlinearEquivalence},
+        {"periodic-matrix-equivalence", testPeriodicEquivalence},
+        {"antiperiodic-matrix-equivalence", testAntiperiodicEquivalence},
         {"session-native-mode", testSessionNativeMode},
     };
     bool success = true;
