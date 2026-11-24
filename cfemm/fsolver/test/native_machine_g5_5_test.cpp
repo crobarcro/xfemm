@@ -311,6 +311,98 @@ void compareSamples(const std::string &name, const std::vector<double> &original
           std::to_string(difference) + " limit=" + std::to_string(limit));
 }
 
+// Diagnostic only: a shared AGE torque scalar can hide a mismatch in the
+// radial/tangential gap fields. Reconstruct the two independent solutions on
+// the *same* angular grid and integrate Maxwell stress independently of the
+// built-in harmonic torque integral. This does not relax or bypass G5.5.
+struct GapFluxDiagnostic {
+    std::vector<double> br, bt;
+    double meanProduct = 0.;
+    double rmsBr = 0., rmsBt = 0.;
+    double numericalTorque = 0.;
+    double harmonicTorque = 0.;
+    double arcDegrees = 0.;
+    int harmonics = 0;
+};
+
+GapFluxDiagnostic inspectGapFlux(FPProc &post, const std::string &gap)
+{
+    int boundary = -1;
+    check(post.AGEBoundNumFromName(gap, boundary) && boundary >= 0 &&
+          static_cast<std::size_t>(boundary) < post.agelist.size(),
+          "G5.5 gap diagnostic could not find AGE boundary");
+    const auto &age = post.agelist[static_cast<std::size_t>(boundary)];
+    const double radius = (age.ri + age.ro) / 2.;
+    check(std::isfinite(radius) && radius > 0. && std::isfinite(post.Depth) &&
+          post.Depth > 0., "G5.5 gap diagnostic has invalid radius/depth");
+    constexpr int samples = 1440;
+    const double pi = std::acos(-1.);
+    GapFluxDiagnostic result;
+    result.arcDegrees = age.totalArcLength;
+    result.harmonics = age.nn;
+    result.br.reserve(samples);
+    result.bt.reserve(samples);
+    double sumBr2 = 0., sumBt2 = 0.;
+    for (int i = 0; i < samples; ++i) {
+        // Midpoint quadrature over the full periodic continuation. The
+        // original and instanced AGE solutions may use different harmonics.
+        const double degrees = (i + 0.5) * 360. / samples;
+        CComplex br, bt;
+        check(post.getAGEflux(gap, degrees, br, bt) == FPProcError::NoError,
+              "G5.5 gap diagnostic cannot reconstruct B");
+        check(std::isfinite(br.re) && std::isfinite(bt.re) &&
+              std::isfinite(br.im) && std::isfinite(bt.im) &&
+              std::abs(br.im) < 1e-10 && std::abs(bt.im) < 1e-10,
+              "G5.5 gap diagnostic reconstructed non-real/non-finite B");
+        result.br.push_back(br.re);
+        result.bt.push_back(bt.re);
+        result.meanProduct += br.re * bt.re / samples;
+        sumBr2 += br.re * br.re / samples;
+        sumBt2 += bt.re * bt.re / samples;
+    }
+    result.rmsBr = std::sqrt(sumBr2);
+    result.rmsBt = std::sqrt(sumBt2);
+    constexpr double mu0 = 4. * 3.14159265358979323846 * 1e-7;
+    result.numericalTorque = 2. * pi * radius * radius * post.Depth *
+                             result.meanProduct / mu0;
+    check(post.gapDCTorqueIntegral(gap, result.harmonicTorque) ==
+          FPProcError::NoError, "G5.5 gap harmonic torque diagnostic failed");
+    check(std::isfinite(result.numericalTorque) &&
+          std::isfinite(result.harmonicTorque),
+          "G5.5 gap diagnostic torque is nonfinite");
+    return result;
+}
+
+void printGapDiagnostics(FPProc &originalPost, FPProc &instancedPost,
+                         const std::string &originalGap,
+                         const std::string &instancedGap, double angle)
+{
+    const auto a = inspectGapFlux(originalPost, originalGap);
+    const auto b = inspectGapFlux(instancedPost, instancedGap);
+    check(a.br.size() == b.br.size(), "G5.5 gap diagnostic sample mismatch");
+    double maxBrDifference = 0., maxBtDifference = 0.;
+    for (std::size_t i = 0; i < a.br.size(); ++i) {
+        maxBrDifference = std::max(maxBrDifference, std::abs(a.br[i] - b.br[i]));
+        maxBtDifference = std::max(maxBtDifference, std::abs(a.bt[i] - b.bt[i]));
+    }
+    std::cout << "G5.5 gap diagnostic angle_deg=" << angle
+              << " original_arc_deg=" << a.arcDegrees
+              << " instanced_arc_deg=" << b.arcDegrees
+              << " original_harmonics=" << a.harmonics
+              << " instanced_harmonics=" << b.harmonics
+              << " original_Br_rms_T=" << a.rmsBr
+              << " instanced_Br_rms_T=" << b.rmsBr
+              << " original_Bt_rms_T=" << a.rmsBt
+              << " instanced_Bt_rms_T=" << b.rmsBt
+              << " max_delta_Br_T=" << maxBrDifference
+              << " max_delta_Bt_T=" << maxBtDifference
+              << " original_integral_torque_Nm=" << a.harmonicTorque
+              << " instanced_integral_torque_Nm=" << b.harmonicTorque
+              << " original_quadrature_torque_Nm=" << a.numericalTorque
+              << " instanced_quadrature_torque_Nm=" << b.numericalTorque
+              << "\n";
+}
+
 void compareIndependentMachine(
     const IndependentMachineSamples &original,
     const IndependentMachineSamples &instanced)
@@ -530,6 +622,8 @@ void runMachine(const std::string &path, const std::string &originalPath,
             const auto external = measureIndependentMachine(originalPost, model,
                                                            originalGap);
             const auto expanded = measureIndependentMachine(referencePost, model, gap);
+            printGapDiagnostics(originalPost, referencePost, originalGap, gap,
+                                state.angle);
             compareIndependentMachine(external, expanded);
         }
         // Complement generic G5.2 B with element H evaluated using the
