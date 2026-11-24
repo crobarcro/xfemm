@@ -335,8 +335,9 @@ void compareIndependentMachine(
     const double limit = 0.02 / 6. + 0.15 * scale;
     check(std::isfinite(scale) && std::isfinite(difference) && scale > 1e-8,
           "trivial/nonfinite independent air-gap torque");
-    std::cout << "G5.5 original/sliding vs instanced AGE torque_Nm delta="
-              << difference << " limit=" << limit << "\n";
+    std::cout << "G5.5 original/sliding vs instanced AGE torque_Nm original="
+              << original.airGapTorque << " instanced=" << instanced.airGapTorque
+              << " delta=" << difference << " limit=" << limit << "\n";
     check(difference <= limit,
           "original FEMM vs instanced AGE torque differs: delta=" +
           std::to_string(difference) + " limit=" + std::to_string(limit));
