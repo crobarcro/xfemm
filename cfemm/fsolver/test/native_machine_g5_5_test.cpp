@@ -452,7 +452,14 @@ void runMachine(const std::string &path, const std::string &originalPath,
         // Even in PETSc runs, failure of an independently meshed .fem solve
         // must fail CTest; no backend or solver-failure fallback.
         original.setAirGapAngle(original.model().airGap(originalGap), state.angle, 0.);
-        const TrialSolution originalTrial = original.solve();
+        TrialSolution originalTrial;
+        try {
+            originalTrial = original.solve();
+        } catch (const std::exception &error) {
+            throw std::runtime_error("original non-instanced RNFoundry .fem solve failed"
+                                     " at AGE angle " + std::to_string(state.angle) +
+                                     " degrees: " + error.what());
+        }
         check(originalTrial.real &&
               originalTrial.real->nodal.magneticVectorPotential.size() ==
                   originalMesh->nodes.size(),
