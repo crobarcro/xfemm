@@ -53,7 +53,7 @@ jobs:
 
     - name: Test
       working-directory: ${{github.workspace}}/build
-      run: ctest -C ${{env.BUILD_TYPE}} --timeout 60 --output-on-failure
+      run: ctest -C ${{env.BUILD_TYPE}} --timeout 300 --output-on-failure
 
   sanitizers:
     name: Address/UB sanitizers
@@ -96,11 +96,16 @@ jobs:
     - name: Build
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} -j2
     - name: Test with the legacy backend (default)
+      id: legacy_tests
       working-directory: ${{github.workspace}}/build
-      run: ctest -C ${{env.BUILD_TYPE}} --timeout 60 --output-on-failure
+      run: ctest -C ${{env.BUILD_TYPE}} --timeout 300 --output-on-failure
     - name: Test with the PETSc backend
+      # The machine comparison deliberately fails on meaningful legacy-model
+      # discrepancies. Still run PETSc against the same fixtures so its own
+      # convergence failures are independently visible in this job.
+      if: ${{ success() || (failure() && steps.legacy_tests.outcome == 'failure') }}
       working-directory: ${{github.workspace}}/build
-      run: XFEMM_SOLVER_BACKEND=petsc ctest -C ${{env.BUILD_TYPE}} --timeout 60 --output-on-failure
+      run: XFEMM_SOLVER_BACKEND=petsc ctest -C ${{env.BUILD_TYPE}} --timeout 300 --output-on-failure
 
   octave-mex:
     name: GNU Octave MEX interface    

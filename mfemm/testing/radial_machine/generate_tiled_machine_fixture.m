@@ -176,7 +176,10 @@ function problem = add_gap_air_region (problem, rConnect, rNew, pitchRad, ...
                                        seamName, gapName, airMaterial)
 % Add an annular air region between an existing boundary at rConnect and a new
 % arc at rNew. The new arc carries the AGE marker; the radial sides are seams.
-    maxSegDegrees = 1.0;
+    % Resolve the AGE more finely than the 0.6-degree sliding .fem arcs.
+    % 0.5 divides both the 60-degree rotor tile and 10-degree stator tile
+    % exactly, giving equal 120-sector-element AGE rings after instancing.
+    maxSegDegrees = 0.5;
     pitchDegrees = rad2deg (pitchRad);
     coords = reshape ([problem.Nodes.Coords], 2, [])';
     bottomNode = find_node_at (coords, rConnect, 0.0);
